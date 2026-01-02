@@ -1,0 +1,321 @@
+/* Base Styles */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: Arial, sans-serif;
+    font-size: 12px;
+    line-height: 1.4;
+    color: #000;
+    background: #fff;
+    padding: 0;
+    margin: 0;
+    max-width: none;
+}
+
+/* Receipt Container - 6 inch height × 4 inch width */
+.receipt-container {
+    width: 10.16cm;  /* 4 inches = 10.16cm */
+    height: 15.24cm; /* 6 inches = 15.24cm */
+    max-width: 10.16cm;
+    background: white;
+    position: relative;
+}
+
+/* Main Table Styles */
+.main-table {
+    width: 100%;
+    height: 100%;
+    border-collapse: collapse;
+    border: 2px solid #000;
+    font-size: 11px;
+}
+
+.main-table td {
+    border: 1px solid #000;
+    padding: 2mm;
+    vertical-align: top;
+    font-size: 12px;
+}
+
+/* Header Section */
+.header-section {
+    height: 40mm;
+    padding: 2mm;
+    text-align: center;
+    vertical-align: top;
+}
+
+.company-name {
+    font-size: 11px;
+    margin-bottom: 1mm;
+}
+
+.company-info {
+    font-size: 10px;
+    margin-bottom: 1mm;
+}
+
+.company-logo img {
+    max-height: 55px;
+    width: auto;
+}
+
+/* Order and Service Information */
+.order-id-cell {
+    font-weight: bold;
+    font-size: 10px;
+    text-align: center;
+    background-color: #f0f0f0;
+    width: 100%;
+    vertical-align: top;
+    padding: 2mm;
+    border: 1px solid #ddd;
+}
+
+.delivery-service-cell {
+    font-weight: bold;
+    background-color: #f8f8f8;
+    font-size: 8px;
+    padding: 2mm;
+}
+
+.tracking-cell {
+    font-size: 8px;
+    background-color: #f8f8f8;
+    text-align: center;
+    padding: 2mm;
+}
+
+/* Product and Customer Headers */
+.product-header {
+    font-weight: bold;
+    font-size: 10px;
+    padding: 1mm;
+}
+
+.customer-header {
+    font-weight: bold;
+    font-size: 10px;
+    padding: 1mm;
+}
+
+.customer-info {
+    font-size: 8px;
+    line-height: 1.3;
+    padding: 2mm;
+    width: 100%;
+}
+
+/* Totals Section */
+.totals-header {
+    font-weight: bold;
+    font-size: 10px;
+    padding: 1mm;
+}
+
+.totals-cell {
+    font-size: 8px;
+    line-height: 1.3;
+    padding: 2mm;
+    width: 10%;
+}
+
+.total-payable {
+    font-weight: bold;
+    font-size: 9px;
+    text-align: center;
+    background-color: #f0f0f0;
+    padding: 2mm;
+}
+
+.amount {
+    text-align: right;
+    font-weight: bold;
+}
+
+/* Barcode Section */
+.barcode-section {
+    text-align: center;
+    margin: 10px 0;
+    margin-bottom: 5px;
+}
+
+.barcode-image {
+    max-width: 280px;
+    max-height: 20mm;
+    height: auto;
+    width: auto;
+    margin: 5px 0;
+    display: block;
+    margin: 0 auto;
+}
+
+.barcode-text {
+    font-size: 7px;
+    font-family: monospace;
+    margin-top: 2px;
+    color: #666;
+    text-align: center;
+}
+
+.no-tracking-barcode {
+    text-align: center;
+}
+
+.tracking-text {
+    font-size: 12px;
+    font-weight: bold;
+    margin-top: 5px;
+}
+
+/* QR Code Section */
+.qr-section {
+    text-align: center;
+    margin-top: 10px;
+    padding: 5px;
+}
+
+.qr-image {
+    max-width: 15mm;
+    max-height: 15mm;
+    width: auto;
+    height: auto;
+    border: 1px solid #ddd;
+    display: block;
+    margin: 0 auto;
+}
+
+.qr-text {
+    font-size: 7px;
+    color: #666;
+    margin-top: 3px;
+    text-align: center;
+}
+
+/* Payment Badge */
+.payment-badge {
+    display: inline-block;
+    color: #155724;
+    background-color: #d4edda;
+    border: 1px solid #c3e6cb;
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-size: 8px;
+    font-weight: bold;
+    margin-top: 2mm;
+}
+
+/* Bulk Print Specific Styles */
+.labels-container {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    gap: 3mm;
+    padding: 3mm;
+}
+
+.label-wrapper {
+    width: 10.16cm;   /* 4 inches = 10.16cm */
+    height: 15.24cm;  /* 6 inches = 15.24cm */
+    break-inside: avoid;
+    page-break-inside: avoid;
+    margin: 0;
+    display: inline-block;
+    vertical-align: top;
+}
+
+/* No Orders Message */
+.no-orders {
+    text-align: center;
+    padding: 50px;
+    font-size: 16px;
+    color: #666;
+}
+
+.no-orders h3 {
+    margin-bottom: 10px;
+}
+
+.no-orders p {
+    margin-bottom: 8px;
+}
+
+/* Page Break - Only between labels, not after last one */
+.page-break {
+    page-break-after: always;
+    break-after: always;
+    height: 0;
+    margin: 0;
+    padding: 0;
+    display: block;
+}
+
+/* Print Media Queries */
+@media print {
+    body {
+        margin: 0;
+        padding: 0;
+    }
+    
+    .labels-container {
+        display: block;
+        gap: 0;
+        padding: 0;
+    }
+    
+    .label-wrapper {
+        display: block;
+        width: 100%;
+        height: 100vh;
+        margin: 0;
+    }
+    
+    /* Add page break after each label EXCEPT the last one */
+    .label-wrapper {
+        page-break-after: always;
+        break-after: always;
+    }
+    
+    .label-wrapper:last-child {
+        page-break-after: avoid !important;
+        break-after: avoid !important;
+    }
+    
+    .receipt-container {
+        width: 100%;
+        height: 100%;
+        max-width: none;
+        box-sizing: border-box;
+    }
+    
+    .main-table {
+        page-break-inside: avoid;
+        break-inside: avoid;
+    }
+    
+    .barcode-section {
+        margin: 5px 0;
+    }
+    
+    .qr-section, 
+    .barcode-section {
+        page-break-inside: avoid;
+        break-inside: avoid;
+    }
+    
+    .qr-image, 
+    .barcode-image {
+        print-color-adjust: exact;
+        -webkit-print-color-adjust: exact;
+    }
+    
+    /* One label per page - 6 inch height × 4 inch width (Portrait) */
+    @page {
+        size: 4in 6in;  /* Width: 4 inches, Height: 6 inches */
+        margin: 0;
+    }
+}
