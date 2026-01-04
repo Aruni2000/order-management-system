@@ -96,6 +96,19 @@ function detectUserChanges($existingData, $newData, $passwordChanged = false) {
     if ($existingData['nic'] !== $newData['nic']) {
         $changes[] = "NIC changed from '{$existingData['nic']}' to '{$newData['nic']}'";
     }
+
+    if ($existingData['status'] !== $newData['status']) {
+        $statusAction = ($newData['status'] === 'active') ? 'Activated' : 'Deactivated';
+        $changes[] = "{$statusAction}";
+    }
+
+    if ($existingData['address'] !== $newData['address']) {
+        $changes[] = "Address updated";
+    }
+
+    if ($existingData['role_name'] !== $newData['role_name']) {
+        $changes[] = "Role changed from '{$existingData['role_name']}' to '{$newData['role_name']}'";
+    }
     
     if ($passwordChanged) {
         $changes[] = "Password updated";
@@ -124,8 +137,11 @@ try {
         jsonResponse(false, 'Invalid user ID provided.');
     }
 
-    // Check if user exists and get current data
-    $checkStmt = $conn->prepare("SELECT id, name, email, nic, mobile, address, status, role_id FROM users WHERE id = ?");
+    // Check if user exists and get current data - MODIFIED to include role_name
+    $checkStmt = $conn->prepare("SELECT u.id, u.name, u.email, u.nic, u.mobile, u.address, u.status, u.role_id, r.name as role_name 
+                                FROM users u 
+                                LEFT JOIN roles r ON u.role_id = r.id 
+                                WHERE u.id = ?");
     if (!$checkStmt) {
         jsonResponse(false, 'Database error occurred. Please try again.');
     }
@@ -150,11 +166,23 @@ try {
     $role = $_POST['role'] ?? '';
     
     // Convert role to role_id
-    $role_mapping = [
-        'admin' => ['id' => 1, 'name' => 'Admin'],
-        'moderator' => ['id' => 2, 'name' => 'Moderator'],
-        'user' => ['id' => 3, 'name' => 'User']
-    ];
+    $role_mapping = [];
+    $roleQuery = "SELECT id, name FROM roles";
+    $roleResult = $conn->query($roleQuery);
+    if ($roleResult && $roleResult->num_rows > 0) {
+        while ($row = $roleResult->fetch_assoc()) {
+            $role_mapping[strtolower($row['name'])] = ['id' => $row['id'], 'name' => $row['name']];
+        }
+    }
+    
+    // Fallback if database roles are empty (using initial defaults)
+    if (empty($role_mapping)) {
+        $role_mapping = [
+            'admin' => ['id' => 1, 'name' => 'Admin'],
+            'user' => ['id' => 2, 'name' => 'User'],
+            'moderator' => ['id' => 3, 'name' => 'Moderator'],
+        ];
+    }
     
     // Essential server-side validation (security-critical only)
     $fieldErrors = [];
@@ -165,6 +193,7 @@ try {
     if (empty($mobile)) $fieldErrors['mobile'] = "Mobile number is required.";
     if (empty($nic)) $fieldErrors['nic'] = "NIC number is required.";
     if (empty($address)) $fieldErrors['address'] = "Address is required.";
+    if (!empty($password) && strlen($password) < 6) $fieldErrors['password'] = "Password must be at least 6 characters long.";
     if (!isset($role_mapping[$role])) $fieldErrors['role'] = "Please select a valid role.";
     
     // Email format validation (security critical)
@@ -226,6 +255,8 @@ try {
     $role_id = $role_mapping[$role]['id'];
     $passwordChanged = !empty($password);
     
+    $role_name = $role_mapping[strtolower($role)]['name'] ?? ucfirst($role);
+    
     $newData = [
         'name' => $name,
         'email' => $email,
@@ -233,7 +264,8 @@ try {
         'nic' => $nic,
         'address' => $address,
         'status' => $status,
-        'role_id' => $role_id
+        'role_id' => $role_id,
+        'role_name' => $role_name
     ];
     
     // Check if any field has actually changed (excluding password for now)
@@ -273,7 +305,7 @@ try {
             jsonResponse(false, 'Database error occurred. Please try again.');
         }
         
-        $stmt->bind_param("ssssssiii", 
+        $stmt->bind_param("sssssssii", 
             $name, $email, $hashed_password, $mobile, $nic, $address, 
             $status, $role_id, $userId
         );

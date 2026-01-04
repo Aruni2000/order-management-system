@@ -172,10 +172,15 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
     color: #6c757d;
     cursor: pointer;
     padding: 5px;
++    z-index: 10;
 }
 
 .password-toggle:hover {
     color: #495057;
+}
+
+.password-input-group .form-control {
+    padding-right: 40px;
 }
 </style>
 </head>

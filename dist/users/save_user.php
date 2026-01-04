@@ -95,11 +95,23 @@ try {
     $role = $_POST['role'] ?? '';
     
     // Convert role to role_id
-    $role_mapping = [
-        'admin' => ['id' => 1, 'name' => 'Admin'],
-        'moderator' => ['id' => 2, 'name' => 'Moderator'],
-        'user' => ['id' => 3, 'name' => 'User']
-    ];
+    $role_mapping = [];
+    $roleQuery = "SELECT id, name FROM roles";
+    $roleResult = $conn->query($roleQuery);
+    if ($roleResult && $roleResult->num_rows > 0) {
+        while ($row = $roleResult->fetch_assoc()) {
+            $role_mapping[strtolower($row['name'])] = ['id' => $row['id'], 'name' => $row['name']];
+        }
+    }
+    
+    // Fallback if database roles are empty (using initial defaults)
+    if (empty($role_mapping)) {
+        $role_mapping = [
+            'admin' => ['id' => 1, 'name' => 'Admin'],
+            'user' => ['id' => 2, 'name' => 'User'],
+            'moderator' => ['id' => 3, 'name' => 'Moderator'],
+        ];
+    }
     
     // Essential server-side validation (security-critical only)
     $fieldErrors = [];
@@ -108,6 +120,7 @@ try {
     if (empty($name)) $fieldErrors['full_name'] = "Full name is required.";
     if (empty($email)) $fieldErrors['email'] = "Email address is required.";
     if (empty($password)) $fieldErrors['password'] = "Password is required.";
+    if (!empty($password) && strlen($password) < 6) $fieldErrors['password'] = "Password must be at least 6 characters long.";
     if (empty($mobile)) $fieldErrors['mobile'] = "Mobile number is required.";
     if (empty($nic)) $fieldErrors['nic'] = "NIC number is required.";
     if (empty($address)) $fieldErrors['address'] = "Address is required.";

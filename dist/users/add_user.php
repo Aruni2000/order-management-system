@@ -42,6 +42,10 @@ if ($user_role['role_id'] != 1) {
     exit();
 }
 
+// Fetch roles from database
+$roleQuery = "SELECT * FROM roles ORDER BY name";
+$roleResult = mysqli_query($conn, $roleQuery);
+
 // Function to generate CSRF token
 // function generateCSRFToken() {
 //     if (!isset($_SESSION['csrf_token'])) {
@@ -133,6 +137,31 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
         transform: translateX(0);
         opacity: 1;
     }
+}
+
+.password-input-group {
+    position: relative;
+}
+
+.password-toggle {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    color: #6c757d;
+    cursor: pointer;
+    padding: 5px;
+    z-index: 10;
+}
+
+.password-toggle:hover {
+    color: #495057;
+}
+
+.password-input-group .form-control {
+    padding-right: 40px;
 }
 </style>
 </head>
@@ -267,9 +296,17 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                                     </label>
                                     <select class="form-select" id="role" name="role" required>
                                         <option value="">Select Role...</option>
-                                        <option value="admin">Admin</option>
-                                        <option value="moderator">Moderator</option>
-                                        <option value="user">User</option>
+                                        <?php
+if ($roleResult && mysqli_num_rows($roleResult) > 0) {
+                                            while ($role = mysqli_fetch_assoc($roleResult)) {
+                                                echo "<option value='{$role['name']}'>" . htmlspecialchars($role['name']) . "</option>";
+                                            }
+                                        } else {
+                                            echo '<option value="admin">Admin</option>';
+                                            echo '<option value="moderator">Moderator</option>';
+                                            echo '<option value="user">User</option>';
+                                        }
+                                        ?>
                                     </select>
                                     <div class="error-feedback" id="role-error"></div>
                                 </div>
@@ -694,6 +731,9 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
         function validatePassword(password) {
             if (password.trim() === '') {
                 return { valid: false, message: 'Password is required' };
+            }
+            if (password.length < 6) {
+                return { valid: false, message: 'Password must be at least 6 characters long' };
             }
             
             return { valid: true, message: '' };
