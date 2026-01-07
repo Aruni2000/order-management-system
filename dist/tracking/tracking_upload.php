@@ -56,15 +56,15 @@ function validateTrackingNumber($trackingNumber) {
     return ['valid' => true, 'clean_tracking' => $cleanTracking];
 }
 
-// Function to check if tracking number already exists for the same courier
-function checkTrackingNumberExistsForCourier($trackingNumber, $courierId, $conn) {
-    $checkSql = "SELECT tracking_id FROM tracking WHERE tracking_id = ? AND courier_id = ? LIMIT 1";
+// Function to check if tracking number already exists for the same courier and tenant
+function checkTrackingNumberExistsForCourier($trackingNumber, $courierId, $tenantId, $conn) {
+    $checkSql = "SELECT tracking_id FROM tracking WHERE tracking_id = ? AND courier_id = ? AND tenant_id = ? LIMIT 1";
     $checkStmt = $conn->prepare($checkSql);
     if (!$checkStmt) {
         return ['exists' => false, 'error' => 'Database error while checking tracking number'];
     }
     
-    $checkStmt->bind_param("si", $trackingNumber, $courierId);
+    $checkStmt->bind_param("sii", $trackingNumber, $courierId, $tenantId);
     $checkStmt->execute();
     $result = $checkStmt->get_result();
     $exists = $result && $result->num_rows > 0;
@@ -118,7 +118,7 @@ function getCourierName($conn, $courierId) {
 }
 
 // Function to validate entire row data
-function validateRowData($rowData, $rowNumber, $courierId, $conn) {
+function validateRowData($rowData, $rowNumber, $courierId, $tenantId, $conn) {
     $errors = [];
     $cleanData = [];
     
@@ -129,12 +129,12 @@ function validateRowData($rowData, $rowNumber, $courierId, $conn) {
     } else {
         $cleanData['tracking_number'] = $trackingValidation['clean_tracking'];
         
-        // Check if tracking number already exists for THIS courier
-        $existsCheck = checkTrackingNumberExistsForCourier($trackingValidation['clean_tracking'], $courierId, $conn);
+        // Check if tracking number already exists for THIS courier IN THIS TENANT
+        $existsCheck = checkTrackingNumberExistsForCourier($trackingValidation['clean_tracking'], $courierId, $tenantId, $conn);
         if ($existsCheck['error']) {
             $errors[] = "Row $rowNumber: " . $existsCheck['error'];
         } elseif ($existsCheck['exists']) {
-            $errors[] = "Row $rowNumber: Tracking number '{$trackingValidation['clean_tracking']}' already exists for this courier";
+            $errors[] = "Row $rowNumber: Tracking number '{$trackingValidation['clean_tracking']}' already exists for this courier in your organization";
         }
     }
     
@@ -169,6 +169,15 @@ $couriers = getCouriers($conn);
 
 // Process CSV file if form is submitted
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file']) && isset($_POST['courier_id'])) {
+    
+    // CRITICAL: Get tenant_id from SESSION (NEVER from POST for security)
+    $tenant_id = $_SESSION['tenant_id'] ?? null;
+    if (!$tenant_id) {
+        $_SESSION['import_error'] = 'Invalid tenant information. Please logout and login again.';
+        ob_end_clean();
+        header("Location: tracking_upload.php");
+        exit();
+    }
     
     // Validate courier selection
     $selectedCourierId = intval($_POST['courier_id']);
@@ -313,8 +322,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file']) && isset
                 exit();
             }
             
-            // Prepare SQL statement to insert tracking numbers
-            $insertTrackingSql = "INSERT INTO tracking (tracking_id, courier_id, status, created_at, updated_at) VALUES (?, ?, 'unused', NOW(), NOW())";
+            // Prepare SQL statement to insert tracking numbers WITH tenant_id
+            $insertTrackingSql = "INSERT INTO tracking (tenant_id, tracking_id, courier_id, status, created_at, updated_at) VALUES (?, ?, ?, 'unused', NOW(), NOW())";
             $insertTrackingStmt = $conn->prepare($insertTrackingSql);
             
             if (!$insertTrackingStmt) {
@@ -346,8 +355,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file']) && isset
                     }
                 }
                 
-                // Validate row data
-                $validation = validateRowData($trackingData, $rowNumber, $selectedCourierId, $conn);
+                // Validate row data (including tenant-based duplicate check)
+                $validation = validateRowData($trackingData, $rowNumber, $selectedCourierId, $tenant_id, $conn);
                 
                 if (!empty($validation['errors'])) {
                     $errors = array_merge($errors, $validation['errors']);
@@ -359,9 +368,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file']) && isset
                 // Use cleaned data
                 $trackingData = array_merge($trackingData, $validation['clean_data']);
                 
-                // Insert tracking number with selected courier
+                // Insert tracking number with tenant_id, tracking_number, and courier_id
                 try {
-                    $insertTrackingStmt->bind_param("si", $trackingData['tracking_number'], $selectedCourierId);
+                    $insertTrackingStmt->bind_param("isi", $tenant_id, $trackingData['tracking_number'], $selectedCourierId);
                     
                     if ($insertTrackingStmt->execute()) {
                         $successCount++;
@@ -389,7 +398,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file']) && isset
             // Log the tracking upload activity if there were successful uploads
             if ($successCount > 0) {
                 $courierName = getCourierName($conn, $selectedCourierId);
-                $logDetails = "Tracking CSV upload: {$successCount} tracking numbers uploaded for courier ID: {$selectedCourierId} ({$courierName})";
+                $logDetails = "Tracking CSV upload: {$successCount} tracking numbers uploaded for courier ID: {$selectedCourierId} ({$courierName}), Tenant ID: {$tenant_id}";
                 
                 if (!logUserAction($conn, $currentUserId, 'tracking', 0, $logDetails)) {
                     // Log the error but don't stop processing
@@ -487,7 +496,7 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                         <li>Tracking numbers must be 5-50 characters long</li>
                         <li>Only alphanumeric characters, hyphens, and underscores allowed</li>
                         <li>Maximum file size: 5MB</li>
-                        <li>Same tracking number can exist for different couriers, but not for the same courier</li>
+                        <li>Tracking numbers are unique per courier within your organization</li>
                     </ul>
                 </div>
 
@@ -607,9 +616,6 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
             const importBtn = document.getElementById('importBtn');
             importBtn.disabled = false;
             importBtn.innerHTML = ' Upload Tracking Numbers';
-            
-            // Optional: Show confirmation
-            // alert('Form has been reset');
         });
 
         // Form validation

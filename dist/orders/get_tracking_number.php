@@ -21,8 +21,9 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/connection/db_connec
 header('Content-Type: application/json');
 
 try {
-    // Get courier_id from GET parameter
+    // Get courier_id and order_id from GET parameters
     $courier_id = isset($_GET['courier_id']) ? (int)$_GET['courier_id'] : 0;
+    $order_id = isset($_GET['order_id']) ? trim($_GET['order_id']) : '';
     
     if ($courier_id <= 0) {
         echo json_encode([
@@ -32,31 +33,68 @@ try {
         exit();
     }
     
-    // Verify courier exists and is active
-    $courier_check_sql = "SELECT courier_id, courier_name FROM couriers WHERE courier_id = ? AND status = 'active'";
+    if (empty($order_id)) {
+        echo json_encode([
+            'status' => 'error',
+            'message' => 'Order ID is required'
+        ]);
+        exit();
+    }
+    
+    // **STEP 1: Get the tenant_id from the order**
+    $order_query = "SELECT tenant_id FROM order_header WHERE order_id = ? LIMIT 1";
+    $order_stmt = $conn->prepare($order_query);
+    $order_stmt->bind_param("s", $order_id);
+    $order_stmt->execute();
+    $order_result = $order_stmt->get_result();
+    
+    if ($order_result->num_rows === 0) {
+        echo json_encode([
+            'status' => 'error',
+            'message' => 'Order not found'
+        ]);
+        exit();
+    }
+    
+    $order_data = $order_result->fetch_assoc();
+    $order_tenant_id = $order_data['tenant_id'];
+    $order_stmt->close();
+    
+    // **STEP 2: Verify courier exists, is active, and belongs to the same tenant**
+    $courier_check_sql = "SELECT courier_id, courier_name, tenant_id 
+                          FROM couriers 
+                          WHERE courier_id = ? 
+                          AND status = 'active' 
+                          AND tenant_id = ?";
     $courier_stmt = $conn->prepare($courier_check_sql);
-    $courier_stmt->bind_param("i", $courier_id);
+    $courier_stmt->bind_param("ii", $courier_id, $order_tenant_id);
     $courier_stmt->execute();
     $courier_result = $courier_stmt->get_result();
     
     if ($courier_result->num_rows === 0) {
         echo json_encode([
             'status' => 'error',
-            'message' => 'Courier not found or inactive'
+            'message' => 'Courier not found, inactive, or does not belong to the order\'s tenant'
         ]);
         exit();
     }
     
     $courier_data = $courier_result->fetch_assoc();
+    $courier_stmt->close();
     
-    // Get count of unused tracking numbers for this courier
-    $count_sql = "SELECT COUNT(*) as available_count FROM tracking WHERE courier_id = ? AND status = 'unused'";
+    // **STEP 3: Get count of unused tracking numbers for this courier AND tenant**
+    $count_sql = "SELECT COUNT(*) as available_count 
+                  FROM tracking 
+                  WHERE courier_id = ? 
+                  AND tenant_id = ? 
+                  AND status = 'unused'";
     $count_stmt = $conn->prepare($count_sql);
-    $count_stmt->bind_param("i", $courier_id);
+    $count_stmt->bind_param("ii", $courier_id, $order_tenant_id);
     $count_stmt->execute();
     $count_result = $count_stmt->get_result();
     $count_data = $count_result->fetch_assoc();
     $available_count = $count_data['available_count'];
+    $count_stmt->close();
     
     if ($available_count <= 0) {
         echo json_encode([
@@ -68,13 +106,16 @@ try {
         exit();
     }
     
-    // Get the next available tracking number (oldest unused one)
-    $tracking_sql = "SELECT tracking_id FROM tracking 
-                     WHERE courier_id = ? AND status = 'unused' 
+    // **STEP 4: Get the next available tracking number for this courier AND tenant**
+    $tracking_sql = "SELECT tracking_id 
+                     FROM tracking 
+                     WHERE courier_id = ? 
+                     AND tenant_id = ? 
+                     AND status = 'unused' 
                      ORDER BY created_at ASC 
                      LIMIT 1";
     $tracking_stmt = $conn->prepare($tracking_sql);
-    $tracking_stmt->bind_param("i", $courier_id);
+    $tracking_stmt->bind_param("ii", $courier_id, $order_tenant_id);
     $tracking_stmt->execute();
     $tracking_result = $tracking_stmt->get_result();
     
@@ -88,6 +129,7 @@ try {
     }
     
     $tracking_data = $tracking_result->fetch_assoc();
+    $tracking_stmt->close();
     
     // Return success response
     echo json_encode([
@@ -95,6 +137,7 @@ try {
         'tracking_number' => $tracking_data['tracking_id'],
         'courier_name' => $courier_data['courier_name'],
         'courier_id' => $courier_id,
+        'tenant_id' => $order_tenant_id,
         'available_count' => $available_count
     ]);
     

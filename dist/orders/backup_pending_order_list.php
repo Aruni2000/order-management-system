@@ -2634,18 +2634,18 @@ function fetchApiTrackingNumbers(courierId) {
 }
 
     // Enhanced API Dispatch functionality with dynamic dispatch type control
-  document.addEventListener('DOMContentLoaded', function() {
-    const apiCarrierSelect = document.getElementById('api_carrier');
-    const apiDispatchForm = document.getElementById('api-dispatch-form');
-    const apiModal = document.getElementById('apiDispatchModal');
-    const dispatchTypeRadios = document.querySelectorAll('input[name="api_dispatch_type"]');
-    const newParcelOption = document.getElementById('newParcel')?.closest('.form-check');
-    const existingParcelOption = document.getElementById('existingParcel')?.closest('.form-check');
-    const dispatchTypeContainer = document.querySelector('.dispatch-type-options');
+    document.addEventListener('DOMContentLoaded', function() {
+        const apiCarrierSelect = document.getElementById('api_carrier');
+        const apiDispatchForm = document.getElementById('api-dispatch-form');
+        const apiModal = document.getElementById('apiDispatchModal');
+        const dispatchTypeRadios = document.querySelectorAll('input[name="api_dispatch_type"]');
+        const newParcelOption = document.getElementById('newParcel').closest('.form-check');
+        const existingParcelOption = document.getElementById('existingParcel').closest('.form-check');
+        const dispatchTypeContainer = document.querySelector('.dispatch-type-options');
 
-    // Store courier API capabilities - populated from PHP data
-    const courierCapabilities = {
-        <?php
+        // Store courier API capabilities - populated from PHP data
+        const courierCapabilities = {
+            <?php
         // Fetch all courier capabilities and create JavaScript object
         $capabilities_query = "SELECT courier_id, has_api_new, has_api_existing FROM couriers WHERE status = 'active'";
         $capabilities_result = $conn->query($capabilities_query);
@@ -2658,398 +2658,284 @@ function fetchApiTrackingNumbers(courierId) {
             echo implode(',', $capabilities_array);
         }
         ?>
-    };
+        };
 
-         /**
-     * Get courier capabilities from embedded data
-     */
-    function getCourierCapabilities(courierId) {
-        if (!courierId) {
-            // Hide dispatch type section if no courier selected
-            if (dispatchTypeContainer) {
+        /**
+         * Get courier capabilities from embedded data
+         */
+        function getCourierCapabilities(courierId) {
+            if (!courierId) {
+                // Hide dispatch type section if no courier selected
                 dispatchTypeContainer.style.display = 'none';
+                document.getElementById('api-dispatch-submit-btn').disabled = true;
+                return;
             }
-            const submitBtn = document.getElementById('api-dispatch-submit-btn');
-            if (submitBtn) submitBtn.disabled = true;
-            return;
-        }
 
-        const capabilities = courierCapabilities[courierId];
-        if (capabilities) {
-            updateDispatchTypeOptions(capabilities);
-        } else {
-            // Courier not found, hide dispatch type section
-            if (dispatchTypeContainer) {
-                dispatchTypeContainer.style.display = 'none';
-            }
-            const submitBtn = document.getElementById('api-dispatch-submit-btn');
-            if (submitBtn) submitBtn.disabled = true;
-        }
-    }
-
-     /**
-     * Update dispatch type options based on courier capabilities
-     */
-    function updateDispatchTypeOptions(capabilities) {
-        const hasNew = capabilities.has_api_new === 1;
-        const hasExisting = capabilities.has_api_existing === 1;
-
-        // Show/hide options based on capabilities
-        if (newParcelOption) {
-            newParcelOption.style.display = hasNew ? 'block' : 'none';
-        }
-        if (existingParcelOption) {
-            existingParcelOption.style.display = hasExisting ? 'block' : 'none';
-        }
-
-        // If neither option is available, hide the entire dispatch type section
-        if (!hasNew && !hasExisting) {
-            if (dispatchTypeContainer) {
-                dispatchTypeContainer.style.display = 'none';
-            }
-            const submitBtn = document.getElementById('api-dispatch-submit-btn');
-            if (submitBtn) submitBtn.disabled = true;
-            return;
-        }
-
-        // Show the dispatch type section
-        if (dispatchTypeContainer) {
-            dispatchTypeContainer.style.display = 'block';
-        }
-
-        // Auto-select the available option if only one is available
-        const existingTrackingSection = document.getElementById('existingTrackingSection');
-        
-        if (hasNew && !hasExisting) {
-            const newParcelRadio = document.getElementById('newParcel');
-            if (newParcelRadio) newParcelRadio.checked = true;
-            if (existingTrackingSection) existingTrackingSection.style.display = 'none';
-        } else if (!hasNew && hasExisting) {
-            const existingParcelRadio = document.getElementById('existingParcel');
-            if (existingParcelRadio) existingParcelRadio.checked = true;
-            if (existingTrackingSection) existingTrackingSection.style.display = 'block';
-            // Fetch tracking numbers for existing parcels
-            if (apiCarrierSelect && apiCarrierSelect.value) {
-                fetchApiTrackingNumbers(apiCarrierSelect.value);
-            }
-        } else if (hasNew && hasExisting) {
-            // Both options available, default to 'new'
-            const newParcelRadio = document.getElementById('newParcel');
-            if (newParcelRadio) newParcelRadio.checked = true;
-            if (existingTrackingSection) existingTrackingSection.style.display = 'none';
-        }
-
-        // Enable submit button since we have valid options
-        updateSubmitButtonState();
-    }
-
-    /**
-     * Update submit button state based on selections
-     */
-    function updateSubmitButtonState() {
-        const submitBtn = document.getElementById('api-dispatch-submit-btn');
-        if (!submitBtn) return;
-        
-        const selectedOrders = document.querySelectorAll('.order-checkbox:checked').length;
-        const courierSelected = apiCarrierSelect ? apiCarrierSelect.value : null;
-        const dispatchTypeSelected = document.querySelector('input[name="api_dispatch_type"]:checked');
-
-        // Enable button only if we have courier, orders, and valid dispatch type
-        const canSubmit = courierSelected && selectedOrders > 0 && dispatchTypeSelected;
-        submitBtn.disabled = !canSubmit;
-    }
-
-    // Handle courier selection change
-    if (apiCarrierSelect) {
-        apiCarrierSelect.addEventListener('change', function() {
-            const selectedCourierId = this.value;
-
-            if (selectedCourierId) {
-                // Get courier capabilities and update UI
-                getCourierCapabilities(selectedCourierId);
+            const capabilities = courierCapabilities[courierId];
+            if (capabilities) {
+                updateDispatchTypeOptions(capabilities);
             } else {
-                // No courier selected, hide dispatch options
-                if (dispatchTypeContainer) {
-                    dispatchTypeContainer.style.display = 'none';
-                }
-                const existingTrackingSection = document.getElementById('existingTrackingSection');
-                if (existingTrackingSection) {
-                    existingTrackingSection.style.display = 'none';
-                }
-                const submitBtn = document.getElementById('api-dispatch-submit-btn');
-                if (submitBtn) submitBtn.disabled = true;
+                // Courier not found, hide dispatch type section
+                dispatchTypeContainer.style.display = 'none';
+                document.getElementById('api-dispatch-submit-btn').disabled = true;
             }
-        });
-    }
+        }
 
-    // Handle dispatch type change
-    if (dispatchTypeRadios) {
+        /**
+         * Update dispatch type options based on courier capabilities
+         */
+        function updateDispatchTypeOptions(capabilities) {
+            const hasNew = capabilities.has_api_new === 1;
+            const hasExisting = capabilities.has_api_existing === 1;
+
+            // Show/hide options based on capabilities
+            newParcelOption.style.display = hasNew ? 'block' : 'none';
+            existingParcelOption.style.display = hasExisting ? 'block' : 'none';
+
+            // If neither option is available, hide the entire dispatch type section
+            if (!hasNew && !hasExisting) {
+                dispatchTypeContainer.style.display = 'none';
+                document.getElementById('api-dispatch-submit-btn').disabled = true;
+                return;
+            }
+
+            // Show the dispatch type section
+            dispatchTypeContainer.style.display = 'block';
+
+            // Auto-select the available option if only one is available
+            if (hasNew && !hasExisting) {
+                document.getElementById('newParcel').checked = true;
+                document.getElementById('existingTrackingSection').style.display = 'none';
+            } else if (!hasNew && hasExisting) {
+                document.getElementById('existingParcel').checked = true;
+                document.getElementById('existingTrackingSection').style.display = 'block';
+                // Fetch tracking numbers for existing parcels
+                fetchApiTrackingNumbers(apiCarrierSelect.value);
+            } else if (hasNew && hasExisting) {
+                // Both options available, default to 'new'
+                document.getElementById('newParcel').checked = true;
+                document.getElementById('existingTrackingSection').style.display = 'none';
+            }
+
+            // Enable submit button since we have valid options
+            updateSubmitButtonState();
+        }
+
+        /**
+         * Update submit button state based on selections
+         */
+        function updateSubmitButtonState() {
+            const submitBtn = document.getElementById('api-dispatch-submit-btn');
+            const selectedOrders = document.querySelectorAll('.order-checkbox:checked').length;
+            const courierSelected = apiCarrierSelect.value;
+            const dispatchTypeSelected = document.querySelector('input[name="api_dispatch_type"]:checked');
+
+            // Enable button only if we have courier, orders, and valid dispatch type
+            const canSubmit = courierSelected && selectedOrders > 0 && dispatchTypeSelected;
+            submitBtn.disabled = !canSubmit;
+        }
+
+        // Handle courier selection change
+        if (apiCarrierSelect) {
+            apiCarrierSelect.addEventListener('change', function() {
+                const selectedCourierId = this.value;
+
+                if (selectedCourierId) {
+                    // Get courier capabilities and update UI
+                    getCourierCapabilities(selectedCourierId);
+                } else {
+                    // No courier selected, hide dispatch options
+                    dispatchTypeContainer.style.display = 'none';
+                    document.getElementById('existingTrackingSection').style.display = 'none';
+                    document.getElementById('api-dispatch-submit-btn').disabled = true;
+                }
+            });
+        }
+
+        // Handle dispatch type change
         dispatchTypeRadios.forEach(radio => {
             radio.addEventListener('change', function() {
-                const existingTrackingSection = document.getElementById('existingTrackingSection');
-                
                 if (this.value === 'existing') {
-                    if (existingTrackingSection) {
-                        existingTrackingSection.style.display = 'block';
-                    }
+                    document.getElementById('existingTrackingSection').style.display = 'block';
                     // Fetch tracking numbers if courier is selected
-                    if (apiCarrierSelect && apiCarrierSelect.value) {
+                    if (apiCarrierSelect.value) {
                         fetchApiTrackingNumbers(apiCarrierSelect.value);
                     }
                 } else {
-                    if (existingTrackingSection) {
-                        existingTrackingSection.style.display = 'none';
-                    }
+                    document.getElementById('existingTrackingSection').style.display = 'none';
                 }
                 updateSubmitButtonState();
             });
         });
-    }
 
-    // Handle API dispatch form submission - ENHANCED VERSION
-    if (apiDispatchForm) {
-        apiDispatchForm.addEventListener('submit', function(e) {
-            e.preventDefault();
+        // Handle API dispatch form submission
+        if (apiDispatchForm) {
+            apiDispatchForm.addEventListener('submit', function(e) {
+                e.preventDefault();
 
-            const carrier = apiCarrierSelect ? apiCarrierSelect.value : null;
-            const dispatchTypeElement = document.querySelector('input[name="api_dispatch_type"]:checked');
-            const dispatchType = dispatchTypeElement ? dispatchTypeElement.value : null;
-            const dispatchNotesField = document.getElementById('api_dispatch_notes');
-            const dispatchNotes = dispatchNotesField ? dispatchNotesField.value : '';
-            const submitBtn = document.getElementById('api-dispatch-submit-btn');
-            const selectedOrders = Array.from(document.querySelectorAll('.order-checkbox:checked'))
-                .map(cb => cb.value);
+                const carrier = apiCarrierSelect.value;
+                const dispatchTypeElement = document.querySelector(
+                    'input[name="api_dispatch_type"]:checked');
+                const dispatchType = dispatchTypeElement ? dispatchTypeElement.value : null;
+                const dispatchNotes = document.getElementById('api_dispatch_notes').value;
+                const submitBtn = document.getElementById('api-dispatch-submit-btn');
+                const selectedOrders = Array.from(document.querySelectorAll('.order-checkbox:checked'))
+                    .map(cb => cb.value);
 
-            // Validation
-            if (!carrier) {
-                alert('Please select an API courier service');
-                return;
-            }
-
-            if (!dispatchType) {
-                alert('Please select a dispatch type');
-                return;
-            }
-
-            if (selectedOrders.length === 0) {
-                alert('No orders selected for dispatch');
-                return;
-            }
-
-            // Additional validation for existing parcels
-            if (dispatchType === 'existing') {
-                const trackingDisplay = document.getElementById('api_tracking_numbers_display');
-                if (trackingDisplay && (
-                    trackingDisplay.textContent.includes('No tracking numbers available') ||
-                    trackingDisplay.textContent.includes('Select a courier') ||
-                    trackingDisplay.textContent.includes('Insufficient')
-                )) {
-                    alert('Please ensure you have enough tracking numbers available');
+                // Validation
+                if (!carrier) {
+                    alert('Please select an API courier service');
                     return;
                 }
-            }
 
-            // Confirm action
-            const actionText = dispatchType === 'new' ? 'create new API parcels' : 'assign existing tracking numbers';
-            if (!confirm(`Are you sure you want to ${actionText} for ${selectedOrders.length} orders?`)) {
-                return;
-            }
+                if (!dispatchType) {
+                    alert('Please select a dispatch type');
+                    return;
+                }
 
-            // Show loading state
-            if (submitBtn) {
-                submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Processing...';
+                if (selectedOrders.length === 0) {
+                    alert('No orders selected for dispatch');
+                    return;
+                }
+
+                // Additional validation for existing parcels
+                if (dispatchType === 'existing') {
+                    const trackingDisplay = document.getElementById('api_tracking_numbers_display');
+                    if (trackingDisplay.textContent.includes('No tracking numbers available') ||
+                        trackingDisplay.textContent.includes('Select a courier')) {
+                        alert('Please ensure you have enough tracking numbers available');
+                        return;
+                    }
+                }
+
+                // Confirm action
+                const actionText = dispatchType === 'new' ? 'create new API parcels' :
+                    'assign existing tracking numbers';
+                if (!confirm(
+                        `Are you sure you want to ${actionText} for ${selectedOrders.length} orders?`
+                        )) {
+                    return;
+                }
+
+                // Show loading state
+                submitBtn.innerHTML =
+                    '<span class="spinner-border spinner-border-sm me-2"></span>Processing...';
                 submitBtn.disabled = true;
-            }
 
-            // Create FormData object
-            const formData = new FormData();
-            formData.append('order_ids', JSON.stringify(selectedOrders));
-            formData.append('carrier_id', carrier);
-            formData.append('dispatch_type', dispatchType);
-            formData.append('dispatch_notes', dispatchNotes);
-            formData.append('action', 'api_dispatch_orders');
+                // Create FormData object
+                const formData = new FormData();
+                formData.append('order_ids', JSON.stringify(selectedOrders));
+                formData.append('carrier_id', carrier);
+                formData.append('dispatch_type', dispatchType);
+                formData.append('dispatch_notes', dispatchNotes);
+                formData.append('action', 'api_dispatch_orders');
 
-            // ENHANCED: Determine which endpoint to use with better logic
-            let endpoint = '';
-            const carrierIdInt = parseInt(carrier);
-            
-            // Courier ID to endpoint mapping
-            const courierEndpoints = {
-                12: { // Koombiyo - EXISTING ONLY
-                    new: null,
-                    existing: 'koombiyo_bulk_existing_parcel_api.php'
-                },
-                11: { // FDE/Fardar - BOTH
-                    new: 'fde_bulk_new_parcel_api.php',
-                    existing: 'fde_bulk_existing_parcel_api.php'
-                },
-                13: { // TransExpress - BOTH
-                    new: 'transexpress_bulk_new_parcel_api.php',
-                    existing: 'transexpress_bulk_existing_parcel_api.php'
-                },
-                14: { // Royal Express - EXISTING ONLY
-                    new: null,
-                    existing: 'royalexpress_bulk_existing_parcel_api.php'
+                // Determine which endpoint to use
+                let endpoint;
+
+                // Get the selected courier data from your capabilities object
+                const courierData = courierCapabilities[carrier];
+
+                // Check if this is Koombiyo courier (has_api_existing = 1, has_api_new = 0)
+                if (carrier == 12) {
+                    // Koombiyo only supports existing parcel API
+                    endpoint = dispatchType === 'existing' ? 'koombiyo_bulk_existing_parcel_api.php' :
+                        '';
+                } else if (carrier == 11) {
+                    // For Fardar
+                    endpoint = dispatchType === 'new' ?
+                        'fde_bulk_new_parcel_api.php' :
+                        'fde_bulk_existing_parcel_api.php';
+                } else if (carrier == 13) {
+                    // For TransExpress
+                    endpoint = dispatchType === 'new' ?
+                        'transexpress_bulk_new_parcel_api.php' :
+                        'transexpress_bulk_existing_parcel_api.php';
+                } else if (carrier == 14) {
+                    // Royal Express only supports existing parcel API
+                    endpoint = dispatchType === 'existing' ?
+                        'royalexpress_bulk_existing_parcel_api.php' : '';
+                } else {
+                    endpoint = ''; // fallback
                 }
-            };
 
-            // Get endpoint based on courier and dispatch type
-            if (courierEndpoints[carrierIdInt]) {
-                endpoint = courierEndpoints[carrierIdInt][dispatchType];
-                
-                if (!endpoint) {
-                    alert(`${dispatchType === 'new' ? 'New parcel creation' : 'Existing parcel'} is not supported for this courier`);
-                    if (submitBtn) {
-                        submitBtn.innerHTML = '<i class="fas fa-cloud-upload-alt me-1"></i>Confirm API Dispatch';
-                        submitBtn.disabled = false;
-                    }
-                    return;
-                }
-            } else {
-                alert('Unknown courier selected. Please contact system administrator.');
-                if (submitBtn) {
-                    submitBtn.innerHTML = '<i class="fas fa-cloud-upload-alt me-1"></i>Confirm API Dispatch';
-                    submitBtn.disabled = false;
-                }
-                return;
-            }
 
-            console.log('=== API DISPATCH DEBUG ===');
-            console.log('Courier ID:', carrierIdInt);
-            console.log('Dispatch Type:', dispatchType);
-            console.log('Endpoint:', endpoint);
-            console.log('Selected Orders:', selectedOrders);
-            console.log('Form Data:', {
-                order_ids: selectedOrders,
-                carrier_id: carrier,
-                dispatch_type: dispatchType,
-                dispatch_notes: dispatchNotes,
-                action: 'api_dispatch_orders'
-            });
-
-            // Send the request
-            fetch(endpoint, {
-                    method: 'POST',
-                    body: formData
-                })
-                .then(response => {
-                    console.log('Response status:', response.status);
-                    console.log('Response headers:', response.headers);
-                    
-                    if (!response.ok) {
-                        return response.text().then(text => {
-                            console.error('HTTP error! status:', response.status);
-                            console.error('Response text:', text.substring(0, 500));
-                            throw new Error(`HTTP error! status: ${response.status}`);
-                        });
-                    }
-                    
-                    return response.text().then(text => {
-                        console.log('Raw response text:', text);
-                        try {
-                            return JSON.parse(text);
-                        } catch (e) {
-                            console.error('JSON parse error:', e);
-                            console.error('Response was not valid JSON:', text.substring(0, 500));
-                            throw new Error('Invalid JSON response from server');
-                        }
-                    });
-                })
-                .then(data => {
-                    console.log('Parsed response data:', data);
-                    
-                    if (data.success) {
-                        let message = `Successfully processed ${data.processed_count || selectedOrders.length} orders via API!`;
-                        
-                        // Add co_id info if available
-                        if (data.courier_co_id) {
-                            message += `\nCourier ID: ${data.courier_co_id}`;
-                        }
-                        
-                        // Add tracking info if available
-                        if (data.processed_orders && data.processed_orders.length > 0) {
-                            const trackingNumbers = data.processed_orders.map(o => o.tracking_number).join(', ');
-                            message += `\nTracking Numbers: ${trackingNumbers}`;
-                        }
-                        
-                        // Add failed orders info if any
-                        if (data.failed_count > 0) {
-                            message += `\n\n⚠️ ${data.failed_count} orders failed.`;
-                            if (data.failed_orders && data.failed_orders.length > 0) {
-                                message += '\n\nFailed Orders:';
-                                data.failed_orders.forEach(f => {
-                                    message += `\n- Order ${f.order_id}: ${f.error}`;
-                                });
-                            }
-                        }
-                        
-                        alert(message);
-                        closeApiDispatchModal();
-                        clearBulkSelection();
-                        window.location.reload();
-                    } else {
-                        console.error('Server returned error:', data);
-                        let errorMsg = 'Error: ' + (data.message || 'Failed to process orders via API');
-                        
-                        // Add detailed error info if available
-                        if (data.failed_orders && data.failed_orders.length > 0) {
-                            errorMsg += '\n\nDetails:';
-                            data.failed_orders.forEach(f => {
-                                errorMsg += `\n- Order ${f.order_id}: ${f.error}`;
-                            });
-                        }
-                        
-                        alert(errorMsg);
-                    }
-                })
-                .catch(error => {
-                    console.error('=== FETCH ERROR ===');
-                    console.error('Error type:', error.name);
-                    console.error('Error message:', error.message);
-                    console.error('Error stack:', error.stack);
-                    alert('An error occurred while processing orders via API.\n\nError: ' + error.message + '\n\nCheck browser console for details.');
-                })
-                .finally(() => {
-                    // Reset button state
-                    if (submitBtn) {
-                        submitBtn.innerHTML = '<i class="fas fa-cloud-upload-alt me-1"></i>Confirm API Dispatch';
-                        submitBtn.disabled = false;
-                    }
+                console.log('Submitting to endpoint:', endpoint);
+                console.log('Form data:', {
+                    order_ids: selectedOrders,
+                    carrier_id: carrier,
+                    dispatch_type: dispatchType,
+                    dispatch_notes: dispatchNotes,
+                    action: 'api_dispatch_orders'
                 });
-        });
-    }
 
-    // Close modal when clicking outside
-    if (apiModal) {
-        apiModal.addEventListener('click', function(e) {
-            if (e.target === this) {
-                closeApiDispatchModal();
+                // Send the request
+                fetch(endpoint, {
+                        method: 'POST',
+                        body: formData
+                    })
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error(`HTTP error! status: ${response.status}`);
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        console.log('Response data:', data);
+                        if (data.success) {
+                            alert(
+                                `Successfully processed ${data.processed_count || selectedOrders.length} orders via API!`);
+                            closeApiDispatchModal();
+                            clearBulkSelection();
+                            // Reload the page to reflect changes
+                            window.location.reload();
+                        } else {
+                            alert('Error: ' + (data.message || 'Failed to process orders via API'));
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        alert(
+                            'An error occurred while processing orders via API. Please try again.');
+                    })
+                    .finally(() => {
+                        // Reset button state
+                        submitBtn.innerHTML =
+                            '<i class="fas fa-cloud-upload-alt me-1"></i>Confirm API Dispatch';
+                        submitBtn.disabled = false;
+                    });
+            });
+        }
+
+        // Close modal when clicking outside
+        if (apiModal) {
+            apiModal.addEventListener('click', function(e) {
+                if (e.target === this) {
+                    closeApiDispatchModal();
+                }
+            });
+        }
+
+        // Close modal with Escape key
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                const modal = document.getElementById('apiDispatchModal');
+                if (modal && modal.style.display === 'flex') {
+                    closeApiDispatchModal();
+                }
             }
         });
-    }
 
-    // Close modal with Escape key
-    document.addEventListener('keydown', function(e) {
-        if (e.key === 'Escape') {
-            const modal = document.getElementById('apiDispatchModal');
-            if (modal && modal.style.display === 'flex') {
-                closeApiDispatchModal();
+        // Listen for order selection changes to update submit button
+        document.addEventListener('change', function(e) {
+            if (e.target.classList.contains('order-checkbox')) {
+                updateSubmitButtonState();
             }
-        }
-    });
+        });
 
-    // Listen for order selection changes to update submit button
-    document.addEventListener('change', function(e) {
-        if (e.target.classList.contains('order-checkbox')) {
-            updateSubmitButtonState();
-        }
-    });
-
-    // Initial state - hide dispatch type section until courier is selected
-    if (dispatchTypeContainer) {
+        // Initial state - hide dispatch type section until courier is selected
         dispatchTypeContainer.style.display = 'none';
-    }
-});
+    });
     </script>
 
     <!-- Include Footer and Scripts -->

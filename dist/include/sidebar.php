@@ -148,6 +148,37 @@ if (!function_exists('get_logo_with_fallback')) {
             <li class="pc-item"><a class="pc-link" href="../orders/pending_order_list.php">Pending Orders</a></li>
             <li class="pc-item"><a class="pc-link" href="../orders/dispatch_order_list.php">Dispatch Orders</a></li>
             <li class="pc-item"><a class="pc-link" href="../orders/couriers.php">Courier Management</a></li>
+            
+            <?php 
+            // Show "Add Courier Account" ONLY for main admin users (is_main_admin = 1)
+            // Check from session first (set during login)
+            $show_courier_account = false;
+            
+            if (isset($_SESSION['is_main_admin'])) {
+                $show_courier_account = ($_SESSION['is_main_admin'] == 1);
+            } 
+            // If not in session, check database
+            elseif (isset($_SESSION['user_id']) && isset($conn) && $conn) {
+                $user_id = mysqli_real_escape_string($conn, $_SESSION['user_id']);
+                $courier_query = "SELECT t.is_main_admin 
+                                 FROM users u 
+                                 LEFT JOIN tenants t ON u.tenant_id = t.tenant_id 
+                                 WHERE u.id = '$user_id'";
+                $courier_result = mysqli_query($conn, $courier_query);
+                
+                if ($courier_result && $courier_data = mysqli_fetch_assoc($courier_result)) {
+                    $show_courier_account = ($courier_data['is_main_admin'] == 1);
+                    // Cache in session
+                    $_SESSION['is_main_admin'] = $courier_data['is_main_admin'];
+                }
+            }
+            
+            // Display menu item only if user belongs to main admin tenant
+            if ($show_courier_account): 
+            ?>
+            <li class="pc-item"><a class="pc-link" href="../orders/add_courier_account.php">Add Courier Account</a></li>
+            <?php endif; ?>
+            
             <li class="pc-item"><a class="pc-link" href="../orders/cancel_order_list.php">Cancel Orders</a></li>
             <li class="pc-item"><a class="pc-link" href="../orders/complete_mark_upload.php">Completed Mark Upload</a></li>
             <li class="pc-item"><a class="pc-link" href="../orders/payment_report.php"> Payment Report</a></li>
@@ -170,60 +201,107 @@ if (!function_exists('get_logo_with_fallback')) {
         </li>
         
         <?php 
-        // Check if user has admin privileges
-        $is_admin = false;
+        // =========================================================================
+        // CHECK USER PERMISSIONS FOR ADMIN SECTIONS
+        // =========================================================================
         
-        // Check if role_id exists in session
-        if (isset($_SESSION['user_role_id'])) {
-            $is_admin = ($_SESSION['user_role_id'] == 1);
+        // Initialize permission flags
+        $is_admin = false;
+        $is_main_admin_tenant = false;
+        $show_tenant_menu = false;
+        
+        // METHOD 1: Check from session (faster, set during login)
+        if (isset($_SESSION['role_id'])) {
+            $is_admin = ($_SESSION['role_id'] == 1);
         }
         
-        // If no role in session, check database directly
-        if (!$is_admin && isset($_SESSION['user_id']) && isset($conn) && $conn) {
+        // Check if user belongs to main admin tenant (from session)
+        if (isset($_SESSION['is_main_admin'])) {
+            $is_main_admin_tenant = ($_SESSION['is_main_admin'] == 1);
+        }
+        
+        // METHOD 2: If not in session, check database directly
+        if ((!$is_admin || !isset($_SESSION['is_main_admin'])) && isset($_SESSION['user_id']) && isset($conn) && $conn) {
             $user_id = mysqli_real_escape_string($conn, $_SESSION['user_id']);
-            $role_check_query = "SELECT u.role_id, r.name as role_name 
-                               FROM users u 
-                               LEFT JOIN roles r ON u.role_id = r.id 
-                               WHERE u.id = '$user_id'";
-            $role_result = mysqli_query($conn, $role_check_query);
             
-            if ($role_result && $role_data = mysqli_fetch_assoc($role_result)) {
-                $is_admin = ($role_data['role_id'] == 1 || 
-                             strtolower($role_data['role_name']) == 'admin' || 
-                             strtolower($role_data['role_name']) == 'administrator' ||
-                             strtolower($role_data['role_name']) == 'super admin');
+            // Join users with tenants to get both role_id and is_main_admin
+            $permission_query = "SELECT u.role_id, r.name as role_name, t.is_main_admin
+                                FROM users u 
+                                LEFT JOIN roles r ON u.role_id = r.id 
+                                LEFT JOIN tenants t ON u.tenant_id = t.tenant_id
+                                WHERE u.id = '$user_id'";
+            
+            $permission_result = mysqli_query($conn, $permission_query);
+            
+            if ($permission_result && $permission_data = mysqli_fetch_assoc($permission_result)) {
+                // Check if user is admin
+                $is_admin = ($permission_data['role_id'] == 1 || 
+                            strtolower($permission_data['role_name']) == 'admin' || 
+                            strtolower($permission_data['role_name']) == 'administrator' ||
+                            strtolower($permission_data['role_name']) == 'super admin');
+                
+                // Check if tenant is main admin
+                $is_main_admin_tenant = ($permission_data['is_main_admin'] == 1);
+                
+                // Store in session for future use
+                if (!isset($_SESSION['is_main_admin'])) {
+                    $_SESSION['is_main_admin'] = $permission_data['is_main_admin'];
+                }
             }
         }
         
-     if ($is_admin): ?>
-<!-- Tenants Menu -->
-<li class="pc-item pc-hasmenu">
-  <a href="#!" class="pc-link">
-    <span class="pc-micon"> <i data-feather="briefcase"></i></span>
-    <span class="pc-mtext">Tenants</span>
-    <span class="pc-arrow"><i class="ti ti-chevron-right"></i></span>
-  </a>
-  <ul class="pc-submenu">
-    <li class="pc-item"><a class="pc-link" href="../admin/add_tenant.php">Add New Tenant</a></li>
-    <li class="pc-item"><a class="pc-link" href="../admin/tenant_list.php">All Tenants</a></li>
-  </ul>
-</li>
+        // DECISION: Show tenant menu only if user is admin AND belongs to main admin tenant
+        $show_tenant_menu = ($is_admin && $is_main_admin_tenant);
+        
+        // Debug logging (remove in production)
+        error_log("Sidebar Access Check - User ID: " . ($_SESSION['user_id'] ?? 'N/A') . 
+                  ", Is Admin: " . ($is_admin ? 'Yes' : 'No') . 
+                  ", Is Main Admin Tenant: " . ($is_main_admin_tenant ? 'Yes' : 'No') .
+                  ", Show Tenant Menu: " . ($show_tenant_menu ? 'Yes' : 'No'));
+        
+        // =========================================================================
+        // DISPLAY ADMIN MENUS BASED ON PERMISSIONS
+        // =========================================================================
+        
+        // Show Tenants menu ONLY if user is admin AND belongs to main admin tenant
+        if ($show_tenant_menu): 
+        ?>
+        
+        <!-- Tenants Menu (Only for Main Admin Tenant) -->
+        <li class="pc-item pc-hasmenu">
+          <a href="#!" class="pc-link">
+            <span class="pc-micon"> <i data-feather="briefcase"></i></span>
+            <span class="pc-mtext">Tenants</span>
+            <span class="pc-arrow"><i class="ti ti-chevron-right"></i></span>
+          </a>
+          <ul class="pc-submenu">
+            <li class="pc-item"><a class="pc-link" href="../admin/add_tenant.php">Add New Tenant</a></li>
+            <li class="pc-item"><a class="pc-link" href="../admin/tenant_list.php">All Tenants</a></li>
+          </ul>
+        </li>
+        
+        <?php endif; ?>
+        
+        <?php 
+        // Show Users menu if user is admin (regardless of tenant type)
+        if ($is_admin): 
+        ?>
+        
+        <!-- Users Menu (For All Admins) -->
+        <li class="pc-item pc-hasmenu">
+          <a href="#!" class="pc-link">
+            <span class="pc-micon"> <i data-feather="users"></i></span>
+            <span class="pc-mtext">Users</span>
+            <span class="pc-arrow"><i class="ti ti-chevron-right"></i></span>
+          </a>
+          <ul class="pc-submenu">
+            <li class="pc-item"><a class="pc-link" href="../users/add_user.php">Add New User</a></li>
+            <li class="pc-item"><a class="pc-link" href="../users/users.php">All Users</a></li>
+            <li class="pc-item"><a class="pc-link" href="../users/user_logs.php">User Activity Log</a></li>
+          </ul>
+        </li>
 
-<!-- Users Menu -->
-<li class="pc-item pc-hasmenu">
-  <a href="#!" class="pc-link">
-    <span class="pc-micon"> <i data-feather="users"></i></span>
-    <span class="pc-mtext">Users</span>
-    <span class="pc-arrow"><i class="ti ti-chevron-right"></i></span>
-  </a>
-  <ul class="pc-submenu">
-    <li class="pc-item"><a class="pc-link" href="../users/add_user.php">Add New User</a></li>
-    <li class="pc-item"><a class="pc-link" href="../users/users.php">All Users</a></li>
-    <li class="pc-item"><a class="pc-link" href="../users/user_logs.php">User Activity Log</a></li>
-  </ul>
-</li>
-
-<?php endif; ?>
+        <?php endif; ?>
         
         <li class="pc-item pc-hasmenu">
           <a href="#!" class="pc-link">
@@ -262,7 +340,7 @@ if (!function_exists('get_logo_with_fallback')) {
           </a>
           <ul class="pc-submenu">
             <li class="pc-item"><a class="pc-link" href="../leads/lead_upload.php">Lead Upload</a></li>
-            <li class="pc-item"><a class="pc-link" href="../leads/lead_list.php">Lead List</a></li>
+            <!-- <li class="pc-item"><a class="pc-link" href="../leads/lead_list.php">Lead List</a></li> -->
             <li class="pc-item"><a class="pc-link" href="../leads/my_leads.php">My Leads </a></li>
             <li class="pc-item"><a class="pc-link" href="../leads/city_list.php">City List</a></li>
           </ul>

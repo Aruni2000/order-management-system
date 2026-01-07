@@ -1,5 +1,5 @@
 <?php
-// Start session
+// get_customer_by_email.php - Retrieve full customer details by email
 session_start();
 
 // Check if user is logged in
@@ -12,8 +12,11 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
 // Include database connection
 include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/connection/db_connection.php');
 
+header('Content-Type: application/json'); // Set proper JSON header
+
 // Get email from query string
 $email = isset($_GET['email']) ? trim($_GET['email']) : '';
+$tenant_id = $_SESSION['tenant_id'] ?? 1; // ADDED: Get tenant_id from session
 
 // Validate email format
 if (empty($email) || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
@@ -21,7 +24,7 @@ if (empty($email) || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
     exit();
 }
 
-// Query to get customer by email
+// UPDATED: Query to get customer by email within the same tenant
 $sql = "SELECT 
             c.customer_id, 
             c.name, 
@@ -35,6 +38,7 @@ $sql = "SELECT
         FROM customers c
         LEFT JOIN city_table ct ON c.city_id = ct.city_id
         WHERE c.email = ? 
+        AND c.tenant_id = ? 
         AND c.status = 'Active'
         LIMIT 1";
 
@@ -45,7 +49,7 @@ if (!$stmt) {
     exit();
 }
 
-$stmt->bind_param("s", $email);
+$stmt->bind_param("si", $email, $tenant_id); // UPDATED: Added tenant_id parameter
 $stmt->execute();
 $result = $stmt->get_result();
 

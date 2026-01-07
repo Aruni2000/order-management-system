@@ -30,6 +30,24 @@ function logUserAction($conn, $user_id, $action_type, $inquiry_id, $details) {
     }
 }
 
+// Get logged-in user info
+$loggedInUserId = $_SESSION['user_id'];
+$isMainAdmin = $_SESSION['is_main_admin'] ?? 0;
+$loggedInTenantId = $_SESSION['tenant_id'] ?? 1;
+
+// Handle tenant selection for main admin
+$selectedTenantId = null;
+if ($isMainAdmin == 1) {
+    if (isset($_POST['selected_tenant'])) {
+        $selectedTenantId = (int)$_POST['selected_tenant'];
+        $_SESSION['upload_selected_tenant'] = $selectedTenantId;
+    } elseif (isset($_SESSION['upload_selected_tenant'])) {
+        $selectedTenantId = $_SESSION['upload_selected_tenant'];
+    }
+} else {
+    $selectedTenantId = $loggedInTenantId;
+}
+
 // Process CSV upload if form is submitted
 if ($_POST && isset($_FILES['csv_file']) && isset($_POST['users'])) {
     try {
@@ -55,28 +73,53 @@ if ($_POST && isset($_FILES['csv_file']) && isset($_POST['users'])) {
             throw new Exception("Please select at least one user.");
         }
         
-        // Get the logged-in user ID who is performing the import
-        $loggedInUserId = $_SESSION['user_id'];
+        // Get tenant_id for upload
+        $tenant_id = $selectedTenantId;
         
-        if (!$loggedInUserId) {
-            throw new Exception("Unable to determine logged-in user.");
+        if (!$tenant_id) {
+            throw new Exception("Unable to determine tenant.");
         }
         
-        // Validate selected users exist and are active
+        error_log("DEBUG - Lead Upload - Using tenant_id: $tenant_id, user_id: $loggedInUserId");
+
+        // Validate selected users belong to the selected tenant
         $userPlaceholders = str_repeat('?,', count($selectedUsers) - 1) . '?';
-        $userValidationSql = "SELECT id FROM users WHERE id IN ($userPlaceholders) AND status = 'active'";
+        $userValidationSql = "SELECT id, tenant_id FROM users WHERE id IN ($userPlaceholders) AND status = 'active' AND tenant_id = ?";
         $userValidationStmt = $conn->prepare($userValidationSql);
         if (!$userValidationStmt) {
             throw new Exception("Failed to prepare user validation query: " . $conn->error);
         }
-        $userValidationStmt->bind_param(str_repeat('i', count($selectedUsers)), ...$selectedUsers);
+        
+        $bindTypes = str_repeat('i', count($selectedUsers)) . 'i';
+        $bindParams = array_merge($selectedUsers, [$tenant_id]);
+        $userValidationStmt->bind_param($bindTypes, ...$bindParams);
         $userValidationStmt->execute();
         $validUsersResult = $userValidationStmt->get_result();
         
         if ($validUsersResult->num_rows !== count($selectedUsers)) {
-            throw new Exception("One or more selected users are invalid or inactive.");
+            throw new Exception("One or more selected users are invalid, inactive, or do not belong to the selected tenant.");
         }
         $userValidationStmt->close();
+
+        // Fetch delivery fee from branding table
+        $deliveryFee = 0.00;
+        $brandingSql = "SELECT delivery_fee FROM branding WHERE tenant_id = ? AND active = 1 LIMIT 1";
+        $brandingStmt = $conn->prepare($brandingSql);
+        if (!$brandingStmt) {
+            throw new Exception("Failed to prepare branding query: " . $conn->error);
+        }
+        $brandingStmt->bind_param("i", $tenant_id);
+        $brandingStmt->execute();
+        $brandingResult = $brandingStmt->get_result();
+
+        if ($brandingResult->num_rows > 0) {
+            $brandingData = $brandingResult->fetch_assoc();
+            $deliveryFee = (float)$brandingData['delivery_fee'];
+            error_log("DEBUG - Delivery fee fetched from branding for tenant_id $tenant_id: $deliveryFee");
+        } else {
+            error_log("WARNING - No active branding found for tenant_id: $tenant_id, using default delivery_fee: 0.00");
+        }
+        $brandingStmt->close();
         
         // Process CSV file
         $csvFile = $_FILES['csv_file']['tmp_name'];
@@ -112,7 +155,8 @@ if ($_POST && isset($_FILES['csv_file']) && isset($_POST['users'])) {
             'email', 
             'address line 1', 
             'address line 2', 
-            'product code', 
+            'product code',
+            'quantity',
             'total amount', 
             'other'
         ];
@@ -140,6 +184,7 @@ if ($_POST && isset($_FILES['csv_file']) && isset($_POST['users'])) {
         $successCount = 0;
         $errorCount = 0;
         $errorMessages = [];
+        $infoMessages = [];
         $rowNumber = 1;
         $successfulOrderIds = [];
         
@@ -157,7 +202,7 @@ if ($_POST && isset($_FILES['csv_file']) && isset($_POST['users'])) {
                     continue;
                 }
                 
-                // Map CSV columns using header positions (with fallback to empty string)
+                // Map CSV columns using header positions
                 $fullName = trim($row[$headerMap['full name']] ?? '');
                 $phoneNumber = trim($row[$headerMap['phone number']] ?? '');
                 $phoneNumber2 = trim($row[$headerMap['phone number 2']] ?? '');
@@ -166,14 +211,11 @@ if ($_POST && isset($_FILES['csv_file']) && isset($_POST['users'])) {
                 $addressLine1 = trim($row[$headerMap['address line 1']] ?? '');
                 $addressLine2 = trim($row[$headerMap['address line 2']] ?? '');
                 $productCode = trim($row[$headerMap['product code']] ?? '');
+                $quantity = trim($row[$headerMap['quantity']] ?? '1');
                 $totalAmount = trim($row[$headerMap['total amount']] ?? '');
                 $other = trim($row[$headerMap['other']] ?? '');
 
-                // ===============================
-                // FIX: Preserve leading 0 in phone numbers
-                // ===============================
-               
-                // Convert +94XXXXXXXXX → 0XXXXXXXXX
+                // Phone number normalization
                 if (strlen($phoneNumber) === 12 && substr($phoneNumber, 0, 3) === '+94') {
                     $phoneNumber = '0' . substr($phoneNumber, 3);
                 } elseif (strlen($phoneNumber) === 11 && substr($phoneNumber, 0, 2) === '94') {
@@ -196,22 +238,22 @@ if ($_POST && isset($_FILES['csv_file']) && isset($_POST['users'])) {
                 if (!empty($phoneNumber2) && strlen($phoneNumber2) === 9 && ctype_digit($phoneNumber2)) {
                     $phoneNumber2 = '0' . $phoneNumber2;
                 }
-
                 
                 // Handle email - normalize empty values
-                if (empty($email) || $email === '' || $email === 'NULL' || $email === 'null' || $email === 'N/A' || $email === 'n/a' || $email === '-') {
+                if (empty($email) || in_array(strtolower($email), ['', 'null', 'n/a', '-'])) {
                     $email = '';
-                    $emailForDb = '-';
                 } else {
-                    $emailForDb = $email;
+                    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                        throw new Exception("Invalid email format: '$email'");
+                    }
                 }
                 
                 // Handle phone number 2 - normalize empty values
-                if (empty($phoneNumber2) || $phoneNumber2 === 'NULL' || $phoneNumber2 === 'null' || $phoneNumber2 === 'N/A' || $phoneNumber2 === 'n/a' || $phoneNumber2 === '-') {
+                if (empty($phoneNumber2) || in_array(strtolower($phoneNumber2), ['null', 'n/a', '-'])) {
                     $phoneNumber2 = '';
                 }
                 
-                // Validate required fields
+                // Validation
                 if (empty($fullName)) {
                     throw new Exception("Full Name is required");
                 }
@@ -224,6 +266,9 @@ if ($_POST && isset($_FILES['csv_file']) && isset($_POST['users'])) {
                 if (empty($productCode)) {
                     throw new Exception("Product Code is required");
                 }
+                if (empty($quantity)) {
+                    throw new Exception("Quantity is required");
+                }
                 if (empty($totalAmount)) {
                     throw new Exception("Total Amount is required");
                 }
@@ -231,32 +276,32 @@ if ($_POST && isset($_FILES['csv_file']) && isset($_POST['users'])) {
                     throw new Exception("Address Line 1 is required");
                 }
                 
-                // Validate email format ONLY if email is provided
-                if (!empty($email) && $email !== '' && $email !== '-') {
-                    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-                        throw new Exception("Invalid email format: '$email'");
-                    }
-                }
-                
-                // MUST be exactly 10 digits and start with 0
+                // Phone must be exactly 10 digits and start with 0
                 if (!preg_match('/^0\d{9}$/', $phoneNumber)) {
                     throw new Exception("Phone Number must be exactly 10 digits and start with 0 (got: '$phoneNumber')");
                 }
-
+                
                 if (!empty($phoneNumber2) && !preg_match('/^0\d{9}$/', $phoneNumber2)) {
                     throw new Exception("Phone Number 2 must be exactly 10 digits and start with 0 (got: '$phoneNumber2')");
                 }
+
+                if (!empty($phoneNumber2) && $phoneNumber === $phoneNumber2) {
+                    throw new Exception("Phone Number 2 cannot be the same as Phone Number");
+                }
+
+                if (!is_numeric($quantity) || $quantity <= 0 || $quantity != floor($quantity)) {
+                    throw new Exception("Quantity must be a positive integer (got: '$quantity')");
+                }
+                $quantityInt = (int)$quantity;
                 
-                // Validate total amount is numeric and positive
                 if (!is_numeric($totalAmount) || $totalAmount <= 0) {
                     throw new Exception("Total Amount must be a positive number");
                 }
                 
-                // Convert total amount to decimal
                 $totalAmountDecimal = (float)$totalAmount;
                 
-                // Check if product exists and is active
-                $productSql = "SELECT id, lkr_price FROM products WHERE product_code = ? AND status = 'active'";
+                // Fetch product data
+                $productSql = "SELECT id, lkr_price, description FROM products WHERE product_code = ? AND status = 'active'";
                 $productStmt = $conn->prepare($productSql);
                 if (!$productStmt) {
                     throw new Exception("Failed to prepare product query: " . $conn->error);
@@ -272,11 +317,15 @@ if ($_POST && isset($_FILES['csv_file']) && isset($_POST['users'])) {
                 $product = $productResult->fetch_assoc();
                 $productId = $product['id'];
                 $unitPrice = (float)$product['lkr_price'];
+                $productDescription = $product['description'] ?? '';
                 $productStmt->close();
                 
-                // Look up city_id - REQUIRED field
+                // Look up city_id and get zone_id, district_id
                 $cityId = null;
-                $citySql = "SELECT city_id FROM city_table WHERE city_name = ? AND is_active = 1 LIMIT 1";
+                $zone_id = null;
+                $district_id = null;
+                
+                $citySql = "SELECT city_id, zone_id, district_id FROM city_table WHERE city_name = ? AND is_active = 1 LIMIT 1";
                 $cityStmt = $conn->prepare($citySql);
                 if (!$cityStmt) {
                     throw new Exception("Failed to prepare city query: " . $conn->error);
@@ -284,112 +333,157 @@ if ($_POST && isset($_FILES['csv_file']) && isset($_POST['users'])) {
                 $cityStmt->bind_param("s", $city);
                 $cityStmt->execute();
                 $cityResult = $cityStmt->get_result();
+                
                 if ($cityResult->num_rows > 0) {
-                    $cityId = $cityResult->fetch_assoc()['city_id'];
+                    $cityData = $cityResult->fetch_assoc();
+                    $cityId = $cityData['city_id'];
+                    $zone_id = $cityData['zone_id'];
+                    $district_id = $cityData['district_id'];
                 } else {
                     throw new Exception("City '$city' not found or inactive");
                 }
                 $cityStmt->close();
                 
-                // Check if customer exists by phone1, phone_2, or email
-                $customerId = null;
-                $customerFound = false;
-                
-                // Build dynamic query based on available data
-                $customerCheckConditions = [];
-                $customerCheckParams = [];
-                $customerCheckTypes = '';
-                
-                // Check Phone Number 1 (always required)
-                $customerCheckConditions[] = "phone = ?";
-                $customerCheckParams[] = $phoneNumber;
-                $customerCheckTypes .= 's';
-                
-                // Check Phone Number 2 if provided
-                if (!empty($phoneNumber2)) {
-                    $customerCheckConditions[] = "phone = ?";
-                    $customerCheckConditions[] = "phone_2 = ?";
-                    $customerCheckParams[] = $phoneNumber2;
-                    $customerCheckParams[] = $phoneNumber2;
-                    $customerCheckTypes .= 'ss';
+                // Customer matching logic
+                $customerId = 0;
+                $is_new_customer = true;
+
+                // Check if phone exists
+                $checkPhoneSql = "SELECT customer_id FROM customers 
+                                WHERE (phone = ? OR phone_2 = ?) 
+                                AND tenant_id = ?
+                                AND status = 'Active'
+                                LIMIT 1";
+
+                $phoneStmt = $conn->prepare($checkPhoneSql);
+                if (!$phoneStmt) {
+                    throw new Exception("Failed to prepare phone check query: " . $conn->error);
                 }
-             
-                // Check Email if provided
-                if (!empty($email) && $email !== '-') {
-                    $customerCheckConditions[] = "email = ?";
-                    $customerCheckParams[] = $emailForDb;
-                    $customerCheckTypes .= 's';
+
+                $phoneStmt->bind_param("ssi", $phoneNumber, $phoneNumber, $tenant_id);
+                $phoneStmt->execute();
+                $phoneResult = $phoneStmt->get_result();
+
+                if ($phoneResult->num_rows > 0) {
+                    $customerId = $phoneResult->fetch_assoc()['customer_id'];
+                    $is_new_customer = false;
+                    $infoMessages[] = "Row $rowNumber: Phone number already exists - Order created for existing customer (Customer ID: $customerId)";
                 }
-                
-                // Build the query
-                $customerCheckSql = "SELECT customer_id FROM customers WHERE " . implode(' OR ', $customerCheckConditions) . " LIMIT 1";
-                $customerCheckStmt = $conn->prepare($customerCheckSql);
-                
-                if (!$customerCheckStmt) {
-                    throw new Exception("Failed to prepare customer check query: " . $conn->error);
+                $phoneStmt->close();
+
+                // Check email if phone not found
+                if ($is_new_customer && !empty($email)) {
+                    $checkEmailSql = "SELECT customer_id FROM customers 
+                                    WHERE email = ? 
+                                    AND tenant_id = ?
+                                    AND status = 'Active'
+                                    LIMIT 1";
+                    
+                    $emailStmt = $conn->prepare($checkEmailSql);
+                    if (!$emailStmt) {
+                        throw new Exception("Failed to prepare email check query: " . $conn->error);
+                    }
+                    
+                    $emailStmt->bind_param("si", $email, $tenant_id);
+                    $emailStmt->execute();
+                    $emailResult = $emailStmt->get_result();
+                    
+                    if ($emailResult->num_rows > 0) {
+                        $customerId = $emailResult->fetch_assoc()['customer_id'];
+                        $is_new_customer = false;
+                        $infoMessages[] = "Row $rowNumber: Email '$email' already registered - Order created for existing customer (Customer ID: $customerId)";
+                    }
+                    $emailStmt->close();
                 }
-                
-                // Bind parameters dynamically
-                $customerCheckStmt->bind_param($customerCheckTypes, ...$customerCheckParams);
-                $customerCheckStmt->execute();
-                $customerCheckResult = $customerCheckStmt->get_result();
-                
-                if ($customerCheckResult->num_rows > 0) {
-                    // Customer EXISTS - Use existing customer ID, NO UPDATE
-                    $customerId = $customerCheckResult->fetch_assoc()['customer_id'];
-                    $customerFound = true;
-                } else {
-                    // Customer DOES NOT EXIST - Create NEW customer
-                    $customerInsertSql = "INSERT INTO customers (name, email, phone, phone_2, address_line1, address_line2, city_id) 
-                                         VALUES (?, ?, ?, ?, ?, ?, ?)";
-                    $customerInsertStmt = $conn->prepare($customerInsertSql);
-                    if (!$customerInsertStmt) {
+
+                // Create new customer if needed
+                if ($is_new_customer) {
+                    $insertCustomerSql = "INSERT INTO customers 
+                        (tenant_id, name, email, phone, phone_2, address_line1, address_line2, city_id, status) 
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Active')";
+                    
+                    $customerStmt = $conn->prepare($insertCustomerSql);
+                    if (!$customerStmt) {
                         throw new Exception("Failed to prepare customer insert query: " . $conn->error);
                     }
-                    $customerInsertStmt->bind_param("ssssssi", $fullName, $emailForDb, $phoneNumber, $phoneNumber2, $addressLine1, $addressLine2, $cityId);
                     
-                    if (!$customerInsertStmt->execute()) {
-                        throw new Exception("Failed to create customer: " . $customerInsertStmt->error);
+                    $email_value = !empty($email) ? $email : null;
+                    $phone2_value = !empty($phoneNumber2) ? $phoneNumber2 : null;
+                    $address1_value = !empty($addressLine1) ? $addressLine1 : null;
+                    $address2_value = !empty($addressLine2) ? $addressLine2 : null;
+                    
+                    $customerStmt->bind_param(
+                        "issssssi",
+                        $tenant_id,
+                        $fullName,
+                        $email_value,
+                        $phoneNumber,
+                        $phone2_value,
+                        $address1_value,
+                        $address2_value,
+                        $cityId
+                    );
+                    
+                    if (!$customerStmt->execute()) {
+                        throw new Exception("Failed to create customer: " . $customerStmt->error);
                     }
                     
                     $customerId = $conn->insert_id;
-                    $customerInsertStmt->close();
-                    $customerFound = false;
+                    $customerStmt->close();
                 }
-                $customerCheckStmt->close();
+
+                if (empty($customerId) || $customerId <= 0) {
+                    throw new Exception("Invalid customer ID");
+                }
                 
                 // Randomly assign to one of the selected users
                 $assignedUserId = $selectedUsers[array_rand($selectedUsers)];
                 
-                // Create order header with CSV data
+                // Calculate total amount with delivery fee
+                $orderTotalAmount = $totalAmountDecimal + $deliveryFee;
+
+                // Create order header
                 $orderSql = "INSERT INTO order_header (
-                    customer_id, user_id, issue_date, due_date, subtotal, discount, notes, 
-                    pay_status, pay_by, total_amount, currency, status, product_code, interface, 
-                    mobile, mobile_2, city_id, address_line1, address_line2, full_name, call_log, created_by
-                ) VALUES (?, ?, CURDATE(), DATE_ADD(CURDATE(), INTERVAL 7 DAY), ?, 0.00, ?, 
-                         'unpaid', 'NULL', ?, 'lkr', 'pending', ?, 'leads', ?, ?, ?, ?, ?, ?, 0, ?)";
+                    tenant_id, customer_id, user_id, issue_date, due_date, 
+                    subtotal, discount, total_amount, delivery_fee,
+                    notes, currency, status, pay_status, pay_date, created_by,
+                    product_code, full_name, mobile, mobile_2,
+                    address_line1, address_line2, city_id, zone_id, district_id,
+                    interface, call_log
+                ) VALUES (?, ?, ?, CURDATE(), DATE_ADD(CURDATE(), INTERVAL 7 DAY), 
+                        ?, 0.00, ?, ?, ?, 'lkr', 'pending', 'unpaid', NULL, ?, 
+                        ?, ?, ?, ?, ?, ?, ?, ?, ?, 'leads', 0)";
                 
                 $orderStmt = $conn->prepare($orderSql);
                 if (!$orderStmt) {
                     throw new Exception("Failed to prepare order query: " . $conn->error);
                 }
-                $notes = !empty($other) ? $other : 'Imported from CSV';
                 
-                // Bind parameters
-                $orderStmt->bind_param("iidsdsssisssi", 
+                $notes = !empty($other) ? $other : null;
+                $phone2_value = !empty($phoneNumber2) ? $phoneNumber2 : null;
+                $address2_value = !empty($addressLine2) ? $addressLine2 : null;
+                $zone_id_value = !empty($zone_id) ? $zone_id : null;
+                $district_id_value = !empty($district_id) ? $district_id : null;
+                
+                $orderStmt->bind_param(
+                    "iiidddsiisssssiii",
+                    $tenant_id,
                     $customerId,
                     $assignedUserId,
                     $totalAmountDecimal,
+                    $orderTotalAmount,
+                    $deliveryFee,
                     $notes,
-                    $totalAmountDecimal,
-                    $productCode,
-                    $phoneNumber,
-                    $phoneNumber2,
-                    $cityId,
-                    $addressLine1,
-                    $addressLine2,
+                    $loggedInUserId,
+                    $productId,
                     $fullName,
-                    $loggedInUserId
+                    $phoneNumber,
+                    $phone2_value,
+                    $addressLine1,
+                    $address2_value,
+                    $cityId,
+                    $zone_id_value,
+                    $district_id_value
                 );
                 
                 if (!$orderStmt->execute()) {
@@ -400,7 +494,6 @@ if ($_POST && isset($_FILES['csv_file']) && isset($_POST['users'])) {
                 $orderStmt->close();
                 
                 // Create order item
-                $quantity = 1;
                 $itemSql = "INSERT INTO order_items (
                     order_id, product_id, quantity, unit_price, discount, total_amount, 
                     pay_status, status, description
@@ -410,10 +503,14 @@ if ($_POST && isset($_FILES['csv_file']) && isset($_POST['users'])) {
                 if (!$itemStmt) {
                     throw new Exception("Failed to prepare order item query: " . $conn->error);
                 }
-                $description = "Product: $productCode";
                 
                 $itemStmt->bind_param("iiidds", 
-                    $orderId, $productId, $quantity, $totalAmountDecimal, $totalAmountDecimal, $description
+                    $orderId, 
+                    $productId, 
+                    $quantityInt, 
+                    $unitPrice,
+                    $totalAmountDecimal,
+                    $productDescription
                 );
                 
                 if (!$itemStmt->execute()) {
@@ -422,13 +519,13 @@ if ($_POST && isset($_FILES['csv_file']) && isset($_POST['users'])) {
                 
                 $itemStmt->close();
                 
-                // Track successful order ID
                 $successfulOrderIds[] = $orderId;
                 $successCount++;
                 
             } catch (Exception $e) {
                 $errorCount++;
                 $errorMessages[] = "Row $rowNumber: " . $e->getMessage();
+                error_log("ERROR - Row $rowNumber: " . $e->getMessage());
                 continue;
             }
         }
@@ -441,9 +538,9 @@ if ($_POST && isset($_FILES['csv_file']) && isset($_POST['users'])) {
         
         // Log the import summary
         if ($successCount > 0 || $errorCount > 0) {
-            $logDetails = "Lead uploaded - Success($successCount) | Failed($errorCount)";
+            $logDetails = "Lead uploaded - Success($successCount) | Failed($errorCount) | Tenant: $tenant_id | Delivery Fee: $deliveryFee";
             if (!empty($selectedUsers)) {
-                $logDetails .= " | Selected User IDs: " . implode(',', $selectedUsers);
+                $logDetails .= " | Assigned to User IDs: " . implode(',', $selectedUsers);
             }
             $logOrderId = !empty($successfulOrderIds) ? $successfulOrderIds[0] : 0;
             logUserAction($conn, $loggedInUserId, "lead_upload", $logOrderId, $logDetails);
@@ -453,7 +550,8 @@ if ($_POST && isset($_FILES['csv_file']) && isset($_POST['users'])) {
         $_SESSION['import_result'] = [
             'success' => $successCount,
             'errors' => $errorCount,
-            'messages' => $errorMessages
+            'messages' => $errorMessages,
+            'info' => $infoMessages 
         ];
         
         // Redirect to avoid resubmission
@@ -471,27 +569,43 @@ if ($_POST && isset($_FILES['csv_file']) && isset($_POST['users'])) {
             fclose($handle);
         }
         
+        error_log("CRITICAL ERROR - Lead Upload: " . $e->getMessage());
         $_SESSION['import_error'] = $e->getMessage();
         header("Location: " . $_SERVER['PHP_SELF']);
         exit();
     }
 }
 
-// Fetch only active users
-$usersSql = "SELECT id, name FROM users WHERE status = 'active' ORDER BY name ASC";
-$usersStmt = $conn->prepare($usersSql);
-if (!$usersStmt) {
-    die("Failed to prepare users query: " . $conn->error);
-}
-$usersStmt->execute();
-$usersResult = $usersStmt->get_result();
-$users = [];
-if ($usersResult && $usersResult->num_rows > 0) {
-    while ($user = $usersResult->fetch_assoc()) {
-        $users[] = $user;
+// Fetch tenants for main admin
+$tenants = [];
+if ($isMainAdmin == 1) {
+    $tenantsSql = "SELECT tenant_id, company_name FROM tenants WHERE status = 'active' ORDER BY company_name ASC";
+    $tenantsStmt = $conn->prepare($tenantsSql);
+    if ($tenantsStmt) {
+        $tenantsStmt->execute();
+        $tenantsResult = $tenantsStmt->get_result();
+        while ($tenant = $tenantsResult->fetch_assoc()) {
+            $tenants[] = $tenant;
+        }
+        $tenantsStmt->close();
     }
 }
-$usersStmt->close();
+
+// Fetch users based on selected tenant
+$users = [];
+if ($selectedTenantId) {
+    $usersSql = "SELECT id, name, tenant_id FROM users WHERE status = 'active' AND tenant_id = ? ORDER BY name ASC";
+    $usersStmt = $conn->prepare($usersSql);
+    if ($usersStmt) {
+        $usersStmt->bind_param("i", $selectedTenantId);
+        $usersStmt->execute();
+        $usersResult = $usersStmt->get_result();
+        while ($user = $usersResult->fetch_assoc()) {
+            $users[] = $user;
+        }
+        $usersStmt->close();
+    }
+}
 
 include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/navbar.php');
 include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php');
@@ -555,6 +669,160 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
     color: #721c24;
     margin-bottom: 0.5rem;
 }
+
+.tenant-selection-section {
+    background-color: #f8f9fa;
+    border: 2px solid #dee2e6;
+    border-radius: 8px;
+    padding: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.tenant-selection-section h6 {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+    color: #333;
+}
+
+.tenant-selection-section .form-select {
+    /* font-size: 1rem; */
+    padding: 0.6rem;
+}
+
+.user-selection-section {
+    margin-top: 2rem;
+    margin-bottom: 2rem;
+}
+
+.user-selection-section h6 {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+    color: #333;
+}
+
+.user-selection-section .text-muted {
+    margin-bottom: 1.5rem;
+    font-size: 0.95rem;
+}
+
+.user-checkboxes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    margin-bottom: 2rem;
+}
+
+.user-checkboxes .form-check {
+    margin: 0;
+}
+
+.user-checkboxes .form-check-label {
+    font-size: 1rem;
+    margin-left: 8px;
+    cursor: pointer;
+}
+
+.user-checkboxes .form-check-input {
+    cursor: pointer;
+    width: 18px;
+    height: 18px;
+    margin-top: 2px;
+}
+
+.form-actions {
+    margin-top: 2rem;
+    text-align: left;
+}
+
+#uploadBtn {
+    background-color: #1565C0;
+    border-color: #1565C0;
+    font-weight: 500;
+    border-radius: 8px;
+    font-size: 14px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 24px;
+}
+
+#uploadBtn:hover {
+    background-color: #0b5ed7;
+    border-color: #0a58ca;
+}
+
+#uploadBtn:disabled {
+    background-color: #6c757d;
+    border-color: #6c757d;
+    cursor: not-allowed;
+    opacity: 0.65;
+}
+
+#uploadBtn i {
+    margin-right: 8px;
+}
+
+.quick-guide-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 15px;
+    margin-bottom: 2rem;
+}
+
+.guide-card {
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    padding: 15px;
+}
+
+.guide-card h6 {
+    font-size: 0.95rem;
+    font-weight: 600;
+    margin-bottom: 10px;
+    color: #333;
+}
+
+.guide-card p {
+    font-size: 0.85rem;
+    margin-bottom: 0;
+    color: #555;
+    line-height: 1.5;
+}
+
+.guide-card ol,
+.guide-card ul {
+    font-size: 0.85rem;
+    margin-bottom: 0;
+    padding-left: 20px;
+    color: #555;
+}
+
+.guide-card ol li,
+.guide-card ul li {
+    margin-bottom: 5px;
+}
+
+.guide-card code {
+    background: #e9ecef;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 0.8rem;
+    color: #d63384;
+}
+
+@media (max-width: 768px) {
+    .quick-guide-container {
+        grid-template-columns: 1fr;
+    }
+    
+    .user-checkboxes {
+        flex-direction: column;
+        gap: 15px;
+    }
+}
 </style>
 
 <body>
@@ -571,39 +839,83 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                 </div>
             </div>
 
-            <div class="main-content-wrapper">
-                <?php if (isset($_SESSION['import_result'])): ?>
-                    <div class="alert alert-<?php echo $_SESSION['import_result']['errors'] > 0 ? 'warning' : 'success'; ?>">
-                        <h4>Import Results</h4>
-                        <p><strong>Successfully imported:</strong> <?php echo $_SESSION['import_result']['success']; ?> records</p>
-                        <?php if ($_SESSION['import_result']['errors'] > 0): ?>
-                            <p><strong>Failed imports:</strong> <?php echo $_SESSION['import_result']['errors']; ?> records</p>
-                            <?php if (!empty($_SESSION['import_result']['messages'])): ?>
-                                <details>
-                                    <summary style="cursor: pointer; font-weight: bold;">View Error Details</summary>
-                                    <div class="error-section">
-                                        <ul class="mt-2">
-                                            <?php foreach ($_SESSION['import_result']['messages'] as $message): ?>
-                                                <li><?php echo htmlspecialchars($message); ?></li>
-                                            <?php endforeach; ?>
-                                        </ul>
-                                    </div>
-                                </details>
-                            <?php endif; ?>
+            <?php if (isset($_SESSION['import_result'])): ?>
+                <div class="alert alert-<?php echo $_SESSION['import_result']['errors'] > 0 ? 'warning' : 'success'; ?>">
+                    <h4>Import Results</h4>
+                    <p><strong>Successfully imported:</strong> <?php echo $_SESSION['import_result']['success']; ?> records</p>
+                    
+                    <?php if (!empty($_SESSION['import_result']['info'])): ?>
+                        <div class="alert alert-info mt-3" style="background-color: #e7f3ff; border-color: #b3d9ff;">
+                            <details open>
+                                <summary style="cursor: pointer; font-weight: bold; color: #004085;">
+                                     Additional Information (<?php echo count($_SESSION['import_result']['info']); ?> notices)
+                                </summary>
+                                <ul class="mt-2" style="margin-bottom: 0;">
+                                    <?php foreach ($_SESSION['import_result']['info'] as $infoMsg): ?>
+                                        <li style="color: #004085;"><?php echo htmlspecialchars($infoMsg); ?></li>
+                                    <?php endforeach; ?>
+                                </ul>
+                            </details>
+                        </div>
+                    <?php endif; ?>
+                    
+                    <?php if ($_SESSION['import_result']['errors'] > 0): ?>
+                        <p><strong>Failed imports:</strong> <?php echo $_SESSION['import_result']['errors']; ?> records</p>
+                        <?php if (!empty($_SESSION['import_result']['messages'])): ?>
+                            <details>
+                                <summary style="cursor: pointer; font-weight: bold; color: #856404;">⚠️ View Error Details</summary>
+                                <div class="error-section">
+                                    <ul class="mt-2">
+                                        <?php foreach ($_SESSION['import_result']['messages'] as $message): ?>
+                                            <li><?php echo htmlspecialchars($message); ?></li>
+                                        <?php endforeach; ?>
+                                    </ul>
+                                </div>
+                            </details>
                         <?php endif; ?>
-                    </div>
-                    <?php unset($_SESSION['import_result']); ?>
-                <?php endif; ?>
+                    <?php endif; ?>
+                </div>
+                <?php unset($_SESSION['import_result']); ?>
+            <?php endif; ?>
+            
+            <?php if (isset($_SESSION['import_error'])): ?>
+                <div class="alert alert-danger">
+                    <strong>Error:</strong> <?php echo htmlspecialchars($_SESSION['import_error']); ?>
+                </div>
+                <?php unset($_SESSION['import_error']); ?>
+            <?php endif; ?>
+
+            <div class="lead-upload-container">
                 
-                <?php if (isset($_SESSION['import_error'])): ?>
-                    <div class="alert alert-danger">
-                        <strong>Error:</strong> <?php echo htmlspecialchars($_SESSION['import_error']); ?>
+                <?php if ($isMainAdmin == 1): ?>
+                    <!-- Tenant Selection Form for Main Admin -->
+                    <div class="tenant-selection-section">
+                        <h6><i class="feather icon-briefcase"></i> Select Tenant</h6>
+                        <p class="text-muted">Choose a tenant to upload leads for. Users from the selected tenant will be shown below.</p>
+                        <form method="POST" id="tenantSelectForm">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <select name="selected_tenant" id="tenantSelect" class="form-select" onchange="this.form.submit()">
+                                        <option value="">-- Select Tenant --</option>
+                                        <?php foreach ($tenants as $tenant): ?>
+                                            <option value="<?php echo $tenant['tenant_id']; ?>" 
+                                                <?php echo ($selectedTenantId == $tenant['tenant_id']) ? 'selected' : ''; ?>>
+                                                <?php echo htmlspecialchars($tenant['company_name']); ?> (ID: <?php echo $tenant['tenant_id']; ?>)
+                                            </option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                </div>
+                            </div>
+                        </form>
                     </div>
-                    <?php unset($_SESSION['import_error']); ?>
                 <?php endif; ?>
 
-                <div class="lead-upload-container">
+                <?php if ($selectedTenantId): ?>
                     <form method="POST" enctype="multipart/form-data" id="uploadForm">
+                        <?php if ($isMainAdmin == 1): ?>
+                            <input type="hidden" name="selected_tenant" value="<?php echo $selectedTenantId; ?>">
+                        <?php endif; ?>
+                        
                         <div class="file-upload-section">
                             <a href="/order_management/dist/templates/generate_template.php" class="choose-file-btn">
                                 Download CSV Template
@@ -619,177 +931,128 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                             </div>
                         </div>
                         
-                        <div class="alert alert-info">
-                            <h4>📋 Upload Guidelines & Error Handling</h4>
-                            <ul>
-                                <li><strong>Download template first</strong> - Use the CSV template with all required columns</li>
-                                <li><strong>Required fields:</strong> Full Name, Phone Number, City, Address Line 1, Product Code, Total Amount</li>
-                                <li><strong>Optional fields:</strong> Phone Number 2, Email, Address Line 2, Other</li>
-                                <li><strong>File requirements:</strong> CSV format only, 10MB maximum size</li>
-                                <li><strong>Select users</strong> to randomly distribute leads</li>
-                                <li><strong>Column order doesn't matter</strong> - Template can have columns in any order</li>
-                                <li><strong>Extra columns allowed</strong> - System will ignore extra columns not in template</li>
-                            </ul>
+                        <div class="quick-guide-container">
+                            <div class="guide-card">
+                                <h6> Steps</h6>
+                                <ol>
+                                    <li>Download CSV template</li>
+                                    <li>Fill in lead data</li>
+                                    <li>Select users below</li>
+                                    <li>Upload CSV</li>
+                                </ol>
+                            </div>
                             
-                            <h5 style="margin-top: 1rem;">🔍 Customer Matching Logic:</h5>
-                            <ul>
-                                <li><strong>Existing customer check:</strong> System searches by Phone 1, Phone 2, OR Email</li>
-                                <li><strong>If ANY match found:</strong> Order created for existing customer (NO customer data update)</li>
-                                <li><strong>If NO match found:</strong> New customer created with all CSV data</li>
-                                <li><strong>Multiple orders allowed:</strong> Same customer can have multiple orders</li>
-                            </ul>
+                            <div class="guide-card">
+                                <h6> Required Fields</h6>
+                                <p>Full Name, Phone, City, Address, Product Code, Quantity, Total Amount</p>
+                            </div>
                             
-                            <h5 style="margin-top: 1rem;">⚠️ Common Errors & Solutions:</h5>
-                            <ul>
-                                <li><strong>"Missing required CSV headers"</strong> → Download fresh template, ensure all column headers are present</li>
-                                <li><strong>"Full Name is required"</strong> → Ensure Full Name column has data</li>
-                                <li><strong>"Phone Number is required"</strong> → Ensure Phone Number column has valid phone</li>
-                                <li><strong>"Phone Number must be exactly 10 digits"</strong> → Use format: 0771234567</li>
-                                <li><strong>"Invalid email format"</strong> → Check email syntax (or use dash - for empty)</li>
-                                <li><strong>"City not found"</strong> → City name must match system database exactly</li>
-                                <li><strong>"Product code not found"</strong> → Verify product code exists and is active</li>
-                                <li><strong>"Total Amount must be positive"</strong> → Enter numeric value > 0</li>
-                                <li><strong>"Address Line 1 is required"</strong> → Ensure Address Line 1 has data</li>
-                            </ul>
+                            <div class="guide-card">
+                                <h6> Phone Format</h6>
+                                <p>Any format works:<br><code>0771234567</code>, <code>94771234567</code>, <code>+94771234567</code></p>
+                            </div>
                             
-                            <h5 style="margin-top: 1rem;">💡 Best Practices:</h5>
-                            <ul>
-                                <li>Test with 2-3 rows first before uploading large batches</li>
-                                <li>Phone numbers: System accepts +94771234567, 94771234567, or 0771234567 formats</li>
-                                <li>Keep city names consistent with existing database entries</li>
-                                <li>Use dash (-) or leave empty for optional fields like Email</li>
-                                <li>Check error details if any rows fail - they show specific issues</li>
-                                <li>Successful rows are imported even if some rows have errors</li>
-                            </ul>
+                            <div class="guide-card">
+                                <h6>Smart Features</h6>
+                                <ul>
+                                    <li>Finds existing customers</li>
+                                    <li>No duplicates created</li>
+                                    <li>Auto-calculates prices</li>
+                                </ul>
+                            </div>
                         </div>
                         
                         <hr>
                         
-                        <div class="users-section">
-                            <h2 class="section-title">Select Users</h2>
-                            <p class="text-muted">Choose which users will receive the imported leads</p>
+                        <div class="user-selection-section">
+                            <h6>Select Users to Distribute Leads</h6>
+                            <p class="text-muted">Select one or more users. Leads will be randomly distributed among selected users.</p>
                             
-                            <ul class="users-list" id="usersList">
+                            <div class="user-checkboxes">
                                 <?php if (!empty($users)): ?>
                                     <?php foreach ($users as $user): ?>
-                                        <li>
-                                            <input type="checkbox" id="user_<?php echo $user['id']; ?>" name="users[]" value="<?php echo $user['id']; ?>">
-                                            <label for="user_<?php echo $user['id']; ?>"><?php echo htmlspecialchars($user['name']); ?></label>
-                                        </li>
+                                        <div class="form-check">
+                                            <input class="form-check-input" 
+                                                type="checkbox" 
+                                                name="users[]" 
+                                                value="<?php echo $user['id']; ?>" 
+                                                id="user_<?php echo $user['id']; ?>">
+                                            <label class="form-check-label" for="user_<?php echo $user['id']; ?>">
+                                                <?php echo htmlspecialchars($user['name']); ?>
+                                            </label>
+                                        </div>
                                     <?php endforeach; ?>
                                 <?php else: ?>
-                                    <li class="no-users">No active users found</li>
+                                    <p class="text-danger">No active users found for this tenant.</p>
                                 <?php endif; ?>
-                            </ul>
-                        </div>
-                        
-                        <?php if (!empty($users)): ?>
-                            <button type="button" class="select-all-btn" id="toggleSelectAll">Select All</button>
-                        <?php endif; ?>
-                        
-                        <hr>
-                        
-                        <div class="action-buttons">
-                            <button type="button" class="action-btn reset-btn" id="resetBtn">Reset</button>
-                            <button type="submit" class="action-btn import-btn" id="importBtn">
-                                 Import Leads
-                            </button>
+                            </div>
+                            
+                            <div class="form-actions">
+                                <button type="submit" class="btn btn-primary btn-lg" id="uploadBtn" <?php echo empty($users) ? 'disabled' : ''; ?>>
+                                    <i class="feather icon-upload"></i> Upload CSV & Import Leads
+                                </button>
+                            </div>
                         </div>
                     </form>
-                </div>
+                <?php else: ?>
+                    <?php if ($isMainAdmin == 1): ?>
+                        <div class="alert alert-info">
+                            <i class="feather icon-info"></i> Please select a tenant above to begin uploading leads.
+                        </div>
+                    <?php endif; ?>
+                <?php endif; ?>
+                
             </div>
         </div>
     </div>
 
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/footer.php'); ?>
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/scripts.php'); ?>
-    
+    <?php
+    include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/footer.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/scripts.php');
+    ?>
+
     <script>
-        document.getElementById('uploadForm').addEventListener('submit', function(e) {
-            const fileInput = document.getElementById('csv_file');
-            const userCheckboxes = document.querySelectorAll('#usersList input[type="checkbox"]:checked');
-            
-            if (!fileInput.files.length) {
-                alert('Please select a CSV file to upload.');
-                e.preventDefault();
-                return false;
-            }
-            
-            if (userCheckboxes.length === 0) {
-                alert('Please select at least one user to assign the leads to.');
-                e.preventDefault();
-                return false;
-            }
-            
-            const importBtn = document.getElementById('importBtn');
-            importBtn.disabled = true;
-            importBtn.innerHTML = '⏳ Importing...';
-            
-            return true;
-        });
+    // Display selected file name
+    document.getElementById('csv_file')?.addEventListener('change', function(e) {
+        const fileName = e.target.files[0]?.name || 'No file selected';
+        document.getElementById('file-name').textContent = fileName;
+    });
+
+    // Form validation before submit
+    document.getElementById('uploadForm')?.addEventListener('submit', function(e) {
+        const fileInput = document.getElementById('csv_file');
+        const userCheckboxes = document.querySelectorAll('input[name="users[]"]:checked');
         
-        const toggleBtn = document.getElementById('toggleSelectAll');
-        if (toggleBtn) {
-            toggleBtn.addEventListener('click', function() {
-                const checkboxes = document.querySelectorAll('#usersList input[type="checkbox"]');
-                const allChecked = Array.from(checkboxes).every(checkbox => checkbox.checked);
-                
-                checkboxes.forEach(checkbox => {
-                    checkbox.checked = !allChecked;
-                });
-                
-                this.textContent = allChecked ? 'Select All' : 'Deselect All';
-            });
+        if (!fileInput.files.length) {
+            e.preventDefault();
+            alert('Please select a CSV file to upload.');
+            return false;
         }
         
-        document.getElementById('resetBtn').addEventListener('click', function() {
-            if (confirm('Are you sure you want to reset the form?')) {
-                document.querySelectorAll('#usersList input[type="checkbox"]').forEach(checkbox => {
-                    checkbox.checked = false;
-                });
-                
-                document.getElementById('csv_file').value = '';
-                document.getElementById('file-name').textContent = 'No file selected';
-                
-                if (toggleBtn) {
-                    toggleBtn.textContent = 'Select All';
-                }
-                
-                const importBtn = document.getElementById('importBtn');
-                importBtn.disabled = false;
-                importBtn.innerHTML = '📤 Import Leads';
-            }
-        });
+        if (userCheckboxes.length === 0) {
+            e.preventDefault();
+            alert('Please select at least one user to distribute leads.');
+            return false;
+        }
         
-        document.getElementById('csv_file').addEventListener('change', function() {
-            const file = this.files[0];
-            const fileNameEl = document.getElementById('file-name');
-            
-            if (file) {
-                const validExtensions = ['.csv'];
-                const fileName = file.name.toLowerCase();
-                const isValidExtension = validExtensions.some(ext => fileName.endsWith(ext));
-                
-                if (!isValidExtension) {
-                    alert('Please select a valid CSV file.');
-                    this.value = '';
-                    fileNameEl.textContent = 'No file selected';
-                    return;
-                }
-                
-                const maxSize = 10 * 1024 * 1024;
-                if (file.size > maxSize) {
-                    alert('File size must be less than 10MB.');
-                    this.value = '';
-                    fileNameEl.textContent = 'No file selected';
-                    return;
-                }
-                
-                fileNameEl.textContent = file.name + ' (' + (file.size / 1024).toFixed(1) + ' KB)';
-            } else {
-                fileNameEl.textContent = 'No file selected';
-            }
+        // Disable submit button to prevent double submission
+        const submitBtn = document.getElementById('uploadBtn');
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Uploading...';
+        
+        return true;
+    });
+
+    // Auto-hide success alerts after 10 seconds
+    setTimeout(function() {
+        const successAlerts = document.querySelectorAll('.alert-success');
+        successAlerts.forEach(alert => {
+            alert.style.transition = 'opacity 0.5s';
+            alert.style.opacity = '0';
+            setTimeout(() => alert.remove(), 500);
         });
+    }, 10000);
     </script>
+
 </body>
 </html>

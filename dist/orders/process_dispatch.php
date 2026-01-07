@@ -29,7 +29,7 @@ try {
     }
     
     // Get POST parameters
-    $order_id = isset($_POST['order_id']) ? (int)$_POST['order_id'] : 0;
+    $order_id = isset($_POST['order_id']) ? trim($_POST['order_id']) : '';
     $carrier_id = isset($_POST['carrier']) ? (int)$_POST['carrier'] : 0;
     $dispatch_notes = isset($_POST['dispatch_notes']) ? trim($_POST['dispatch_notes']) : '';
     $action = isset($_POST['action']) ? trim($_POST['action']) : '';
@@ -40,7 +40,7 @@ try {
         exit();
     }
     
-    if ($order_id <= 0) {
+    if (empty($order_id)) {
         echo json_encode(['success' => false, 'message' => 'Invalid order ID provided']);
         exit();
     }
@@ -55,10 +55,12 @@ try {
     
     try {
         // Verify order exists and is pending or done (both can be dispatched)
-        $order_check_sql = "SELECT order_id, status, customer_id, total_amount FROM order_header 
+        // IMPORTANT: Also get tenant_id from the order
+        $order_check_sql = "SELECT order_id, status, customer_id, total_amount, tenant_id 
+                           FROM order_header 
                            WHERE order_id = ? AND status IN ('pending', 'done')";
         $order_stmt = $conn->prepare($order_check_sql);
-        $order_stmt->bind_param("i", $order_id);
+        $order_stmt->bind_param("s", $order_id);
         $order_stmt->execute();
         $order_result = $order_stmt->get_result();
         
@@ -69,63 +71,86 @@ try {
         $order_data = $order_result->fetch_assoc();
         $customer_id = $order_data['customer_id'];
         $current_status = $order_data['status'];
+        $order_tenant_id = $order_data['tenant_id']; // Get order's tenant_id
+        $order_stmt->close();
         
-        // Verify courier exists and is active
-        $courier_check_sql = "SELECT courier_id, courier_name FROM couriers 
-                             WHERE courier_id = ? AND status = 'active'";
+        // **UPDATED: Verify courier exists, is active, AND belongs to the same tenant as the order**
+        // **ALSO GET co_id to insert into order_header**
+        $courier_check_sql = "SELECT courier_id, courier_name, co_id, tenant_id 
+                             FROM couriers 
+                             WHERE courier_id = ? 
+                             AND status = 'active' 
+                             AND tenant_id = ?";
         $courier_stmt = $conn->prepare($courier_check_sql);
-        $courier_stmt->bind_param("i", $carrier_id);
+        $courier_stmt->bind_param("ii", $carrier_id, $order_tenant_id);
         $courier_stmt->execute();
         $courier_result = $courier_stmt->get_result();
         
         if ($courier_result->num_rows === 0) {
-            throw new Exception('Courier not found or inactive');
+            throw new Exception('Courier not found, inactive, or does not belong to the order\'s tenant');
         }
         
         $courier_data = $courier_result->fetch_assoc();
+        $courier_tenant_id = $courier_data['tenant_id'];
+        $courier_co_id = $courier_data['co_id']; // **GET co_id**
+        $courier_stmt->close();
         
-        // Get next available tracking number for this courier
-        $tracking_sql = "SELECT tracking_id FROM tracking 
-                        WHERE courier_id = ? AND status = 'unused' 
-                        ORDER BY created_at ASC 
+        // CRITICAL FIX: Get next available tracking number for this courier AND tenant
+        // This ensures tracking numbers are tenant-specific
+        $tracking_sql = "SELECT t.tracking_id 
+                        FROM tracking t
+                        INNER JOIN couriers c ON t.courier_id = c.courier_id
+                        WHERE t.courier_id = ? 
+                        AND t.status = 'unused' 
+                        AND c.tenant_id = ?
+                        ORDER BY t.created_at ASC 
                         LIMIT 1 FOR UPDATE";
         $tracking_stmt = $conn->prepare($tracking_sql);
-        $tracking_stmt->bind_param("i", $carrier_id);
+        $tracking_stmt->bind_param("ii", $carrier_id, $order_tenant_id);
         $tracking_stmt->execute();
         $tracking_result = $tracking_stmt->get_result();
         
         if ($tracking_result->num_rows === 0) {
-            throw new Exception('No unused tracking numbers available for ' . $courier_data['courier_name']);
+            throw new Exception('No unused tracking numbers available for ' . $courier_data['courier_name'] . ' in tenant ' . $order_tenant_id);
         }
         
         $tracking_data = $tracking_result->fetch_assoc();
         $tracking_number = $tracking_data['tracking_id'];
+        $tracking_stmt->close();
         
         // Update tracking number status to 'used'
-        $update_tracking_sql = "UPDATE tracking SET status = 'used', updated_at = CURRENT_TIMESTAMP 
-                               WHERE tracking_id = ? AND courier_id = ? AND status = 'unused'";
+        // Add additional verification that courier belongs to correct tenant
+        $update_tracking_sql = "UPDATE tracking t
+                               INNER JOIN couriers c ON t.courier_id = c.courier_id
+                               SET t.status = 'used', t.updated_at = CURRENT_TIMESTAMP 
+                               WHERE t.tracking_id = ? 
+                               AND t.courier_id = ? 
+                               AND t.status = 'unused'
+                               AND c.tenant_id = ?";
         $update_tracking_stmt = $conn->prepare($update_tracking_sql);
-        $update_tracking_stmt->bind_param("si", $tracking_number, $carrier_id);
+        $update_tracking_stmt->bind_param("sii", $tracking_number, $carrier_id, $order_tenant_id);
         
         if (!$update_tracking_stmt->execute()) {
             throw new Exception('Failed to update tracking number status');
         }
         
         if ($update_tracking_stmt->affected_rows === 0) {
-            throw new Exception('Tracking number was already used by another process');
+            throw new Exception('Tracking number was already used by another process or tenant mismatch');
         }
+        $update_tracking_stmt->close();
         
-        // Update order status to 'dispatch' and set tracking information
+        // **UPDATED: Update order status to 'dispatch' and set tracking information + co_id**
         // Allow dispatch from both 'pending' and 'done' status
         $update_order_sql = "UPDATE order_header SET 
                             status = 'dispatch',
                             courier_id = ?,
+                            co_id = ?,
                             tracking_number = ?,
                             dispatch_note = ?,
                             updated_at = CURRENT_TIMESTAMP
                             WHERE order_id = ? AND status IN ('pending', 'done')";
         $update_order_stmt = $conn->prepare($update_order_sql);
-        $update_order_stmt->bind_param("issi", $carrier_id, $tracking_number, $dispatch_notes, $order_id);
+        $update_order_stmt->bind_param("iisss", $carrier_id, $courier_co_id, $tracking_number, $dispatch_notes, $order_id);
         
         if (!$update_order_stmt->execute()) {
             throw new Exception('Failed to update order status');
@@ -134,6 +159,7 @@ try {
         if ($update_order_stmt->affected_rows === 0) {
             throw new Exception('Order was already processed by another user or status changed');
         }
+        $update_order_stmt->close();
         
         // Update order_items status to 'dispatch'
         // Allow updating items from both 'pending' and 'done' status
@@ -142,7 +168,7 @@ try {
                             updated_at = CURRENT_TIMESTAMP
                             WHERE order_id = ? AND status IN ('pending', 'done')";
         $update_items_stmt = $conn->prepare($update_items_sql);
-        $update_items_stmt->bind_param("i", $order_id);
+        $update_items_stmt->bind_param("s", $order_id);
         
         if (!$update_items_stmt->execute()) {
             throw new Exception('Failed to update order items status');
@@ -150,12 +176,13 @@ try {
         
         // Get the count of updated items for logging
         $items_updated = $update_items_stmt->affected_rows;
+        $update_items_stmt->close();
         
         // Get user ID for logging
         $user_id = $_SESSION['user_id'] ?? $_SESSION['id'] ?? 0;
         
-        // Log message format indicating tracking is system-assigned only
-        $log_message = "Add a dispatch unpaid order({$order_id}) with system tracking({$tracking_number})";
+        // **UPDATED: Log message now includes co_id**
+        $log_message = "Add a dispatch unpaid order({$order_id}) with system tracking({$tracking_number}) and co_id({$courier_co_id}) for tenant({$order_tenant_id})";
         
         // Minimal log details to avoid redundancy
         $log_details = $log_message;
@@ -163,16 +190,17 @@ try {
         $user_log_sql = "INSERT INTO user_logs (user_id, action_type, inquiry_id, details, created_at) 
                         VALUES (?, 'order_dispatch', ?, ?, NOW())";
         $user_log_stmt = $conn->prepare($user_log_sql);
-        $user_log_stmt->bind_param("iis", $user_id, $order_id, $log_details);
+        $user_log_stmt->bind_param("iss", $user_id, $order_id, $log_details);
         
         if (!$user_log_stmt->execute()) {
             throw new Exception('Failed to log user action');
         }
+        $user_log_stmt->close();
         
         // Commit transaction
         $conn->commit();
         
-        // Return success response
+        // **UPDATED: Return co_id in response**
         echo json_encode([
             'success' => true,
             'message' => 'Order dispatched successfully',
@@ -180,8 +208,10 @@ try {
             'previous_status' => $current_status,
             'tracking_number' => $tracking_number,
             'courier_name' => $courier_data['courier_name'],
+            'co_id' => $courier_co_id,
             'dispatch_notes' => $dispatch_notes,
-            'items_updated' => $items_updated
+            'items_updated' => $items_updated,
+            'tenant_id' => $order_tenant_id
         ]);
         
     } catch (Exception $e) {
@@ -196,8 +226,7 @@ try {
     
     echo json_encode([
         'success' => false,
-        'message' => $e->getMessage(),
-        'debug' => $e->getMessage() // Remove this in production
+        'message' => $e->getMessage()
     ]);
 }
 
