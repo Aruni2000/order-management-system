@@ -1,9 +1,16 @@
 <?php
 /**
- * Transexpress Bulk Existing Parcel API Handler
- * @version 2.0
- * @date 2025
+ * Transexpress Bulk Existing Parcel API Handler - FIXED VERSION with co_id Support
+ * @version 2.1
+ * @date 2025-01-08
  * API Endpoint: https://portal.transexpress.lk/api/orders/upload/single-manual
+ * 
+ * CHANGES:
+ * - Added co_id field retrieval from couriers table
+ * - Added co_id update in order_header
+ * - Added co_id to response payload
+ * - Added co_id to logging messages
+ * - Added tenant validation
  */
 
 session_start();
@@ -109,7 +116,6 @@ function callTransexpressExistingApi($orderData, $apiKey) {
     }
     
     // Check success patterns
-    // Pattern 1: {"success": "Record successfully added", "order": {...}}
     if (isset($data['success']) && is_string($data['success']) && 
         stripos($data['success'], 'success') !== false && isset($data['order'])) {
         return [
@@ -120,7 +126,6 @@ function callTransexpressExistingApi($orderData, $apiKey) {
         ];
     }
     
-    // Pattern 2: {"success": true, ...}
     if (isset($data['success']) && $data['success'] === true) {
         return [
             'success' => true,
@@ -129,7 +134,6 @@ function callTransexpressExistingApi($orderData, $apiKey) {
         ];
     }
     
-    // Pattern 3: {"status": "success", ...}
     if (isset($data['status']) && $data['status'] === 'success') {
         return [
             'success' => true,
@@ -204,14 +208,30 @@ try {
         throw new Exception('Invalid order IDs');
     }
 
-    // Get courier details
-    $stmt = $conn->prepare("SELECT courier_name, api_key FROM couriers WHERE courier_id = ? AND status = 'active' AND has_api_existing = 1");
+    // ==========================================
+    // ✅ FIX 1: Get courier details INCLUDING co_id
+    // ==========================================
+    $stmt = $conn->prepare("
+        SELECT courier_id, courier_name, co_id, api_key, tenant_id 
+        FROM couriers 
+        WHERE courier_id = ? 
+        AND status = 'active' 
+        AND has_api_existing = 1
+    ");
     $stmt->bind_param("i", $carrierId);
     $stmt->execute();
     $courier = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+    
     if (!$courier || empty($courier['api_key'])) {
         throw new Exception('Invalid courier or missing API credentials');
     }
+
+    // ==========================================
+    // ✅ FIX 2: Store co_id for later use
+    // ==========================================
+    $courierCoId = $courier['co_id'];
+    $courierTenantId = $courier['tenant_id'];
 
     // Get tracking numbers
     $orderCount = count($orderIds);
@@ -219,6 +239,7 @@ try {
     $stmt->bind_param("ii", $carrierId, $orderCount);
     $stmt->execute();
     $tracking = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $stmt->close();
 
     if (count($tracking) < $orderCount) {
         throw new Exception("Need $orderCount tracking numbers, only " . count($tracking) . " available");
@@ -227,24 +248,40 @@ try {
     // Get orders with city validation
     $placeholders = str_repeat('?,', count($orderIds)-1) . '?';
     $stmt = $conn->prepare("
-        SELECT oh.*, c.name as customer_name, c.phone as customer_phone,
-               c.address_line1 as customer_address1, c.address_line2 as customer_address2,
-               ct.city_id, ct.city_name
+        SELECT 
+            oh.*, 
+            c.name as customer_name, 
+            c.phone as customer_phone,
+            c.address_line1 as customer_address1, 
+            c.address_line2 as customer_address2,
+            ct.city_id, 
+            ct.city_name
         FROM order_header oh
         LEFT JOIN customers c ON oh.customer_id = c.customer_id
         LEFT JOIN city_table ct ON c.city_id = ct.city_id
-        WHERE oh.order_id IN ($placeholders) AND oh.status = 'pending' AND ct.is_active = 1
+        WHERE oh.order_id IN ($placeholders) 
+        AND oh.status = 'pending' 
+        AND ct.is_active = 1
     ");
     $stmt->bind_param(str_repeat('i', count($orderIds)), ...$orderIds);
     $stmt->execute();
     $orders = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $stmt->close();
     
     if (empty($orders)) {
         throw new Exception('No valid pending orders found with active cities');
     }
 
+    // Verify all orders belong to the same tenant as the courier
+    foreach ($orders as $order) {
+        if ($order['tenant_id'] != $courierTenantId) {
+            throw new Exception("Order {$order['order_id']} belongs to tenant {$order['tenant_id']}, but courier belongs to tenant {$courierTenantId}");
+        }
+    }
+
     // Process orders
-    $conn->autocommit(false);
+    $conn->begin_transaction();
+    
     $successCount = 0;
     $failedOrders = [];
     $processedOrders = [];
@@ -293,26 +330,52 @@ try {
             // Update tracking status
             $stmt = $conn->prepare("UPDATE tracking SET status = 'used', updated_at = NOW() WHERE id = ?");
             $stmt->bind_param("i", $trackingRecordId);
-            $stmt->execute();
             
-            // Update order header
-            $stmt = $conn->prepare("UPDATE order_header SET courier_id = ?, tracking_number = ?, status = 'dispatch', dispatch_note = ?, updated_at = NOW() WHERE order_id = ?");
-            $stmt->bind_param("issi", $carrierId, $trackingNumber, $dispatchNotes, $order['order_id']);
-            $stmt->execute();
+            if (!$stmt->execute()) {
+                throw new Exception("Tracking update failed: " . $stmt->error);
+            }
+            $stmt->close();
+            
+            // ==========================================
+            // ✅ FIX 3: Update order_header with co_id
+            // ==========================================
+            $stmt = $conn->prepare("
+                UPDATE order_header 
+                SET courier_id = ?, 
+                    co_id = ?,
+                    tracking_number = ?, 
+                    status = 'dispatch', 
+                    dispatch_note = ?, 
+                    updated_at = NOW() 
+                WHERE order_id = ?
+            ");
+            $stmt->bind_param("iissi", $carrierId, $courierCoId, $trackingNumber, $dispatchNotes, $order['order_id']);
+            
+            if (!$stmt->execute()) {
+                throw new Exception("Database update failed: " . $stmt->error);
+            }
+            $stmt->close();
             
             // Update order items
             $stmt = $conn->prepare("UPDATE order_items SET status = 'dispatch' WHERE order_id = ?");
             $stmt->bind_param("i", $order['order_id']);
-            $stmt->execute();
             
-            // Log success
-            logAction($conn, $userId, 'transexpress_dispatch', $order['order_id'], 
-                     "Order {$order['order_id']} dispatched via TransExpress - Tracking: $trackingNumber");
+            if (!$stmt->execute()) {
+                throw new Exception("Order items update failed: " . $stmt->error);
+            }
+            $stmt->close();
+            
+            // ==========================================
+            // ✅ FIX 4: Enhanced logging with co_id
+            // ==========================================
+            logAction($conn, $userId, 'transexpress_existing_dispatch', $order['order_id'], 
+                     "Order {$order['order_id']} dispatched via TransExpress (co_id: $courierCoId) - Tracking: $trackingNumber");
             
             $successCount++;
             $processedOrders[] = [
                 'order_id' => $order['order_id'],
                 'tracking_number' => $trackingNumber,
+                'co_id' => $courierCoId,
                 'customer_name' => $order['full_name'] ?: $order['customer_name']
             ];
             
@@ -322,37 +385,73 @@ try {
                 'tracking_number' => $rawWaybill ?? 'N/A',
                 'error' => $e->getMessage()
             ];
-            logAction($conn, $userId, 'transexpress_dispatch_failed', $order['order_id'], 
+            logAction($conn, $userId, 'transexpress_existing_dispatch_failed', $order['order_id'], 
                      "Order {$order['order_id']} failed - Error: {$e->getMessage()}");
         }
     }
 
+    // Commit or rollback
     if ($successCount > 0) {
         $conn->commit();
+        
+        // ==========================================
+        // ✅ FIX 5: Include co_id in bulk log details
+        // ==========================================
+        $trackingList = implode(', ', array_column($processedOrders, 'tracking_number'));
+        $details = "Transexpress bulk existing dispatch (co_id: $courierCoId): $successCount/" . count($orderIds) . 
+                   " orders dispatched, Tracking: $trackingList";
+        
+        if (!empty($failedOrders)) {
+            $errorList = array_map(fn($f) => "Order {$f['order_id']}: {$f['error']}", $failedOrders);
+            $details .= ". Failed: " . implode('; ', $errorList);
+        }
+        
+        logAction($conn, $userId, 'bulk_transexpress_existing_dispatch', 0, $details);
     } else {
         $conn->rollback();
+        
+        $errorList = array_map(fn($f) => "Order {$f['order_id']}: {$f['error']}", $failedOrders);
+        logAction($conn, $userId, 'bulk_transexpress_existing_dispatch_failed', 0, 
+            "Transexpress bulk existing dispatch failed: All " . count($orderIds) . " orders failed. Errors: " . implode('; ', $errorList));
     }
 
-    // Response
+    // ==========================================
+    // ✅ FIX 6: Include co_id in response
+    // ==========================================
     $response = [
         'success' => $successCount > 0,
         'processed_count' => $successCount,
         'total_count' => count($orderIds),
         'failed_count' => count($failedOrders),
         'processed_orders' => $processedOrders,
-        'failed_orders' => $failedOrders,
-        'message' => "Successfully dispatched $successCount of " . count($orderIds) . " orders"
+        'courier_co_id' => $courierCoId,
+        'tenant_id' => $courierTenantId
     ];
+    
+    if (!empty($failedOrders)) {
+        $response['failed_orders'] = $failedOrders;
+        $response['message'] = "Processed $successCount orders successfully, " . count($failedOrders) . " failed";
+    } else {
+        $response['message'] = "All $successCount orders processed successfully via TransExpress (co_id: $courierCoId)";
+    }
 
     ob_clean();
-    echo json_encode($response);
+    echo json_encode($response, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
 } catch (Exception $e) {
-    if (isset($conn)) $conn->rollback();
+    if (isset($conn)) {
+        $conn->rollback();
+    }
+    
     ob_clean();
-    echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+    echo json_encode([
+        'success' => false,
+        'message' => $e->getMessage()
+    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 } finally {
-    if (isset($conn)) $conn->autocommit(true);
+    if (isset($conn)) {
+        $conn->autocommit(true);
+    }
     ob_end_flush();
 }
 ?>

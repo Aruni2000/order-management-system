@@ -64,9 +64,14 @@ $customer_name_filter = isset($_GET['customer_name_filter']) ? trim($_GET['custo
 $date_from = isset($_GET['date_from']) ? trim($_GET['date_from']) : '';
 $date_to = isset($_GET['date_to']) ? trim($_GET['date_to']) : '';
 $pay_status_filter = isset($_GET['pay_status_filter']) ? trim($_GET['pay_status_filter']) : '';
+
+// AFTER (Fixed Code):
 $tenant_id_filter = isset($_GET['tenant_id_filter']) ? trim($_GET['tenant_id_filter']) : '';
 // Determine if tenant filter is active
-$show_checkboxes = !empty($tenant_id_filter);
+// Show checkboxes: always for regular users, or when main admin selects tenant
+$show_checkboxes = ($is_main_admin == 0) || !empty($tenant_id_filter);
+
+
 $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 10;
 $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
 $offset = ($page - 1) * $limit;
