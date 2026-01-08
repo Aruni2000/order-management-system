@@ -17,7 +17,7 @@ if ($fe_conn->connect_error) {
 $error_message = "";
 $logo_url = "../assets/images/placeholder.png"; // fallback logo
 
-// ✅ Fetch branding logo from database
+//  Fetch branding logo from database
 $sql_branding = "SELECT logo_url FROM branding WHERE active = 1 LIMIT 1";
 $result_branding = $conn->query($sql_branding);
 if ($result_branding && $result_branding->num_rows > 0) {
@@ -25,7 +25,7 @@ if ($result_branding && $result_branding->num_rows > 0) {
     $logo_url = $branding['logo_url'];
 }
 
-// ✅ Handle form submit
+//  Handle form submit
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     // Sanitize inputs
     $email = filter_var($_POST['email'], FILTER_SANITIZE_EMAIL);
@@ -131,14 +131,14 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                         error_log("User $email belongs to non-main-admin tenant (tenant_id: " . $user['tenant_id'] . ") - skipping subscription check");
                     }
                     
-                    // ✅ STEP 6: Only check individual user status if company subscription is active (or not applicable)
+                    //  STEP 6: Only check individual user status if company subscription is active (or not applicable)
                     if ($customer_status_check) {
                         // Now check if the individual user account is active
                         if ($user['status'] != 'active') {
                             $error_message = "Your user account is inactive. Please contact your administrator.";
                             error_log("User $email account is inactive (status: " . $user['status'] . ")");
                         } else {
-                            // ✅ STEP 7: Everything is valid - proceed with login
+                            // STEP 7: Everything is valid - proceed with login
                             $_SESSION['user'] = $email;
                             $_SESSION['user_id'] = $user['id'];
                             $_SESSION['role_id'] = $user['role_id'];
@@ -152,7 +152,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                                 $_SESSION['customer_id'] = $customer_id;
                             }
 
-                            // ✅ Handle "Remember Me"
+                            //  Handle "Remember Me"
                             if ($remember) {
                                 setcookie("email", $email, time() + (86400 * 30), "/"); // 30 days
                             } else {
@@ -161,7 +161,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
                             error_log("User $email successfully logged in - Tenant ID: " . $user['tenant_id'] . ", Is Main Admin: " . $user['is_main_admin']);
 
-                            // ✅ Redirect by role
+                            // Redirect by role
                             switch ($user['role_id']) {
                                 case 1: // Superadmin
                                 case 2: // Regular user
@@ -194,18 +194,22 @@ $conn->close();
 $fe_conn->close();
 ?>
 <!doctype html>
-<html lang="en" data-pc-preset="preset-1" data-pc-sidebar-caption="true" data-pc-direction="ltr" dir="ltr" data-pc-theme="light">
+<html lang="en" data-pc-preset="preset-1" data-pc-sidebar-caption="true" data-pc-direction="ltr" dir="ltr"
+    data-pc-theme="light">
+
 <head>
     <title>Login | Order Management Admin Portal</title>
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/head.php'); ?>
 </head>
-  <link rel="stylesheet" href="../assets/css/login.css" id="main-style-link" />
+<link rel="stylesheet" href="../assets/css/login.css" id="main-style-link" />
 
 <body>
     <!-- Loader -->
     <div class="loader-bg fixed inset-0 bg-white dark:bg-themedark-cardbg z-[1034]">
         <div class="loader-track h-[5px] w-full inline-block absolute overflow-hidden top-0">
-            <div class="loader-fill w-[300px] h-[5px] bg-primary-500 absolute top-0 left-0 animate-[hitZak_0.6s_ease-in-out_infinite_alternate]"></div>
+            <div
+                class="loader-fill w-[300px] h-[5px] bg-primary-500 absolute top-0 left-0 animate-[hitZak_0.6s_ease-in-out_infinite_alternate]">
+            </div>
         </div>
     </div>
 
@@ -214,16 +218,20 @@ $fe_conn->close();
             <div class="auth-form flex items-center justify-center grow flex-col min-h-screen relative p-6 ">
                 <div class="w-full max-w-[350px] relative">
                     <div class="auth-bg ">
-                        <span class="absolute top-[-100px] right-[-100px] w-[300px] h-[300px] block rounded-full bg-theme-bg-1 animate-[floating_7s_infinite]"></span>
-                        <span class="absolute top-[150px] right-[-150px] w-5 h-5 block rounded-full bg-primary-500 animate-[floating_9s_infinite]"></span>
-                        <span class="absolute left-[-150px] bottom-[150px] w-5 h-5 block rounded-full bg-theme-bg-1 animate-[floating_7s_infinite]"></span>
-                        <span class="absolute left-[-100px] bottom-[-100px] w-[300px] h-[300px] block rounded-full bg-theme-bg-2 animate-[floating_9s_infinite]"></span>
+                        <span
+                            class="absolute top-[-100px] right-[-100px] w-[300px] h-[300px] block rounded-full bg-theme-bg-1 animate-[floating_7s_infinite]"></span>
+                        <span
+                            class="absolute top-[150px] right-[-150px] w-5 h-5 block rounded-full bg-primary-500 animate-[floating_9s_infinite]"></span>
+                        <span
+                            class="absolute left-[-150px] bottom-[150px] w-5 h-5 block rounded-full bg-theme-bg-1 animate-[floating_7s_infinite]"></span>
+                        <span
+                            class="absolute left-[-100px] bottom-[-100px] w-[300px] h-[300px] block rounded-full bg-theme-bg-2 animate-[floating_9s_infinite]"></span>
                     </div>
 
                     <div class="card sm:my-12 w-full shadow-none">
                         <div class="card-body ">
                             <div class="text-center mb-8">
-                                <!-- ✅ Branding logo -->
+                                <!--  Branding logo -->
                                 <a href="#"><img src="<?php echo $logo_url; ?>" alt="Company Logo" /></a>
                             </div>
 
@@ -231,21 +239,25 @@ $fe_conn->close();
 
                             <!-- Error Message -->
                             <?php if (!empty($error_message)): ?>
-                                <div class="error-message text-red-600 text-center mb-3 p-3 bg-red-50 rounded-md border border-red-200">
-                                    <?php echo $error_message; ?>
-                                </div>
+                            <div
+                                class="error-message text-red-600 text-center mb-3 p-3 bg-red-50 rounded-md border border-red-200">
+                                <?php echo $error_message; ?>
+                            </div>
                             <?php endif; ?>
 
                             <!-- Login Form -->
                             <form action="<?php echo htmlspecialchars($_SERVER["PHP_SELF"]); ?>" method="POST">
                                 <div class="mb-3">
-                                    <input type="email" class="form-control" name="email" placeholder="Email Address" 
-                                           value="<?php echo isset($_COOKIE['email']) ? $_COOKIE['email'] : ''; ?>" required />
+                                    <input type="email" class="form-control" name="email" placeholder="Email Address"
+                                        value="<?php echo isset($_COOKIE['email']) ? $_COOKIE['email'] : ''; ?>"
+                                        required />
                                 </div>
                                 <div class="mb-4">
                                     <div class="password-container relative">
-                                        <input type="password" class="form-control" id="floatingInput1" name="password" placeholder="Password" required />
-                                        <span class="password-toggle absolute right-3 top-3 cursor-pointer" id="togglePassword">
+                                        <input type="password" class="form-control" id="floatingInput1" name="password"
+                                            placeholder="Password" required />
+                                        <span class="password-toggle absolute right-3 top-3 cursor-pointer"
+                                            id="togglePassword">
                                             <i class="fas fa-eye"></i>
                                         </span>
                                     </div>
@@ -253,8 +265,8 @@ $fe_conn->close();
 
                                 <div class="flex mt-1 justify-between items-center flex-wrap">
                                     <div class="form-check">
-                                        <input class="form-check-input input-primary" type="checkbox" name="remember" 
-                                               <?php echo isset($_COOKIE['email']) ? 'checked' : ''; ?> />
+                                        <input class="form-check-input input-primary" type="checkbox" name="remember"
+                                            <?php echo isset($_COOKIE['email']) ? 'checked' : ''; ?> />
                                         <label class="form-check-label text-muted">Remember me?</label>
                                     </div>
                                 </div>
@@ -276,7 +288,9 @@ $fe_conn->close();
         <div class="grid grid-cols-12 gap-1.5">
             <div class="col-span-12 sm:col-span-6 my-1">
                 <p class="m-0">
-                    <a href="https://www.feitsolutions.com/" class="text-theme-bodycolor dark:text-themedark-bodycolor hover:text-primary-500 dark:hover:text-primary-500" target="_blank">
+                    <a href="https://www.feitsolutions.com/"
+                        class="text-theme-bodycolor dark:text-themedark-bodycolor hover:text-primary-500 dark:hover:text-primary-500"
+                        target="_blank">
                         Copyright © 2025 FEITSolutions</a>, Designed by FEIT All rights reserved
                 </p>
             </div>
@@ -309,4 +323,5 @@ $fe_conn->close();
     });
     </script>
 </body>
+
 </html>

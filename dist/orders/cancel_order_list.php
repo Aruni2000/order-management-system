@@ -121,6 +121,10 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
 // Include database connection
 include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/connection/db_connection.php');
 
+// Check if user is main admin
+$is_main_admin = $_SESSION['is_main_admin'];
+$teanent_id = $_SESSION['tenant_id'];
+
 // Get current user's role information
 $current_user_id = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
 $current_user_role = isset($_SESSION['role_id']) ? (int)$_SESSION['role_id'] : 0;
@@ -170,6 +174,7 @@ $user_id_filter = isset($_GET['user_id_filter']) ? trim($_GET['user_id_filter'])
 $date_from = isset($_GET['date_from']) ? trim($_GET['date_from']) : '';
 $date_to = isset($_GET['date_to']) ? trim($_GET['date_to']) : '';
 $pay_status_filter = isset($_GET['pay_status_filter']) ? trim($_GET['pay_status_filter']) : '';
+$tenant_id_filter = isset($_GET['tenant_id_filter']) ? trim($_GET['tenant_id_filter']) : '';
 
 $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 10;
 $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
@@ -185,31 +190,45 @@ $offset = ($page - 1) * $limit;
 $roleBasedCondition = $rbac->getRoleBasedCondition();
 
 // Base SQL for counting total records
-$countSql = "SELECT COUNT(*) as total FROM order_header i 
-             WHERE i.interface IN ('individual', 'leads') AND i.status = 'cancel'$roleBasedCondition";
+ $countSql = "SELECT COUNT(*) as total FROM order_header i 
+              WHERE i.interface IN ('individual', 'leads') AND i.status = 'cancel'$roleBasedCondition";
 
-// FIXED: Main query - using i.full_name from order_header instead of joining customers table
-$sql = "SELECT i.*, 
-               -- UPDATED: Customer info with fallback - Use order_header full_name, fallback to customers table
-               COALESCE(NULLIF(i.full_name, ''), c.name) as customer_name,
-               i.customer_id,
+ // FIXED: Main query - using i.full_name from order_header instead of joining customers table
+ $sql = "SELECT i.*, 
+                -- UPDATED: Customer info with fallback - Use order_header full_name, fallback to customers table
+                COALESCE(NULLIF(i.full_name, ''), c.name) as customer_name,
+                i.customer_id,
                
-               -- Payment information
-               p.payment_id, 
-               p.amount_paid, 
-               p.payment_method, 
-               p.payment_date, 
-               p.pay_by,
-               u1.name as paid_by_name,
+                -- Payment information
+                p.payment_id, 
+                p.amount_paid, 
+                p.payment_method, 
+                p.payment_date, 
+                p.pay_by,
+                u1.name as paid_by_name,
                
-               -- User who created the order
-               u2.name as user_name
-        FROM order_header i 
-        LEFT JOIN payments p ON i.order_id = p.order_id
-        LEFT JOIN users u1 ON p.pay_by = u1.id
-        LEFT JOIN users u2 ON i.user_id = u2.id
-        LEFT JOIN customers c ON i.customer_id = c.customer_id
-        WHERE i.interface IN ('individual', 'leads') AND i.status = 'cancel'$roleBasedCondition";
+                -- User who created the order
+                u2.name as user_name,
+                t.company_name
+
+         FROM order_header i 
+         LEFT JOIN payments p ON i.order_id = p.order_id
+         LEFT JOIN users u1 ON p.pay_by = u1.id
+         LEFT JOIN users u2 ON i.user_id = u2.id        
+         LEFT JOIN customers c ON i.customer_id = c.customer_id
+         LEFT JOIN tenants t ON i.tenant_id = t.tenant_id
+         WHERE i.interface IN ('individual', 'leads') AND i.status = 'cancel'
+        ";
+
+// Add tenant filter for non-main admin users
+if ($is_main_admin == 1){
+// Add ordering and pagination
+    
+} else {
+
+    // Add ordering and pagination
+    $sql .= "  AND i.tenant_id = $teanent_id ORDER BY i.order_id DESC LIMIT $limit OFFSET $offset";
+}
 
 // Build search conditions
 $searchConditions = [];
@@ -224,7 +243,8 @@ if (!empty($search)) {
                         i.due_date LIKE '%$searchTerm%' OR 
                         i.total_amount LIKE '%$searchTerm%' OR
                         i.pay_status LIKE '%$searchTerm%' OR
-                        u2.name LIKE '%$searchTerm%')";
+                        u2.name LIKE '%$searchTerm%' OR
+                        t.company_name LIKE '%$searchTerm%')";
 }
 
 // Specific Order ID filter
@@ -262,6 +282,12 @@ if (!empty($pay_status_filter)) {
     $searchConditions[] = "i.pay_status = '$payStatusTerm'";
 }
 
+// Specific tenant ID filter
+if (!empty($tenant_id_filter)) {
+    $tenantIdTerm = $conn->real_escape_string($tenant_id_filter);
+    $searchConditions[] = "i.tenant_id = '$tenantIdTerm'";
+}
+
 // Apply all search conditions
 if (!empty($searchConditions)) {
     $finalSearchCondition = " AND (" . implode(' AND ', $searchConditions) . ")";
@@ -269,8 +295,11 @@ if (!empty($searchConditions)) {
     $sql .= $finalSearchCondition;
 }
 
+
+
 // Add ordering and pagination
 $sql .= " ORDER BY i.order_id DESC LIMIT $limit OFFSET $offset";
+
 
 // Execute queries
 $countResult = $conn->query($countSql);
@@ -289,64 +318,71 @@ $usersResult = $conn->query($usersQuery);
 include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/navbar.php');
 include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php');
 
+// Get unique tenants for filter dropdown
+$tenant_sql = "SELECT DISTINCT tenant_id, company_name 
+               FROM tenants";
+$tenant_result = $conn->query($tenant_sql);
+$tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
+
 ?>
 <!doctype html>
-<html lang="en" data-pc-preset="preset-1" data-pc-sidebar-caption="true" data-pc-direction="ltr" dir="ltr" data-pc-theme="light">
+<html lang="en" data-pc-preset="preset-1" data-pc-sidebar-caption="true" data-pc-direction="ltr" dir="ltr"
+    data-pc-theme="light">
 
 <head>
     <title>Order Management Admin Portal - Cancel Orders</title>
-    
+
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/head.php'); ?>
-    
+
     <!-- Stylesheets -->
     <link rel="stylesheet" href="../assets/css/style.css" id="main-style-link" />
     <link rel="stylesheet" href="../assets/css/orders.css" id="main-style-link" />
     <style>
-.print-btn {
-    background-color: #28a745;
-    color: white;
-    border: none;
-    padding: 8px 10px;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 14px;
-    margin-left: 5px;
-    transition: background-color 0.3s;
-}
+    .print-btn {
+        background-color: #28a745;
+        color: white;
+        border: none;
+        padding: 8px 10px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 14px;
+        margin-left: 5px;
+        transition: background-color 0.3s;
+    }
 
-.print-btn:hover {
-    background-color: #218838;
-}
+    .print-btn:hover {
+        background-color: #218838;
+    }
 
-.print-btn:active {
-    transform: scale(0.95);
-}
+    .print-btn:active {
+        transform: scale(0.95);
+    }
 
-.actions {
-    white-space: nowrap;
-}
+    .actions {
+        white-space: nowrap;
+    }
 
-/* Role indicator styles */
-.role-indicator {
-    position: absolute;
-    top: 10px;
-    right: 20px;
-    background: #007bff;
-    color: white;
-    padding: 5px 10px;
-    border-radius: 15px;
-    font-size: 12px;
-    font-weight: bold;
-}
+    /* Role indicator styles */
+    .role-indicator {
+        position: absolute;
+        top: 10px;
+        right: 20px;
+        background: #007bff;
+        color: white;
+        padding: 5px 10px;
+        border-radius: 15px;
+        font-size: 12px;
+        font-weight: bold;
+    }
 
-.role-indicator.admin {
-    background: #28a745;
-}
+    .role-indicator.admin {
+        background: #28a745;
+    }
 
-.role-indicator.user {
-    background: #6c757d;
-}
-</style>
+    .role-indicator.user {
+        background: #6c757d;
+    }
+    </style>
 </head>
 
 <body>
@@ -355,7 +391,7 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
 
     <div class="pc-container">
         <div class="pc-content">
-            
+
             <!-- Page Header -->
             <div class="page-header">
                 <div class="page-block">
@@ -366,70 +402,89 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
             </div>
 
             <div class="main-content-wrapper">
-                
+
                 <!-- Order Tracking and Filter Section -->
                 <div class="tracking-container">
                     <form class="tracking-form" method="GET" action="">
                         <div class="form-group">
                             <label for="order_id_filter">Order ID</label>
-                            <input type="text" id="order_id_filter" name="order_id_filter" 
-                                   placeholder="Enter order ID" 
-                                   value="<?php echo htmlspecialchars($order_id_filter); ?>">
+                            <input type="text" id="order_id_filter" name="order_id_filter" placeholder="Enter order ID"
+                                value="<?php echo htmlspecialchars($order_id_filter); ?>">
                         </div>
-                        
+
                         <div class="form-group">
                             <label for="customer_name_filter">Customer Name</label>
-                            <input type="text" id="customer_name_filter" name="customer_name_filter" 
-                                   placeholder="Enter customer name" 
-                                   value="<?php echo htmlspecialchars($customer_name_filter); ?>">
+                            <input type="text" id="customer_name_filter" name="customer_name_filter"
+                                placeholder="Enter customer name"
+                                value="<?php echo htmlspecialchars($customer_name_filter); ?>">
                         </div>
 
                         <!-- User ID Filter - SIMPLIFIED CONDITION -->
                         <?php if ($rbac->shouldShowUserColumn()): ?>
-                            <div class="form-group">
-                                <label for="user_id_filter">User</label>
-                                <select id="user_id_filter" name="user_id_filter">
-                                    <option value="">All Users</option>
-                                    <?php if ($usersResult && $usersResult->num_rows > 0): ?>
-                                        <?php while ($userRow = $usersResult->fetch_assoc()): ?>
-                                            <option value="<?php echo htmlspecialchars($userRow['id']); ?>" 
-                                                    <?php echo ($user_id_filter == $userRow['id']) ? 'selected' : ''; ?>>
-                                                <?php echo htmlspecialchars($userRow['name']) . ' (ID: ' . $userRow['id'] . ')'; ?>
-                                            </option>
-                                        <?php endwhile; ?>
-                                    <?php endif; ?>
-                                </select>
-                            </div>
+                        <div class="form-group">
+                            <label for="user_id_filter">User</label>
+                            <select id="user_id_filter" name="user_id_filter">
+                                <option value="">All Users</option>
+                                <?php if ($usersResult && $usersResult->num_rows > 0): ?>
+                                <?php while ($userRow = $usersResult->fetch_assoc()): ?>
+                                <option value="<?php echo htmlspecialchars($userRow['id']); ?>"
+                                    <?php echo ($user_id_filter == $userRow['id']) ? 'selected' : ''; ?>>
+                                    <?php echo htmlspecialchars($userRow['name']) . ' (ID: ' . $userRow['id'] . ')'; ?>
+                                </option>
+                                <?php endwhile; ?>
+                                <?php endif; ?>
+                            </select>
+                        </div>
                         <?php endif; ?>
-                        
+
                         <div class="form-group">
                             <label for="date_from">Date From</label>
-                            <input type="date" id="date_from" name="date_from" 
-                                   value="<?php echo htmlspecialchars($date_from); ?>">
+                            <input type="date" id="date_from" name="date_from"
+                                value="<?php echo htmlspecialchars($date_from); ?>">
                         </div>
-                        
+
                         <div class="form-group">
                             <label for="date_to">Date To</label>
-                            <input type="date" id="date_to" name="date_to" 
-                                   value="<?php echo htmlspecialchars($date_to); ?>">
+                            <input type="date" id="date_to" name="date_to"
+                                value="<?php echo htmlspecialchars($date_to); ?>">
                         </div>
-                        
+
                         <div class="form-group">
                             <label for="pay_status_filter">Payment Status</label>
                             <select id="pay_status_filter" name="pay_status_filter">
                                 <option value="">All Payment Status</option>
-                                <option value="paid" <?php echo ($pay_status_filter == 'paid') ? 'selected' : ''; ?>>Paid</option>
-                                <option value="unpaid" <?php echo ($pay_status_filter == 'unpaid') ? 'selected' : ''; ?>>Unpaid</option>
+                                <option value="paid" <?php echo ($pay_status_filter == 'paid') ? 'selected' : ''; ?>>
+                                    Paid</option>
+                                <option value="unpaid"
+                                    <?php echo ($pay_status_filter == 'unpaid') ? 'selected' : ''; ?>>Unpaid</option>
                             </select>
                         </div>
-                        
+
+                        <?php if ($is_main_admin == 1) { ?>
+                        <div class="form-group">
+                            <label for="tenant_id_filter">Tenant ID</label>
+                            <select id="tenant_id_filter" name="tenant_id_filter">
+                                <option value="">All Companies</option>
+                                <?php foreach ($tenants as $tenant): ?>
+                                <option value="<?php echo htmlspecialchars($tenant['tenant_id']); ?>"
+                                    <?php echo $tenant_id_filter == $tenant['tenant_id'] ? 'selected' : ''; ?>>
+                                    <?php echo htmlspecialchars($tenant['company_name'] ? $tenant['company_name'] : 'Company ' . $tenant['tenant_id']); ?>
+                                </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <?php } else { ?>
+                        <!--<input type="hidden" name="teanetID" value="0">-->
+                        <?php } ?>
+
                         <div class="form-group">
                             <div class="button-group">
                                 <button type="submit" class="search-btn">
                                     <i class="fas fa-search"></i>
                                     Search
                                 </button>
-                                <button type="button" class="search-btn" onclick="clearFilters()" style="background: #6c757d;">
+                                <button type="button" class="search-btn" onclick="clearFilters()"
+                                    style="background: #6c757d;">
                                     <i class="fas fa-times"></i>
                                     Clear
                                 </button>
@@ -454,36 +509,53 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                             <tr>
                                 <th>Order ID</th>
                                 <th>Customer Name</th>
+                                <?php if ($is_main_admin == 1) { ?>
+                                <th>Tenant Company Name</th>
+                                <?php } else { ?>
+                                <!--<input type="hidden" name="teanetID" value="0">-->
+                                <?php } ?>
                                 <th>Issue Date - Due Date</th>
                                 <th>Total Amount</th>
                                 <th>Pay Status</th>
                                 <?php if ($rbac->shouldShowUserColumn()): ?>
-                                    <th>User</th>
+                                <th>User</th>
                                 <?php endif; ?>
                                 <th>Actions</th>
                             </tr>
                         </thead>
                         <tbody id="ordersTableBody">
                             <?php if ($result && $result->num_rows > 0): ?>
-                                <?php while ($row = $result->fetch_assoc()): ?>
-                                    <tr>
-                                        <!-- Order ID -->
-                                        <td class="order-id">
-                                            <?php echo isset($row['order_id']) ? htmlspecialchars($row['order_id']) : ''; ?>
-                                        </td>
-                                        
-                                        <!-- FIXED: Customer Name with ID - now using full_name from order_header -->
-                                        <td class="customer-name">
-                                            <?php
+                            <?php while ($row = $result->fetch_assoc()): ?>
+                            <tr>
+                                <!-- Order ID -->
+                                <td class="order-id">
+                                    <?php echo isset($row['order_id']) ? htmlspecialchars($row['order_id']) : ''; ?>
+                                </td>
+
+                                <!-- FIXED: Customer Name with ID - now using full_name from order_header -->
+                                <td class="customer-name">
+                                    <?php
                                             $customerName = isset($row['customer_name']) ? htmlspecialchars($row['customer_name']) : 'N/A';
                                             $customerId = isset($row['customer_id']) ? htmlspecialchars($row['customer_id']) : '';
                                             echo $customerName . ($customerId ? " ($customerId)" : "");
                                             ?>
-                                        </td>
-                                       
-                                        <!-- Issue Date - Due Date -->
-                                        <td class="date-range">
-                                            <?php
+                                </td>
+
+                                <!-- Teanaent Company Name -->
+                                <?php if ($is_main_admin == 1) { ?>
+                                <td class="customer-name">
+                                    <div class="customer-info">
+                                        <h6 style="margin: 0; font-size: 14px;">
+                                            <?php echo htmlspecialchars($row['company_name']); ?></h6>
+                                    </div>
+                                </td>
+                                <?php } else { ?>
+                                <!--<input type="hidden" name="teanetID" value="0">-->
+                                <?php } ?>
+
+                                <!-- Issue Date - Due Date -->
+                                <td class="date-range">
+                                    <?php
                                             $issueDate = isset($row['issue_date']) ? date('Y-m-d', strtotime($row['issue_date'])) : 'N/A';
                                             $dueDate = isset($row['due_date']) ? date('Y-m-d', strtotime($row['due_date'])) : 'N/A';
                                             echo "<div class='date-container'>";
@@ -492,35 +564,35 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                                             echo "<span class='due-date'>" . $dueDate . "</span>";
                                             echo "</div>";
                                             ?>
-                                        </td>
-                                        
-                                        <!-- Total Amount with Currency -->
-                                        <td class="amount">
-                                            <?php
+                                </td>
+
+                                <!-- Total Amount with Currency -->
+                                <td class="amount">
+                                    <?php
                                             $amount = isset($row['total_amount']) ? (float)$row['total_amount'] : 0;
                                             $currency = isset($row['currency']) ? $row['currency'] : 'lkr';
                                             $currencySymbol = ($currency == 'usd') ? '$' : 'Rs';
                                             echo $currencySymbol . number_format($amount, 2);
                                             ?>
-                                        </td>
-                                        
-                                        <!-- Payment Status Badge -->
-                                        <td>
-                                            <?php
+                                </td>
+
+                                <!-- Payment Status Badge -->
+                                <td>
+                                    <?php
                                             $payStatus = isset($row['pay_status']) ? $row['pay_status'] : 'unpaid';
                                             if ($payStatus == 'paid'): ?>
-                                                <span class="status-badge pay-status-paid">Paid</span>
-                                            <?php elseif ($payStatus == 'partial'): ?>
-                                                <span class="status-badge pay-status-partial">Partial</span>
-                                            <?php else: ?>
-                                                <span class="status-badge pay-status-unpaid">Unpaid</span>
-                                            <?php endif; ?>
-                                        </td>
-                                        
-                                        <!-- User Column - SIMPLIFIED CONDITION -->
-                                        <?php if ($rbac->shouldShowUserColumn()): ?>
-                                            <td>
-                                                <?php
+                                    <span class="status-badge pay-status-paid">Paid</span>
+                                    <?php elseif ($payStatus == 'partial'): ?>
+                                    <span class="status-badge pay-status-partial">Partial</span>
+                                    <?php else: ?>
+                                    <span class="status-badge pay-status-unpaid">Unpaid</span>
+                                    <?php endif; ?>
+                                </td>
+
+                                <!-- User Column - SIMPLIFIED CONDITION -->
+                                <?php if ($rbac->shouldShowUserColumn()): ?>
+                                <td>
+                                    <?php
                                                 $userName = isset($row['user_name']) ? htmlspecialchars($row['user_name']) : 'N/A';
                                                 $interface = isset($row['interface']) ? $row['interface'] : '';
                                                 $userId = isset($row['user_id']) ? htmlspecialchars($row['user_id']) : '';
@@ -537,32 +609,33 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                                                     echo "<br><span style='color: #666; font-size: 0.9em;'>(leads)</span>";
                                                 }
                                                 ?>
-                                            </td>
-                                        <?php endif; ?>
-                                        
-                                        <!-- Action Buttons -->
-                                        <td class="actions">
-                                            <div class="action-buttons-group">
-                                                <button class="action-btn view-btn" title="View Order Details" 
-                onclick="openOrderModal('<?php echo isset($row['order_id']) ? htmlspecialchars($row['order_id']) : ''; ?>', '<?php echo isset($row['interface']) ? htmlspecialchars($row['interface']) : ''; ?>')">
-            <i class="fas fa-eye"></i>
-        </button>
+                                </td>
+                                <?php endif; ?>
 
-         <!-- Print Button -->
-    <button class="action-btn print-btn" title="Print Order" 
-            onclick="printOrder('<?php echo isset($row['order_id']) ? htmlspecialchars($row['order_id']) : ''; ?>')">
-        <i class="fas fa-print"></i>
-    </button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                <?php endwhile; ?>
+                                <!-- Action Buttons -->
+                                <td class="actions">
+                                    <div class="action-buttons-group">
+                                        <button class="action-btn view-btn" title="View Order Details"
+                                            onclick="openOrderModal('<?php echo isset($row['order_id']) ? htmlspecialchars($row['order_id']) : ''; ?>', '<?php echo isset($row['interface']) ? htmlspecialchars($row['interface']) : ''; ?>')">
+                                            <i class="fas fa-eye"></i>
+                                        </button>
+
+                                        <!-- Print Button -->
+                                        <button class="action-btn print-btn" title="Print Order"
+                                            onclick="printOrder('<?php echo isset($row['order_id']) ? htmlspecialchars($row['order_id']) : ''; ?>')">
+                                            <i class="fas fa-print"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                            <?php endwhile; ?>
                             <?php else: ?>
-                                <tr>
-                                    <td colspan="<?php echo $rbac->getTableColspan(); ?>" class="text-center" style="padding: 40px; text-align: center; color: #666;">
-                                        <?php echo $rbac->getNoRecordsMessage(); ?>
-                                    </td>
-                                </tr>
+                            <tr>
+                                <td colspan="<?php echo $rbac->getTableColspan(); ?>" class="text-center"
+                                    style="padding: 40px; text-align: center; color: #666;">
+                                    <?php echo $rbac->getNoRecordsMessage(); ?>
+                                </td>
+                            </tr>
                             <?php endif; ?>
                         </tbody>
                     </table>
@@ -571,26 +644,29 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                 <!-- Pagination Controls -->
                 <div class="pagination">
                     <div class="pagination-info">
-                        Showing <?php echo $offset + 1; ?> to <?php echo min($offset + $limit, $totalRows); ?> of <?php echo $totalRows; ?> entries
+                        Showing <?php echo $offset + 1; ?> to <?php echo min($offset + $limit, $totalRows); ?> of
+                        <?php echo $totalRows; ?> entries
                     </div>
                     <div class="pagination-controls">
                         <?php if ($page > 1): ?>
-                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page - 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&user_id_filter=<?php echo urlencode($user_id_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&search=<?php echo urlencode($search); ?>'">
-                                <i class="fas fa-chevron-left"></i>
-                            </button>
+                        <button class="page-btn"
+                            onclick="window.location.href='?page=<?php echo $page - 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&user_id_filter=<?php echo urlencode($user_id_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&search=<?php echo urlencode($search); ?>'">
+                            <i class="fas fa-chevron-left"></i>
+                        </button>
                         <?php endif; ?>
-                        
+
                         <?php for ($i = max(1, $page - 2); $i <= min($totalPages, $page + 2); $i++): ?>
-                            <button class="page-btn <?php echo ($i == $page) ? 'active' : ''; ?>" 
-                                    onclick="window.location.href='?page=<?php echo $i; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&user_id_filter=<?php echo urlencode($user_id_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&search=<?php echo urlencode($search); ?>'">
-                                <?php echo $i; ?>
-                            </button>
+                        <button class="page-btn <?php echo ($i == $page) ? 'active' : ''; ?>"
+                            onclick="window.location.href='?page=<?php echo $i; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&user_id_filter=<?php echo urlencode($user_id_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&search=<?php echo urlencode($search); ?>'">
+                            <?php echo $i; ?>
+                        </button>
                         <?php endfor; ?>
-                        
+
                         <?php if ($page < $totalPages): ?>
-                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page + 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&user_id_filter=<?php echo urlencode($user_id_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&search=<?php echo urlencode($search); ?>'">
-                                <i class="fas fa-chevron-right"></i>
-                            </button>
+                        <button class="page-btn"
+                            onclick="window.location.href='?page=<?php echo $page + 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&user_id_filter=<?php echo urlencode($user_id_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&search=<?php echo urlencode($search); ?>'">
+                            <i class="fas fa-chevron-right"></i>
+                        </button>
                         <?php endif; ?>
                     </div>
                 </div>
@@ -602,79 +678,79 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/order_view_modal.php'); ?>
 
     <script>
-        /**
-         * JavaScript functionality for cancel order management
-         * SIMPLIFIED: Using centralized RBAC approach
-         */
-        
-        let currentOrderId = null;
-        let currentInterface = null;
-        let currentPaymentSlip = null;
-        let currentPayStatus = null;
-        
-        // Simplified role variables from PHP
-        const currentUserRole = <?php echo $current_user_role; ?>;
-        const currentUserId = <?php echo $current_user_id; ?>;
-        const isAdmin = <?php echo $rbac->isAdmin() ? 'true' : 'false'; ?>;
+    /**
+     * JavaScript functionality for cancel order management
+     * SIMPLIFIED: Using centralized RBAC approach
+     */
 
-        // Clear all filter inputs - SIMPLIFIED
-        function clearFilters() {
-            document.getElementById('order_id_filter').value = '';
-            document.getElementById('customer_name_filter').value = '';
-            document.getElementById('date_from').value = '';
-            document.getElementById('date_to').value = '';
-            document.getElementById('pay_status_filter').value = '';
-            
-            // Only clear user_id_filter for admin users (if it exists) - SIMPLIFIED
-            if (isAdmin) {
-                const userIdFilter = document.getElementById('user_id_filter');
-                if (userIdFilter) {
-                    userIdFilter.value = '';
-                }
+    let currentOrderId = null;
+    let currentInterface = null;
+    let currentPaymentSlip = null;
+    let currentPayStatus = null;
+
+    // Simplified role variables from PHP
+    const currentUserRole = <?php echo $current_user_role; ?>;
+    const currentUserId = <?php echo $current_user_id; ?>;
+    const isAdmin = <?php echo $rbac->isAdmin() ? 'true' : 'false'; ?>;
+
+    // Clear all filter inputs - SIMPLIFIED
+    function clearFilters() {
+        document.getElementById('order_id_filter').value = '';
+        document.getElementById('customer_name_filter').value = '';
+        document.getElementById('date_from').value = '';
+        document.getElementById('date_to').value = '';
+        document.getElementById('pay_status_filter').value = '';
+
+        // Only clear user_id_filter for admin users (if it exists) - SIMPLIFIED
+        if (isAdmin) {
+            const userIdFilter = document.getElementById('user_id_filter');
+            if (userIdFilter) {
+                userIdFilter.value = '';
             }
-            
-            // Submit the form to clear filters
-            window.location.href = window.location.pathname;
         }
 
-        // Enhanced openOrderModal function
-        function openOrderModal(orderId, interface = null) {
-            if (!orderId || orderId.trim() === '') {
-                alert('Order ID is required to view order details.');
-                return;
-            }
-            
-            console.log('Opening modal for Order ID:', orderId, 'Interface:', interface);
-            
-            currentOrderId = orderId.trim();
-            currentInterface = interface;
-            
-            const modal = document.getElementById('orderModal');
-            const modalContent = document.getElementById('modalContent');
-            const downloadBtn = document.getElementById('downloadBtn');
-            const viewPaymentSlipBtn = document.getElementById('viewPaymentSlipBtn');
-            
-            // Show modal
-            modal.style.display = 'flex';
-            document.body.style.overflow = 'hidden';
-            
-            // Show loading state
-            modalContent.innerHTML = `
+        // Submit the form to clear filters
+        window.location.href = window.location.pathname;
+    }
+
+    // Enhanced openOrderModal function
+    function openOrderModal(orderId, interface = null) {
+        if (!orderId || orderId.trim() === '') {
+            alert('Order ID is required to view order details.');
+            return;
+        }
+
+        console.log('Opening modal for Order ID:', orderId, 'Interface:', interface);
+
+        currentOrderId = orderId.trim();
+        currentInterface = interface;
+
+        const modal = document.getElementById('orderModal');
+        const modalContent = document.getElementById('modalContent');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const viewPaymentSlipBtn = document.getElementById('viewPaymentSlipBtn');
+
+        // Show modal
+        modal.style.display = 'flex';
+        document.body.style.overflow = 'hidden';
+
+        // Show loading state
+        modalContent.innerHTML = `
                 <div class="modal-loading">
                     <i class="fas fa-spinner fa-spin"></i>
                     Loading ${interface === 'leads' ? 'lead' : 'order'} details for Order ID: ${currentOrderId}...
                 </div>
             `;
-            downloadBtn.style.display = 'none';
-            viewPaymentSlipBtn.style.display = 'none';
-            
-            // Determine which PHP file to use based on interface
-            const phpFile = (interface === 'leads') ? '../leads/leads_download.php' : 'download_order_page.php';
-            const fetchUrl = phpFile + '?id=' + encodeURIComponent(currentOrderId);
-            
-            console.log('Fetching from:', fetchUrl);
-            
-            fetch(fetchUrl, {
+        downloadBtn.style.display = 'none';
+        viewPaymentSlipBtn.style.display = 'none';
+
+        // Determine which PHP file to use based on interface
+        const phpFile = (interface === 'leads') ? '../leads/leads_download.php' : 'download_order_page.php';
+        const fetchUrl = phpFile + '?id=' + encodeURIComponent(currentOrderId);
+
+        console.log('Fetching from:', fetchUrl);
+
+        fetch(fetchUrl, {
                 method: 'GET',
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded',
@@ -694,7 +770,7 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                 }
                 modalContent.innerHTML = data;
                 downloadBtn.style.display = 'inline-flex';
-                
+
                 // Check for payment slip and update button visibility
                 checkPaymentSlipAvailability();
             })
@@ -714,14 +790,14 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                     </div>
                 `;
             });
-        }
+    }
 
-        // Function to check payment slip availability
-        function checkPaymentSlipAvailability() {
-            if (!currentOrderId) return;
-            
-            // Fetch payment slip information from server
-            fetch('get_payment_slip_info.php?order_id=' + encodeURIComponent(currentOrderId), {
+    // Function to check payment slip availability
+    function checkPaymentSlipAvailability() {
+        if (!currentOrderId) return;
+
+        // Fetch payment slip information from server
+        fetch('get_payment_slip_info.php?order_id=' + encodeURIComponent(currentOrderId), {
                 method: 'GET',
                 headers: {
                     'Content-Type': 'application/json',
@@ -732,9 +808,9 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                 if (data.success) {
                     currentPaymentSlip = data.payment_slip;
                     currentPayStatus = data.pay_status;
-                    
+
                     const viewPaymentSlipBtn = document.getElementById('viewPaymentSlipBtn');
-                    
+
                     // Show button for all paid orders, regardless of slip availability
                     if (currentPayStatus === 'paid') {
                         viewPaymentSlipBtn.style.display = 'inline-flex';
@@ -748,119 +824,119 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
             .catch(error => {
                 console.error('Error checking payment slip:', error);
             });
+    }
+
+    // Function to view payment slip with no-slip message
+    function viewPaymentSlip() {
+        // Check if payment slip exists
+        if (!currentPaymentSlip || currentPaymentSlip.trim() === '') {
+            alert('This order has no payment slip.');
+            return;
         }
 
-        // Function to view payment slip with no-slip message
-        function viewPaymentSlip() {
-            // Check if payment slip exists
-            if (!currentPaymentSlip || currentPaymentSlip.trim() === '') {
-                alert('This order has no payment slip.');
-                return;
-            }
-            
-            // Construct the payment slip URL
-            const slipUrl = '/order_management/dist/uploads/payment_slips/' + encodeURIComponent(currentPaymentSlip);
-            
-            // Open payment slip in new tab
-            window.open(slipUrl, '_blank');
+        // Construct the payment slip URL
+        const slipUrl = '/order_management/dist/uploads/payment_slips/' + encodeURIComponent(currentPaymentSlip);
+
+        // Open payment slip in new tab
+        window.open(slipUrl, '_blank');
+    }
+
+    // Retry loading order 
+    function retryLoadOrder() {
+        if (currentOrderId) {
+            openOrderModal(currentOrderId, currentInterface);
+        }
+    }
+
+    // Close order modal 
+    function closeOrderModal() {
+        const modal = document.getElementById('orderModal');
+        modal.style.display = 'none';
+        document.body.style.overflow = 'auto';
+        currentOrderId = null;
+        currentInterface = null;
+        currentPaymentSlip = null;
+        currentPayStatus = null;
+    }
+
+    // Download order 
+    function downloadOrder() {
+        if (!currentOrderId) {
+            alert('No order selected for download.');
+            return;
         }
 
-        // Retry loading order 
-        function retryLoadOrder() {
-            if (currentOrderId) {
-                openOrderModal(currentOrderId, currentInterface);
-            }
+        const phpFile = (currentInterface === 'leads') ? '../leads/leads_download.php' : 'download_order.php';
+        const downloadUrl = phpFile + '?id=' + encodeURIComponent(currentOrderId) + '&download=1';
+
+        console.log('Downloading from:', downloadUrl);
+        window.open(downloadUrl, '_blank');
+    }
+
+    // Close modal when clicking outside 
+    document.getElementById('orderModal').addEventListener('click', function(e) {
+        if (e.target === this) {
+            closeOrderModal();
         }
+    });
 
-        // Close order modal 
-        function closeOrderModal() {
-            const modal = document.getElementById('orderModal');
-            modal.style.display = 'none';
-            document.body.style.overflow = 'auto';
-            currentOrderId = null;
-            currentInterface = null;
-            currentPaymentSlip = null;
-            currentPayStatus = null;
+    // Close modal with Escape key
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            closeOrderModal();
         }
+    });
 
-        // Download order 
-        function downloadOrder() {
-            if (!currentOrderId) {
-                alert('No order selected for download.');
-                return;
-            }
-            
-            const phpFile = (currentInterface === 'leads') ? '../leads/leads_download.php' : 'download_order.php';
-            const downloadUrl = phpFile + '?id=' + encodeURIComponent(currentOrderId) + '&download=1';
-            
-            console.log('Downloading from:', downloadUrl);
-            window.open(downloadUrl, '_blank');
-        }
+    // Initialize page functionality when DOM is loaded 
+    document.addEventListener('DOMContentLoaded', function() {
+        console.log('Orders page loaded, initializing...');
+        console.log('Current User Role:', currentUserRole, 'User ID:', currentUserId, 'Is Admin:', isAdmin);
 
-        // Close modal when clicking outside 
-        document.getElementById('orderModal').addEventListener('click', function(e) {
-            if (e.target === this) {
-                closeOrderModal();
-            }
-        });
-
-        // Close modal with Escape key
-        document.addEventListener('keydown', function(e) {
-            if (e.key === 'Escape') {
-                closeOrderModal();
-            }
-        });
-
-        // Initialize page functionality when DOM is loaded 
-        document.addEventListener('DOMContentLoaded', function() {
-            console.log('Orders page loaded, initializing...');
-            console.log('Current User Role:', currentUserRole, 'User ID:', currentUserId, 'Is Admin:', isAdmin);
-            
-            const tableRows = document.querySelectorAll('.orders-table tbody tr');
-            tableRows.forEach(row => {
-                row.addEventListener('mouseenter', function() {
-                    this.style.transform = 'translateX(2px)';
-                });
-                
-                row.addEventListener('mouseleave', function() {
-                    this.style.transform = 'translateX(0)';
-                });
+        const tableRows = document.querySelectorAll('.orders-table tbody tr');
+        tableRows.forEach(row => {
+            row.addEventListener('mouseenter', function() {
+                this.style.transform = 'translateX(2px)';
             });
-            
-            const modal = document.getElementById('orderModal');
-            const modalContent = document.getElementById('modalContent');
-            if (!modal || !modalContent) {
-                console.error('Modal elements not found! Check HTML structure.');
-            }
-            
-            // Simplified role-based access info
-            if (!isAdmin) {
-                console.log('Non-admin user: Can only view own orders');
-            } else {
-                console.log('Admin user: Can view all orders');
-            }
+
+            row.addEventListener('mouseleave', function() {
+                this.style.transform = 'translateX(0)';
+            });
         });
 
-        // Print order function
-        function printOrder(orderId) {
-            if (!orderId || orderId.trim() === '') {
-                alert('Order ID is required to print order.');
-                return;
-            }
-            
-            console.log('Printing Order ID:', orderId);
-            
-            // Construct the print URL
-            const printUrl = 'download_order_print.php?id=' + encodeURIComponent(orderId.trim());
-            
-            // Open print page in new window
-            const printWindow = window.open(printUrl, '_blank');
-            
-            // Optional: Auto-print when page loads (uncomment if needed)
-            // printWindow.onload = function() {
-            //     printWindow.print();
-            // };
+        const modal = document.getElementById('orderModal');
+        const modalContent = document.getElementById('modalContent');
+        if (!modal || !modalContent) {
+            console.error('Modal elements not found! Check HTML structure.');
         }
+
+        // Simplified role-based access info
+        if (!isAdmin) {
+            console.log('Non-admin user: Can only view own orders');
+        } else {
+            console.log('Admin user: Can view all orders');
+        }
+    });
+
+    // Print order function
+    function printOrder(orderId) {
+        if (!orderId || orderId.trim() === '') {
+            alert('Order ID is required to print order.');
+            return;
+        }
+
+        console.log('Printing Order ID:', orderId);
+
+        // Construct the print URL
+        const printUrl = 'download_order_print.php?id=' + encodeURIComponent(orderId.trim());
+
+        // Open print page in new window
+        const printWindow = window.open(printUrl, '_blank');
+
+        // Optional: Auto-print when page loads (uncomment if needed)
+        // printWindow.onload = function() {
+        //     printWindow.print();
+        // };
+    }
     </script>
 
     <!-- Include Footer and Scripts -->
@@ -868,4 +944,5 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/scripts.php'); ?>
 
 </body>
+
 </html>
