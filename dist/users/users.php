@@ -62,6 +62,9 @@ $role_filter = isset($_GET['role_filter']) ? trim($_GET['role_filter']) : '';
 $status_filter = isset($_GET['status_filter']) ? trim($_GET['status_filter']) : '';
 $date_from = isset($_GET['date_from']) ? trim($_GET['date_from']) : '';
 $date_to = isset($_GET['date_to']) ? trim($_GET['date_to']) : '';
+$tenant_filter = isset($_GET['tenant_filter']) ? trim($_GET['tenant_filter']) : '';
+
+$is_main_admin = isset($_SESSION['is_main_admin']) && $_SESSION['is_main_admin'] == 1;
 
 // Pagination settings
 $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 10;
@@ -74,12 +77,22 @@ $countSql = "SELECT COUNT(*) as total FROM users";
 // Main query - updated to match your actual database schema
 $sql = "SELECT u.id as user_id, u.name as username, u.name as full_name, u.email, u.mobile as phone, 
                u.nic, r.name as role, u.status, u.commission_per_parcel, u.percentage_drawdown, 
-               u.commission_type, u.created_at, u.updated_at 
+               u.commission_type, u.created_at, u.updated_at, t.company_name as tenant_name
         FROM users u 
-        LEFT JOIN roles r ON u.role_id = r.id";
+        LEFT JOIN roles r ON u.role_id = r.id
+        LEFT JOIN tenants t ON u.tenant_id = t.tenant_id";
 
 // Build search conditions
 $searchConditions = [];
+
+// Filter by tenant_id if set
+$session_tenant_id = $_SESSION['tenant_id'] ?? null;
+if (!$is_main_admin && $session_tenant_id !== null) {
+    $searchConditions[] = "u.tenant_id = " . (int)$session_tenant_id;
+} elseif ($is_main_admin && !empty($tenant_filter)) {
+    $searchConditions[] = "u.tenant_id = " . (int)$tenant_filter;
+}
+
 
 // General search condition
 if (!empty($search)) {
@@ -142,9 +155,12 @@ if (!empty($date_to)) {
 // Apply all search conditions
 if (!empty($searchConditions)) {
     $finalSearchCondition = " WHERE " . implode(' AND ', $searchConditions);
-    $countSql = "SELECT COUNT(*) as total FROM users u LEFT JOIN roles r ON u.role_id = r.id" . $finalSearchCondition;
+    $countSql = "SELECT COUNT(*) as total FROM users u LEFT JOIN roles r ON u.role_id = r.id LEFT JOIN tenants t ON u.tenant_id = t.tenant_id" . $finalSearchCondition;
     $sql .= $finalSearchCondition;
+} else {
+    $countSql = "SELECT COUNT(*) as total FROM users";
 }
+
 
 // Add ordering and pagination
 $sql .= " ORDER BY u.created_at DESC LIMIT $limit OFFSET $offset";
@@ -169,6 +185,16 @@ $role_result = $conn->query($role_sql);
 $roles = [];
 if ($role_result && $role_result->num_rows > 0) {
     $roles = $role_result->fetch_all(MYSQLI_ASSOC);
+}
+
+// Get active tenants for filter dropdown (if main admin)
+$tenants_list = [];
+if ($is_main_admin) {
+    $tenants_sql = "SELECT tenant_id, company_name FROM tenants WHERE status = 'active' ORDER BY company_name";
+    $tenants_result = $conn->query($tenants_sql);
+    if ($tenants_result && $tenants_result->num_rows > 0) {
+        $tenants_list = $tenants_result->fetch_all(MYSQLI_ASSOC);
+    }
 }
 ?>
 
@@ -257,6 +283,21 @@ if ($role_result && $role_result->num_rows > 0) {
                                 <option value="inactive" <?php echo ($status_filter == 'inactive') ? 'selected' : ''; ?>>Inactive</option>
                             </select>
                         </div>
+
+                        <?php if ($is_main_admin): ?>
+                        <div class="form-group">
+                            <label for="tenant_filter">Tenant</label>
+                            <select id="tenant_filter" name="tenant_filter">
+                                <option value="">All Tenants</option>
+                                <?php foreach ($tenants_list as $tenant): ?>
+                                    <option value="<?php echo $tenant['tenant_id']; ?>" 
+                                            <?php echo ($tenant_filter == $tenant['tenant_id']) ? 'selected' : ''; ?>>
+                                        <?php echo htmlspecialchars($tenant['company_name']); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <?php endif; ?>
                         
                         <div class="form-group">
                             <div class="button-group">
@@ -286,6 +327,9 @@ if ($role_result && $role_result->num_rows > 0) {
                         <thead>
                             <tr>
                                 <th>User Info</th>
+                                <?php if ($is_main_admin): ?>
+                                    <th>Tenant</th>
+                                <?php endif; ?>
                                 <th>Contact & NIC</th>
                                 <th>Role & Status</th>
                                 <th>Created</th>
@@ -303,6 +347,15 @@ if ($role_result && $role_result->num_rows > 0) {
                                                 <small style="color: #6c757d; font-size: 12px;">ID: <?php echo htmlspecialchars($row['user_id']); ?></small>
                                             </div>
                                         </td>
+
+                                        <!-- Tenant Info -->
+                                        <?php if ($is_main_admin): ?>
+                                            <td>
+                                                <div style="font-weight: 500; color: #495057;">
+                                                    <?php echo htmlspecialchars($row['tenant_name'] ?: 'N/A'); ?>
+                                                </div>
+                                            </td>
+                                        <?php endif; ?>
                                         
                                         <!-- Contact Info & NIC -->
                                         <td>
@@ -368,8 +421,9 @@ if ($role_result && $role_result->num_rows > 0) {
                                                         data-user-id="<?= $row['user_id'] ?>"
                                                         data-current-status="<?= $row['status'] ?>"
                                                         data-user-name="<?= htmlspecialchars($row['username']) ?>"
-                                                        title="<?= $row['status'] == 'active' ? 'Deactivate User' : 'Activate User' ?>"
-                                                        data-action="<?= $row['status'] == 'active' ? 'deactivate' : 'activate' ?>">
+                                                        title="<?= $row['user_id'] == 1 ? 'Primary Admin status cannot be changed' : ($row['status'] == 'active' ? 'Deactivate User' : 'Activate User') ?>"
+                                                        data-action="<?= $row['status'] == 'active' ? 'deactivate' : 'activate' ?>"
+                                                        <?= $row['user_id'] == 1 ? 'disabled style="opacity: 0.5; cursor: not-allowed; filter: grayscale(1);"' : '' ?>>
                                                     <i class="fas <?= $row['status'] == 'active' ? 'fa-user-times' : 'fa-user-check' ?>"></i>
                                                 </button>
                                             </div>
@@ -395,20 +449,20 @@ if ($role_result && $role_result->num_rows > 0) {
                     </div>
                     <div class="pagination-controls">
                         <?php if ($page > 1): ?>
-                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page - 1; ?>&limit=<?php echo $limit; ?>&user_name_filter=<?php echo urlencode($user_name_filter); ?>&email_filter=<?php echo urlencode($email_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&nic_filter=<?php echo urlencode($nic_filter); ?>&role_filter=<?php echo urlencode($role_filter); ?>&status_filter=<?php echo urlencode($status_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&search=<?php echo urlencode($search); ?>'">
+                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page - 1; ?>&limit=<?php echo $limit; ?>&user_name_filter=<?php echo urlencode($user_name_filter); ?>&email_filter=<?php echo urlencode($email_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&nic_filter=<?php echo urlencode($nic_filter); ?>&role_filter=<?php echo urlencode($role_filter); ?>&status_filter=<?php echo urlencode($status_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&search=<?php echo urlencode($search); ?>&tenant_filter=<?php echo urlencode($tenant_filter); ?>'">
                                 <i class="fas fa-chevron-left"></i>
                             </button>
                         <?php endif; ?>
                         
                         <?php for ($i = max(1, $page - 2); $i <= min($totalPages, $page + 2); $i++): ?>
                             <button class="page-btn <?php echo ($i == $page) ? 'active' : ''; ?>" 
-                                    onclick="window.location.href='?page=<?php echo $i; ?>&limit=<?php echo $limit; ?>&user_name_filter=<?php echo urlencode($user_name_filter); ?>&email_filter=<?php echo urlencode($email_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&nic_filter=<?php echo urlencode($nic_filter); ?>&role_filter=<?php echo urlencode($role_filter); ?>&status_filter=<?php echo urlencode($status_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&search=<?php echo urlencode($search); ?>'">
+                                    onclick="window.location.href='?page=<?php echo $i; ?>&limit=<?php echo $limit; ?>&user_name_filter=<?php echo urlencode($user_name_filter); ?>&email_filter=<?php echo urlencode($email_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&nic_filter=<?php echo urlencode($nic_filter); ?>&role_filter=<?php echo urlencode($role_filter); ?>&status_filter=<?php echo urlencode($status_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&search=<?php echo urlencode($search); ?>&tenant_filter=<?php echo urlencode($tenant_filter); ?>'">
                                 <?php echo $i; ?>
                             </button>
                         <?php endfor; ?>
                         
                         <?php if ($page < $totalPages): ?>
-                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page + 1; ?>&limit=<?php echo $limit; ?>&user_name_filter=<?php echo urlencode($user_name_filter); ?>&email_filter=<?php echo urlencode($email_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&nic_filter=<?php echo urlencode($nic_filter); ?>&role_filter=<?php echo urlencode($role_filter); ?>&status_filter=<?php echo urlencode($status_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&search=<?php echo urlencode($search); ?>'">
+                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page + 1; ?>&limit=<?php echo $limit; ?>&user_name_filter=<?php echo urlencode($user_name_filter); ?>&email_filter=<?php echo urlencode($email_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&nic_filter=<?php echo urlencode($nic_filter); ?>&role_filter=<?php echo urlencode($role_filter); ?>&status_filter=<?php echo urlencode($status_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&search=<?php echo urlencode($search); ?>&tenant_filter=<?php echo urlencode($tenant_filter); ?>'">
                                 <i class="fas fa-chevron-right"></i>
                             </button>
                         <?php endif; ?>

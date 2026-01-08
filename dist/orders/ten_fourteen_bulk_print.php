@@ -18,6 +18,7 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     header("Location: /order_management/dist/pages/login.php");
     exit();
 }
+$logged_user_id = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
 
 // Include database connection
 include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/connection/db_connection.php');
@@ -29,6 +30,7 @@ $date = isset($_GET['date']) ? trim($_GET['date']) : date('Y-m-d');
 $time_from = isset($_GET['time_from']) ? trim($_GET['time_from']) : '';
 $time_to = isset($_GET['time_to']) ? trim($_GET['time_to']) : '';
 $status_filter = isset($_GET['status_filter']) ? trim($_GET['status_filter']) : 'all';
+$tenant_filter = isset($_GET['tenant_filter']) ? trim($_GET['tenant_filter']) : '';
 
 // Tracking filter parameters - DEFAULT to 'with_tracking'
 $tracking_filter = isset($_GET['tracking_filter']) ? trim($_GET['tracking_filter']) : 'with_tracking';
@@ -42,7 +44,7 @@ $offset = ($page - 1) * $limit;
  * BUILD QUERY TO FETCH ORDERS
  * ADDED: pay_status, pay_by, pay_date fields
  */
-$sql = "SELECT o.order_id, o.customer_id, o.full_name, o.mobile, o.address_line1, o.address_line2,
+$sql = "SELECT o.order_id, o.tenant_id, o.customer_id, o.full_name, o.mobile, o.address_line1, o.address_line2,
                o.status, o.updated_at, o.interface, o.tracking_number, o.total_amount, o.currency,
                o.delivery_fee, o.discount, o.issue_date,
                o.pay_status, o.pay_by, o.pay_date,
@@ -104,6 +106,22 @@ if (!empty($time_to)) {
 if (!empty($status_filter) && $status_filter !== 'all') {
     $statusTerm = $conn->real_escape_string($status_filter);
     $searchConditions[] = "o.status = '$statusTerm'";
+}
+
+// Tenant Filtering Logic
+$is_main_admin = isset($_SESSION['is_main_admin']) ? (int)$_SESSION['is_main_admin'] : 0;
+$role_id = isset($_SESSION['role_id']) ? (int)$_SESSION['role_id'] : 0;
+$session_tenant_id = isset($_SESSION['tenant_id']) ? (int)$_SESSION['tenant_id'] : 0;
+
+if ($is_main_admin === 1 && $role_id === 1) {
+    if (!empty($tenant_filter)) {
+        $searchConditions[] = "o.tenant_id = " . (int)$tenant_filter;
+    }
+} elseif ($role_id === 1 && $is_main_admin === 0) {
+    $searchConditions[] = "o.tenant_id = $session_tenant_id";
+} else {
+    $searchConditions[] = "o.tenant_id = $session_tenant_id";
+    $searchConditions[] = "o.user_id = $logged_user_id";
 }
 
 // Tracking filter conditions
@@ -168,26 +186,24 @@ if (!empty($order_ids)) {
     }
 }
 
-// Fetch branding info
-$branding_sql = "SELECT * FROM branding WHERE active = 1 ORDER BY branding_id DESC LIMIT 1";
-$branding_result = $conn->query($branding_sql);
+// Fetch all brandings for multi-tenant support
+$brandings = [];
+$branding_result = $conn->query("SELECT * FROM branding WHERE active = 1");
+if ($branding_result) {
+    while ($b = $branding_result->fetch_assoc()) {
+        $brandings[$b['tenant_id']] = $b;
+    }
+}
 
-if ($branding_result && $branding_result->num_rows > 0) {
-    $branding = $branding_result->fetch_assoc();
-    $company = [
-        'name'     => $branding['company_name'] ?? 'Company Name',
-        'address'  => $branding['address'] ?? 'Address not set',
-        'email'    => $branding['email'] ?? '',
-        'phone'    => $branding['hotline'] ?? '',
-        'logo_url' => $branding['logo_url'] ?? ''
-    ];
-} else {
-    $company = [
-        'name'     => 'Company Name',
-        'address'  => 'Address not set',
-        'email'    => '',
-        'phone'    => '',
-        'logo_url' => ''
+function getBrandingForTenant($tId, $brandings_list) {
+    if (!empty($tId) && isset($brandings_list[$tId])) {
+        return $brandings_list[$tId];
+    }
+    if (!empty($brandings_list)) {
+        return reset($brandings_list);
+    }
+    return [
+        'company_name' => 'Company Name', 'address' => 'Address not set', 'email' => '', 'hotline' => '', 'logo_url' => ''
     ];
 }
 
@@ -270,6 +286,17 @@ function getTrackingFilterText($tracking_filter, $tracking_number = '') {
             
           <?php foreach ($orders as $index => $order): ?>
                 <?php
+                // Resolve Branding
+                $tId = isset($order['tenant_id']) ? $order['tenant_id'] : 0;
+                $bData = getBrandingForTenant($tId, $brandings);
+                $company = [
+                    'name'     => $bData['company_name'] ?? 'Company Name',
+                    'address'  => $bData['address'] ?? 'Address not set',
+                    'email'    => $bData['email'] ?? '',
+                    'phone'    => $bData['hotline'] ?? '',
+                    'logo_url' => $bData['logo_url'] ?? ''
+                ];
+                
                 // Prepare order data 
                 $order_id = $order['order_id'];
                 $currency_symbol = getCurrencySymbol($order['currency'] ?? 'lkr');

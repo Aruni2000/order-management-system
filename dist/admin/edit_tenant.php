@@ -290,7 +290,7 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                         <button type="submit" class="btn btn-primary" id="submitBtn">
                             <i class="fas fa-save"></i> Update Tenant
                         </button>
-                        <button type="button" class="btn btn-secondary ms-2" id="cancelBtn" onclick="window.location.href='tenants.php'">
+                        <button type="button" class="btn btn-secondary ms-2" id="cancelBtn" onclick="window.location.href='tenant_list.php'">
                             <i class="fas fa-times"></i> Back to All Tenants
                         </button>
                     </div>

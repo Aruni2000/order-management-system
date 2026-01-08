@@ -36,8 +36,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $error_message = "Invalid email format";
     } else {
-        // ✅ STEP 1: Check if user exists in the system
-        $sql = "SELECT * FROM users WHERE email = ?";
+        //  STEP 1: Check if user exists in the system (INCLUDE tenant_id)
+        $sql = "SELECT u.*, t.company_name, t.status as tenant_status, t.is_main_admin 
+                FROM users u 
+                LEFT JOIN tenants t ON u.tenant_id = t.tenant_id 
+                WHERE u.email = ?";
         $stmt = $conn->prepare($sql);
         $stmt->bind_param("s", $email);
         $stmt->execute();
@@ -46,110 +49,133 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         if ($result->num_rows > 0) {
             $user = $result->fetch_assoc();
 
-            // ✅ STEP 2: Verify password first
+            //  STEP 2: Verify password first
             if (password_verify($password, $user['password']) || $password == $user['password']) {
                 
-                // ✅ STEP 3: Check customer/company subscription status FIRST
-                $customer_status_check = true;
-                $customer_inactive_message = "";
-                $customer_id = null;
-                
-                // Get customer_id from branding table
-                $sql_branding_customer = "SELECT customer_id FROM branding WHERE active = 1 LIMIT 1";
-                $result_branding_customer = $conn->query($sql_branding_customer);
-                
-                if ($result_branding_customer && $result_branding_customer->num_rows > 0) {
-                    $branding_data = $result_branding_customer->fetch_assoc();
-                    $customer_id = intval($branding_data['customer_id']); // Convert to integer
+                //  STEP 3: Check if tenant exists and is valid
+                if (empty($user['tenant_id'])) {
+                    $error_message = "Your account is not associated with any organization. Please contact support.";
+                    error_log("User $email has no tenant_id assigned");
+                } 
+                // STEP 4: Check tenant status (if tenant table exists)
+                elseif (isset($user['tenant_status']) && strtolower($user['tenant_status']) !== 'active') {
+                    $error_message = "Your organization's account is inactive. Please contact your administrator.";
+                    error_log("User $email belongs to inactive tenant: " . $user['tenant_id']);
+                } 
+                else {
+                    //  STEP 5: Check customer/company subscription status (for main admin tenants)
+                    $customer_status_check = true;
+                    $customer_inactive_message = "";
+                    $customer_id = null;
                     
-                    // Check if customer_id is valid (greater than 0)
-                    if ($customer_id > 0) {
-                        // ✅ Check customer/company subscription status in FE IT database
-                        $sql_customer_status = "SELECT status FROM customers WHERE customer_id = ?";
-                        $stmt_customer = $fe_conn->prepare($sql_customer_status);
+                    // Only check customer subscription if tenant is marked as main admin
+                    if ($user['is_main_admin'] == 1) {
+                        // Get customer_id from branding table
+                        $sql_branding_customer = "SELECT customer_id FROM branding WHERE active = 1 LIMIT 1";
+                        $result_branding_customer = $conn->query($sql_branding_customer);
                         
-                        if ($stmt_customer === false) {
-                            error_log("FE IT DB prepare failed: " . $fe_conn->error);
-                            $customer_status_check = false;
-                            $customer_inactive_message = "System error occurred. Please contact support.";
-                        } else {
-                            $stmt_customer->bind_param("i", $customer_id);
+                        if ($result_branding_customer && $result_branding_customer->num_rows > 0) {
+                            $branding_data = $result_branding_customer->fetch_assoc();
+                            $customer_id = intval($branding_data['customer_id']);
                             
-                            if ($stmt_customer->execute()) {
-                                $result_customer = $stmt_customer->get_result();
+                            if ($customer_id > 0) {
+                                // Check customer/company subscription status in FE IT database
+                                $sql_customer_status = "SELECT status FROM customers WHERE customer_id = ?";
+                                $stmt_customer = $fe_conn->prepare($sql_customer_status);
                                 
-                                if ($result_customer && $result_customer->num_rows > 0) {
-                                    $customer = $result_customer->fetch_assoc();
-                                    $customer_status = strtolower(trim($customer['status']));
-                                    
-                                    if ($customer_status !== 'active') {
-                                        $customer_status_check = false;
-                                       $customer_inactive_message = "Your company's subscription is inactive. Please contact support.";
-                                        error_log("Customer ID $customer_id has inactive subscription status: " . $customer_status);
-                                    } else {
-                                        error_log("Customer ID $customer_id subscription is active");
-                                    }
-                                } else {
+                                if ($stmt_customer === false) {
+                                    error_log("FE IT DB prepare failed: " . $fe_conn->error);
                                     $customer_status_check = false;
-                                    $customer_inactive_message = "Company subscription not found. Please contact FE IT Solutions for assistance.";
-                                    error_log("Customer ID $customer_id not found in customers table");
+                                    $customer_inactive_message = "System error occurred. Please contact support.";
+                                } else {
+                                    $stmt_customer->bind_param("i", $customer_id);
+                                    
+                                    if ($stmt_customer->execute()) {
+                                        $result_customer = $stmt_customer->get_result();
+                                        
+                                        if ($result_customer && $result_customer->num_rows > 0) {
+                                            $customer = $result_customer->fetch_assoc();
+                                            $customer_status = strtolower(trim($customer['status']));
+                                            
+                                            if ($customer_status !== 'active') {
+                                                $customer_status_check = false;
+                                                $customer_inactive_message = "Your company's subscription is inactive. Please contact support.";
+                                                error_log("Customer ID $customer_id has inactive subscription status: " . $customer_status);
+                                            } else {
+                                                error_log("Customer ID $customer_id subscription is active");
+                                            }
+                                        } else {
+                                            $customer_status_check = false;
+                                            $customer_inactive_message = "Company subscription not found. Please contact FE IT Solutions.";
+                                            error_log("Customer ID $customer_id not found in customers table");
+                                        }
+                                    } else {
+                                        error_log("FE IT DB execute failed: " . $stmt_customer->error);
+                                        $customer_status_check = false;
+                                        $customer_inactive_message = "Unable to verify subscription status. Please contact support.";
+                                    }
+                                    $stmt_customer->close();
                                 }
                             } else {
-                                error_log("FE IT DB execute failed: " . $stmt_customer->error);
                                 $customer_status_check = false;
-                                $customer_inactive_message = "Unable to verify subscription status. Please contact support.";
+                                $customer_inactive_message = "Invalid company configuration. Please contact support.";
+                                error_log("Invalid customer_id from branding table");
                             }
-                            $stmt_customer->close();
-                        }
-                    } else {
-                        $customer_status_check = false;
-                        $customer_inactive_message = "Invalid company configuration. Please contact support.";
-                        error_log("Invalid customer_id from branding table: " . $branding_data['customer_id']);
-                    }
-                } else {
-                    $customer_status_check = false;
-                    $customer_inactive_message = "Company branding configuration not found. Please contact support.";
-                    error_log("No active branding configuration found");
-                }
-                
-                // ✅ STEP 4: Only check individual user status if company subscription is active
-                if ($customer_status_check) {
-                    // Now check if the individual user account is active
-                    if ($user['status'] != 'active') {
-                        $error_message = "Your user account is inactive. Please contact your administrator.";
-                        error_log("User $email account is inactive (status: " . $user['status'] . ") but company subscription is active");
-                    } else {
-                        // ✅ STEP 5: Both company and user are active - proceed with login
-                        $_SESSION['user'] = $email;
-                        $_SESSION['user_id'] = $user['id'];
-                        $_SESSION['role_id'] = $user['role_id'];
-                        $_SESSION['name'] = $user['name'];
-                        $_SESSION['logged_in'] = true;
-                        $_SESSION['customer_id'] = $customer_id;
-
-                        // ✅ Handle "Remember Me"
-                        if ($remember) {
-                            setcookie("email", $email, time() + (86400 * 30), "/"); // 30 days
                         } else {
-                            setcookie("email", "", time() - 3600, "/");
+                            $customer_status_check = false;
+                            $customer_inactive_message = "Company branding configuration not found. Please contact support.";
+                            error_log("No active branding configuration found");
                         }
-
-                        error_log("User $email successfully logged in with customer_id: $customer_id");
-
-                        // ✅ Redirect by role
-                        switch ($user['role_id']) {
-                            case 1: // Superadmin
-                            case 2: // Regular user
-                            case 3: // Other roles
-                            default:
-                                header("Location: /order_management/dist/dashboard/index.php");
-                        }
-                        exit();
+                    } else {
+                        // Not a main admin tenant - skip customer subscription check
+                        error_log("User $email belongs to non-main-admin tenant (tenant_id: " . $user['tenant_id'] . ") - skipping subscription check");
                     }
-                } else {
-                    // Company/Customer subscription is inactive
-                    $error_message = $customer_inactive_message;
-                    error_log("Login denied for user $email - Company subscription inactive: $customer_inactive_message");
+                    
+                    // ✅ STEP 6: Only check individual user status if company subscription is active (or not applicable)
+                    if ($customer_status_check) {
+                        // Now check if the individual user account is active
+                        if ($user['status'] != 'active') {
+                            $error_message = "Your user account is inactive. Please contact your administrator.";
+                            error_log("User $email account is inactive (status: " . $user['status'] . ")");
+                        } else {
+                            // ✅ STEP 7: Everything is valid - proceed with login
+                            $_SESSION['user'] = $email;
+                            $_SESSION['user_id'] = $user['id'];
+                            $_SESSION['role_id'] = $user['role_id'];
+                            $_SESSION['name'] = $user['name'];
+                            $_SESSION['logged_in'] = true;
+                            $_SESSION['tenant_id'] = $user['tenant_id']; // ← CRITICAL: Set tenant_id
+                            $_SESSION['is_main_admin'] = $user['is_main_admin']; // ← Store is_main_admin flag
+                            $_SESSION['company_name'] = $user['company_name']; // ← Store company name
+                            
+                            if (!empty($customer_id)) {
+                                $_SESSION['customer_id'] = $customer_id;
+                            }
+
+                            // ✅ Handle "Remember Me"
+                            if ($remember) {
+                                setcookie("email", $email, time() + (86400 * 30), "/"); // 30 days
+                            } else {
+                                setcookie("email", "", time() - 3600, "/");
+                            }
+
+                            error_log("User $email successfully logged in - Tenant ID: " . $user['tenant_id'] . ", Is Main Admin: " . $user['is_main_admin']);
+
+                            // ✅ Redirect by role
+                            switch ($user['role_id']) {
+                                case 1: // Superadmin
+                                case 2: // Regular user
+                                case 3: // Other roles
+                                default:
+                                    header("Location: /order_management/dist/dashboard/index.php");
+                            }
+                            exit();
+                        }
+                    } else {
+                        // Company/Customer subscription is inactive
+                        $error_message = $customer_inactive_message;
+                        error_log("Login denied for user $email - Company subscription inactive");
+                    }
                 }
             } else {
                 $error_message = "Invalid password.";
@@ -246,20 +272,16 @@ $fe_conn->close();
     </div>
 
     <!-- FOOTER -->
-          <div class="footer-wrapper container-fluid mx-10">
+    <div class="footer-wrapper container-fluid mx-10">
         <div class="grid grid-cols-12 gap-1.5">
-          <div class="col-span-12 sm:col-span-6 my-1">
-            <p class="m-0"></p>
-              <a href="https://www.feitsolutions.com/" class="text-theme-bodycolor dark:text-themedark-bodycolor hover:text-primary-500 dark:hover:text-primary-500" target="_blank">
-              Copyright © 2025 FEITSolutions</a>
-               ,Designed by FEIT All rights reserved
-            </p>
-          </div>
-          <!-- <div class="col-span-12 sm:col-span-6 my-1 justify-self-end">
-                   <p class="inline-block max-sm:mr-3 sm:ml-2">Distributed by <a href="https://themewagon.com" target="_blank">Themewagon</a></p>
-          </div> -->
+            <div class="col-span-12 sm:col-span-6 my-1">
+                <p class="m-0">
+                    <a href="https://www.feitsolutions.com/" class="text-theme-bodycolor dark:text-themedark-bodycolor hover:text-primary-500 dark:hover:text-primary-500" target="_blank">
+                        Copyright © 2025 FEITSolutions</a>, Designed by FEIT All rights reserved
+                </p>
+            </div>
         </div>
-      </div>
+    </div>
     <!-- END FOOTER -->
 
     <!-- SCRIPTS -->

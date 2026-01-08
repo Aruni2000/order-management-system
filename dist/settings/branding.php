@@ -10,8 +10,23 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     header("Location: /order_management/dist/pages/login.php");
     exit();
 }
-// Check if user is admin (ID = 1)
-if (!isset($_SESSION['user_id']) || $_SESSION['user_id'] != 1) {
+
+// Get user's role and admin status
+$user_id = $_SESSION['user_id'];
+$is_main_admin = isset($_SESSION['is_main_admin']) && $_SESSION['is_main_admin'] == 1;
+
+// Include the database connection file
+include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/connection/db_connection.php');
+
+// Check if user is admin (role_id = 1) or main admin
+$role_check_sql = "SELECT role_id FROM users WHERE id = ?";
+$role_stmt = $conn->prepare($role_check_sql);
+$role_stmt->bind_param("i", $user_id);
+$role_stmt->execute();
+$role_result = $role_stmt->get_result();
+$user_data = $role_result->fetch_assoc();
+
+if (!$is_main_admin && (!isset($user_data['role_id']) || $user_data['role_id'] != 1)) {
     if (ob_get_level()) {
         ob_end_clean();
     }
@@ -19,8 +34,7 @@ if (!isset($_SESSION['user_id']) || $_SESSION['user_id'] != 1) {
     header("Location: /order_management/dist/pages/access_denied.php");
     exit();
 }
-// Include the database connection file
-include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/connection/db_connection.php');
+
 
 // Function to generate CSRF token
 function generateCSRFToken() {
@@ -53,8 +67,31 @@ if (isset($_SESSION['error_message'])) {
     unset($_SESSION['error_message']);
 }
 
-// STEP 2: Form Submission Handling (POST)
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+// STEP 2: Tenant Selection Handling
+$target_tenant_id = $_SESSION['tenant_id'] ?? 0;
+
+// If main admin, they can override the tenant_id via GET or POST
+if ($is_main_admin) {
+    if (isset($_REQUEST['tenant_filter']) && !empty($_REQUEST['tenant_filter'])) {
+        $target_tenant_id = (int)$_REQUEST['tenant_filter'];
+    }
+}
+
+// Fetch tenants if user is main admin 
+$tenants_list = [];
+if ($is_main_admin) {
+    $tenantQuery = "SELECT tenant_id, company_name FROM tenants WHERE status = 'active' ORDER BY company_name";
+    $tenantResult = mysqli_query($conn, $tenantQuery);
+    if ($tenantResult) {
+        while ($row = mysqli_fetch_assoc($tenantResult)) {
+            $tenants_list[] = $row;
+        }
+    }
+}
+
+// STEP 3: Form Submission Handling (POST)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_branding'])) {
+
     // Verify CSRF token
     if (!isset($_POST['csrf_token']) || $_POST['csrf_token'] !== $_SESSION['csrf_token']) {
         $_SESSION['error_message'] = "Invalid request. Please try again.";
@@ -160,8 +197,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
     
     // Check if we need to update or insert (UPSERT logic)
-    $check_query = "SELECT * FROM branding LIMIT 1";
-    $check_result = $conn->query($check_query);
+    $check_query = "SELECT * FROM branding WHERE tenant_id = ?";
+    $stmt = $conn->prepare($check_query);
+    $stmt->bind_param("i", $target_tenant_id);
+    $stmt->execute();
+    $check_result = $stmt->get_result();
+
     
     if ($check_result && $check_result->num_rows > 0) {
         // UPDATE existing record - Get old values first
@@ -192,9 +233,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $types .= "s";
         }
         
-        $update_sql = "UPDATE branding SET " . implode(', ', $update_sql_parts) . " WHERE branding_id = ?";
+        $update_sql = "UPDATE branding SET " . implode(', ', $update_sql_parts) . " WHERE branding_id = ? AND tenant_id = ?";
         $params[] = $branding_id;
-        $types .= "i"; // 'i' for branding_id
+        $params[] = $target_tenant_id;
+        $types .= "ii"; // 'i' for branding_id and 'i' for tenant_id
+
         
         $stmt = $conn->prepare($update_sql);
         // Using the spread operator to pass the array of parameters to bind_param
@@ -203,50 +246,50 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($stmt->execute()) {
             $_SESSION['success_message'] = "Branding settings updated successfully!";
             
-            // Build simple log details showing what changed
+            // Build structured log details showing what changed
             $changes = [];
-            
+
             if ($old_branding['company_name'] != $company_name) {
-                $changes[] = "Company Name: '{$old_branding['company_name']}' to '{$company_name}'";
+                $changes['company_name'] = ['from' => $old_branding['company_name'], 'to' => $company_name];
             }
             if ($old_branding['web_name'] != $web_name) {
-                $changes[] = "Website Name: '{$old_branding['web_name']}' to '{$web_name}'";
+                $changes['web_name'] = ['from' => $old_branding['web_name'], 'to' => $web_name];
             }
             if ($old_branding['address'] != $address) {
-                $changes[] = "Address: '{$old_branding['address']}' to '{$address}'";
+                $changes['address'] = ['from' => $old_branding['address'], 'to' => $address];
             }
             if ($old_branding['hotline'] != $hotline) {
-                $changes[] = "Hotline: '{$old_branding['hotline']}' to '{$hotline}'";
+                $changes['hotline'] = ['from' => $old_branding['hotline'], 'to' => $hotline];
             }
             if ($old_branding['email'] != $email) {
-                $changes[] = "Email: '{$old_branding['email']}' to '{$email}'";
+                $changes['email'] = ['from' => $old_branding['email'], 'to' => $email];
             }
             if ($old_branding['delivery_fee'] != $delivery_fee) {
-                $changes[] = "Delivery Fee: '{$old_branding['delivery_fee']}' to '{$delivery_fee}'";
+                $changes['delivery_fee'] = ['from' => $old_branding['delivery_fee'], 'to' => $delivery_fee];
             }
             if ($old_branding['primary_color'] != $primary_color) {
-                $changes[] = "Primary Color: '{$old_branding['primary_color']}' to '{$primary_color}'";
+                $changes['primary_color'] = ['from' => $old_branding['primary_color'], 'to' => $primary_color];
             }
             if ($old_branding['secondary_color'] != $secondary_color) {
-                $changes[] = "Secondary Color: '{$old_branding['secondary_color']}' to '{$secondary_color}'";
+                $changes['secondary_color'] = ['from' => $old_branding['secondary_color'], 'to' => $secondary_color];
             }
             if ($old_branding['font_family'] != $font_family) {
-                $changes[] = "Font Family: '{$old_branding['font_family']}' to '{$font_family}'";
+                $changes['font_family'] = ['from' => $old_branding['font_family'], 'to' => $font_family];
             }
             if ($logo_uploaded) {
                 $old_logo = !empty($old_branding['logo_url']) ? basename($old_branding['logo_url']) : 'None';
                 $new_logo = basename($logo_url);
-                $changes[] = "Logo: '{$old_logo}' to '{$new_logo}'";
+                $changes['logo'] = ['from' => $old_logo, 'to' => $new_logo];
             }
             if ($favicon_uploaded) {
                 $old_favicon = !empty($old_branding['fav_icon_url']) ? basename($old_branding['fav_icon_url']) : 'None';
                 $new_favicon = basename($fav_icon_url);
-                $changes[] = "Favicon: '{$old_favicon}' to '{$new_favicon}'";
+                $changes['favicon'] = ['from' => $old_favicon, 'to' => $new_favicon];
             }
             
             // Log only if there were actual changes
             if (!empty($changes)) {
-                $log_details = implode("; ", $changes);
+                $log_details = json_encode($changes);
                 logUserAction($conn, $_SESSION['user_id'], 'branding_update', $log_details);
             }
         } else {
@@ -255,15 +298,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt->close();
     } else {
         // INSERT new record
-        $insert_sql = "INSERT INTO branding (company_name, web_name, address, hotline, email, logo_url, fav_icon_url, delivery_fee, primary_color, secondary_color, font_family, active) 
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)";
+        $insert_sql = "INSERT INTO branding (company_name, web_name, address, hotline, email, logo_url, fav_icon_url, delivery_fee, primary_color, secondary_color, font_family, tenant_id, active) 
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)";
         
         $stmt = $conn->prepare($insert_sql);
-        // 11 's' for the non-active fields + 'i' for active
-        $stmt->bind_param("sssssssssss", 
+        // 11 's' for the non-active fields + 'i' for tenant_id
+        $stmt->bind_param("sssssssssssi", 
             $company_name, $web_name, $address, $hotline, $email, $logo_url, $fav_icon_url, 
-            $delivery_fee, $primary_color, $secondary_color, $font_family
+            $delivery_fee, $primary_color, $secondary_color, $font_family, $target_tenant_id
         );
+
         
         if ($stmt->execute()) {
             $_SESSION['success_message'] = "Branding settings saved successfully! Note: Only one branding record is supported.";
@@ -279,11 +323,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
     
     // Redirect to prevent form resubmission (Post-Redirect-Get)
-    header("Location: " . $_SERVER['PHP_SELF']);
+    $redirect_url = $_SERVER['PHP_SELF'];
+    if ($is_main_admin && !empty($target_tenant_id)) {
+        $redirect_url .= "?tenant_filter=" . $target_tenant_id;
+    }
+    header("Location: " . $redirect_url);
     exit();
 }
 
-// STEP 3: Fetch current branding settings for form pre-filling
+// STEP 4: Fetch current branding settings for form pre-filling
+
 $branding = array(
     'company_name' => '',
     'web_name' => '',
@@ -298,8 +347,12 @@ $branding = array(
     'font_family' => 'Inter' // Default font
 );
 
-$query = "SELECT * FROM branding LIMIT 1";
-$result = $conn->query($query);
+$query = "SELECT * FROM branding WHERE tenant_id = ? LIMIT 1";
+$stmt = $conn->prepare($query);
+$stmt->bind_param("i", $target_tenant_id);
+$stmt->execute();
+$result = $stmt->get_result();
+
 
 if ($result && $result->num_rows > 0) {
     $branding = $result->fetch_assoc();
@@ -388,6 +441,25 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                         </div>
                         <div class="card-body">
                             
+                            <?php if ($is_main_admin): ?>
+                            <div class="mb-4">
+                                <form method="GET" action="" id="tenantFilterForm">
+                                    <div class="form-group col-md-4">
+                                        <label for="tenant_filter" class="form-label">Select Tenant to Manage Branding</label>
+                                        <select name="tenant_filter" id="tenant_filter" class="form-select" onchange="this.form.submit()">
+                                            <?php foreach ($tenants_list as $tenant): ?>
+                                                <option value="<?php echo $tenant['tenant_id']; ?>" <?php echo $target_tenant_id == $tenant['tenant_id'] ? 'selected' : ''; ?>>
+                                                    <?php echo htmlspecialchars($tenant['company_name']); ?>
+                                                </option>
+                                            <?php endforeach; ?>
+                                        </select>
+                                    </div>
+                                </form>
+                            </div>
+                            <hr>
+                            <?php endif; ?>
+
+                            
                             <?php if ($success_message): ?>
                                 <div class="alert alert-success"><?php echo htmlspecialchars($success_message); ?></div>
                             <?php endif; ?>
@@ -398,7 +470,8 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                             
                             <!-- STEP 4: The Form Structure (CRITICAL FOR SUBMISSION) -->
                             <!-- IMPORTANT: use method="POST" and enctype="multipart/form-data" for file uploads -->
-                            <form method="POST" action="<?php echo htmlspecialchars($_SERVER['PHP_SELF']); ?>" enctype="multipart/form-data">
+                            <form method="POST" action="<?php echo htmlspecialchars($_SERVER['PHP_SELF']) . ($is_main_admin ? '?tenant_filter=' . $target_tenant_id : ''); ?>" enctype="multipart/form-data">
+
                                 
                                 <!-- CSRF Token for security -->
                                 <input type="hidden" name="csrf_token" value="<?php echo generateCSRFToken(); ?>">

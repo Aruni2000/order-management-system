@@ -10,6 +10,7 @@ if (!isset($_SESSION['logged_in']) && !isset($_SESSION['ClientUserID'])) {
     header("Location: /order_management/dist/pages/login.php");
     exit();
 }
+$logged_user_id = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
 
 // DB connection
 include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/connection/db_connection.php');
@@ -20,6 +21,7 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/connection/db_connec
 $date      = isset($_GET['date']) ? trim($_GET['date']) : "";
 $time_from = trim($_GET['time_from'] ?? "");
 $time_to   = trim($_GET['time_to'] ?? "");
+$tenant_filter = isset($_GET['tenant_filter']) ? trim($_GET['tenant_filter']) : '';
 $date_filter = isset($_GET['date_filter']) ? $_GET['date_filter'] : 'created_at';
 $limit     = 500; // fixed limit
 
@@ -40,6 +42,25 @@ $date_filter = in_array($date_filter, $allowed_filters) ? $date_filter : 'create
 $where = [];
 $where[] = "o.interface IN ('individual','leads')";
 $where[] = "o.status = 'dispatch'";
+
+// Tenant Filtering Logic
+$is_main_admin = isset($_SESSION['is_main_admin']) ? (int)$_SESSION['is_main_admin'] : 0;
+$role_id = isset($_SESSION['role_id']) ? (int)$_SESSION['role_id'] : 0;
+$session_tenant_id = isset($_SESSION['tenant_id']) ? (int)$_SESSION['tenant_id'] : 0;
+
+if ($is_main_admin === 1 && $role_id === 1) {
+    // Main Admin
+    if (!empty($tenant_filter)) {
+        $where[] = "o.tenant_id = " . (int)$tenant_filter;
+    }
+} elseif ($role_id === 1 && $is_main_admin === 0) {
+    // Tenant Admin
+    $where[] = "o.tenant_id = $session_tenant_id";
+} else {
+    // Regular User
+    $where[] = "o.tenant_id = $session_tenant_id";
+    $where[] = "o.user_id = $logged_user_id";
+}
 
 // Default date
 if ($date === "" || !isset($_GET['date'])) {
@@ -80,6 +101,7 @@ $whereClause = implode(" AND ", $where);
 $sql = "
  SELECT  
     o.order_id,
+    o.tenant_id,
     o.tracking_number,
     o.pay_status,
     o.pay_by,
@@ -149,31 +171,29 @@ if (!empty($order_ids)) {
 }
 
 // -------------------------
-// Branding Info
+// Fetch All Brandings (Multi-Tenant Support)
 // -------------------------
-$branding = $conn->query("
-    SELECT company_name, web_name, address, hotline, email, logo_url 
-    FROM branding 
-    WHERE active = 1 
-    ORDER BY branding_id DESC 
-    LIMIT 1
-");
+$brandings = [];
+$brandingQuery = $conn->query("SELECT * FROM branding WHERE active = 1");
+if ($brandingQuery) {
+    while ($b = $brandingQuery->fetch_assoc()) {
+        $brandings[$b['tenant_id']] = $b;
+    }
+}
 
-if ($branding && $branding->num_rows > 0) {
-    $brandingRow = $branding->fetch_assoc();
-    $companyName = $brandingRow['company_name'];
-    $companyLogo = $brandingRow['logo_url'];
-    $billingAddress = $brandingRow['address'];
-    $billingHotline = $brandingRow['hotline'];
-    $billingEmail = $brandingRow['email'];
-    $billingWebsite = $brandingRow['web_name'];
-} else {
-    $companyName = "";
-    $companyLogo = "";
-    $billingAddress = "";
-    $billingHotline = "";
-    $billingEmail = "";
-    $billingWebsite = "";
+// Function to get branding for a specific tenant
+function getBrandingForTenant($tId, $brandings_list) {
+    // If tenant specific branding exists
+    if (!empty($tId) && isset($brandings_list[$tId])) {
+        return $brandings_list[$tId];
+    }
+    // Fallback: Return first available branding or empty structure
+    if (!empty($brandings_list)) {
+        return reset($brandings_list);
+    }
+    return [
+        'company_name' => '', 'address' => '', 'hotline' => '', 'email' => '', 'logo_url' => '', 'web_name' => ''
+    ];
 }
 
 // -------------------------
@@ -287,7 +307,11 @@ window.onload = function() {
     </div>
 <?php else: ?>
 
-    <?php foreach ($orders as $o): ?>
+    <?php foreach ($orders as $o): 
+        // Resolve branding for this order
+        $tId = isset($o['tenant_id']) ? $o['tenant_id'] : 0;
+        $bData = getBrandingForTenant($tId, $brandings);
+    ?>
 
     <div class="label-box">
 
@@ -295,8 +319,8 @@ window.onload = function() {
         <table width="100%">
             <tr>
                 <td width="60">
-                    <?php if (!empty($companyLogo)): ?>
-                        <img src="<?php echo htmlspecialchars($companyLogo); ?>" width="50" alt="Company Logo">
+                    <?php if (!empty($bData['logo_url'])): ?>
+                        <img src="<?php echo htmlspecialchars($bData['logo_url']); ?>" width="50" alt="Company Logo">
                     <?php endif; ?>
                 </td>
                 <td style="text-align:right;">
@@ -314,10 +338,10 @@ window.onload = function() {
 
         <!-- Billing From Details -->
         <div style="font-size:10px; margin-top:5px;">
-            <?php echo htmlspecialchars($companyName); ?><br>
-            <?php echo nl2br(htmlspecialchars($billingAddress)); ?><br>
-            Hotline: <?php echo htmlspecialchars($billingHotline); ?><br>
-            Email: <?php echo htmlspecialchars($billingEmail); ?>
+            <?php echo htmlspecialchars($bData['company_name']); ?><br>
+            <?php echo nl2br(htmlspecialchars($bData['address'])); ?><br>
+            Hotline: <?php echo htmlspecialchars($bData['hotline']); ?><br>
+            Email: <?php echo htmlspecialchars($bData['email']); ?>
         </div>
 
         <hr>
