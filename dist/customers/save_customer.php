@@ -96,6 +96,9 @@ try {
         exit();
     }
 
+    $is_main_admin = $_SESSION['is_main_admin'];
+    $teanent_id = $_SESSION['tenant_id'];
+
     // Get and sanitize form data
     $name = trim($_POST['name'] ?? '');
     $email = trim($_POST['email'] ?? '');
@@ -105,6 +108,15 @@ try {
     $address_line1 = trim($_POST['address_line1'] ?? '');
     $address_line2 = trim($_POST['address_line2'] ?? '');
     $city_id = intval($_POST['city_id'] ?? 0);
+
+    //if 
+    if ($is_main_admin == 1){
+        //A user main id =1 
+        $teanentID= intval($_POST['teanetID'] ?? 0);
+    } else {
+        //B user main id  =0
+        $teanentID= $teanent_id;
+    }
 
     // Clean phone numbers (remove non-digits)
     $phone = preg_replace('/\D/', '', $phone);
@@ -291,11 +303,11 @@ try {
 
     // Prepare and execute customer insert
     $insertStmt = $conn->prepare("
-        INSERT INTO customers (name, email, phone, phone_2, status, address_line1, address_line2, city_id, created_at, updated_at) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+        INSERT INTO customers (name, email, phone, phone_2, status, address_line1, address_line2, city_id, tenant_id, created_at, updated_at) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
     ");
 
-    $insertStmt->bind_param("sssssssi", $name, $email, $phone, $phone_2, $status, $address_line1, $address_line2, $city_id);
+    $insertStmt->bind_param("sssssssii", $name, $email, $phone, $phone_2, $status, $address_line1, $address_line2, $city_id, $teanentID);
 
     if ($insertStmt->execute()) {
         $customer_id = $conn->insert_id;

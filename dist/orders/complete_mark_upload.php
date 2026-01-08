@@ -1,4 +1,4 @@
-<?php
+F<?php
 // Start output buffering to prevent header issues
 ob_start();
 
@@ -14,6 +14,26 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
 
 // Include the database connection file early
 include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/connection/db_connection.php');
+
+// Check if user is main admin
+$is_main_admin = $_SESSION['is_main_admin'];
+$teanent_id = $_SESSION['tenant_id'];
+$co_id =$_POST['co_id'];
+
+//function for tenant name
+function TenantName($tenant_id) {
+    global $conn;
+    $sql = "SELECT company_name FROM tenants WHERE tenant_id = ?";
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param("i", $tenant_id);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    if ($result && $result->num_rows > 0) {
+        $row = $result->fetch_assoc();
+        return $row['company_name'];
+    }
+    return "Unknown Tenant";
+}
 
 // Function to remove BOM and clean CSV headers
 function cleanCsvHeader($header) {
@@ -69,13 +89,14 @@ function validateTrackingInDB($trackingNumber, $conn) {
     $cleanTracking = $formatValidation['clean_tracking'];
     
     // Check if tracking number exists in database with delivery status
-    $sql = "SELECT order_id, status, total_amount FROM order_header WHERE tracking_number = ? LIMIT 1";
+    $sql = "SELECT order_id, status, total_amount FROM order_header WHERE tracking_number = ? AND co_id = ?  LIMIT 1";
+
     $stmt = $conn->prepare($sql);
     if (!$stmt) {
         return ['valid' => false, 'message' => 'Database error while validating tracking number'];
     }
     
-    $stmt->bind_param("s", $cleanTracking);
+    $stmt->bind_param("si", $cleanTracking, $co_id);
     $stmt->execute();
     $res = $stmt->get_result();
     
@@ -539,16 +560,18 @@ if (!$foundTrackingColumn) {
 // Include UI files after processing POST request to avoid header issues
 include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/navbar.php');
 include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php');
+
 ?>
 
 <!doctype html>
-<html lang="en" data-pc-preset="preset-1" data-pc-sidebar-caption="true" data-pc-direction="ltr" dir="ltr" data-pc-theme="light">
+<html lang="en" data-pc-preset="preset-1" data-pc-sidebar-caption="true" data-pc-direction="ltr" dir="ltr"
+    data-pc-theme="light">
 
 <head>
     <title>Order Management Admin Portal - Delivery CSV Upload</title>
-    
+
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/head.php'); ?>
-    
+
     <!-- Stylesheets -->
     <link rel="stylesheet" href="../assets/css/style.css" id="main-style-link" />
     <link rel="stylesheet" href="../assets/css/leads.css" id="main-style-link" />
@@ -560,7 +583,7 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
 
     <div class="pc-container">
         <div class="pc-content">
-            
+
             <!-- Page Header -->
             <div class="page-header">
                 <div class="page-block">
@@ -574,44 +597,48 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
 
                 <!-- Display import results/errors -->
                 <?php if (isset($_SESSION['import_result'])): ?>
-                    <div class="alert alert-<?php echo $_SESSION['import_result']['errors'] > 0 ? 'warning' : 'success'; ?>">
-                        <h4>Processing Results</h4>
-                        <p><strong>Successfully updated to 'done':</strong> <?php echo $_SESSION['import_result']['success']; ?> orders (including header, items, and payment records)</p>
-                        <?php if ($_SESSION['import_result']['skipped'] > 0): ?>
-                            <p><strong>Skipped:</strong> <?php echo $_SESSION['import_result']['skipped']; ?> tracking numbers</p>
-                        <?php endif; ?>
-                        <?php if ($_SESSION['import_result']['errors'] > 0): ?>
-                            <p><strong>Failed:</strong> <?php echo $_SESSION['import_result']['errors']; ?> tracking numbers</p>
-                            <?php if (!empty($_SESSION['import_result']['messages'])): ?>
-                                <details>
-                                    <summary>View Error Details</summary>
-                                    <ul class="mt-2">
-                                        <?php foreach ($_SESSION['import_result']['messages'] as $message): ?>
-                                            <li><?php echo htmlspecialchars($message); ?></li>
-                                        <?php endforeach; ?>
-                                    </ul>
-                                </details>
-                            <?php endif; ?>
-                        <?php endif; ?>
-                        <?php if (!empty($_SESSION['import_result']['warnings'])): ?>
-                            <details>
-                                <summary>View Warnings</summary>
-                                <ul class="mt-2">
-                                    <?php foreach ($_SESSION['import_result']['warnings'] as $warning): ?>
-                                        <li><?php echo htmlspecialchars($warning); ?></li>
-                                    <?php endforeach; ?>
-                                </ul>
-                            </details>
-                        <?php endif; ?>
-                    </div>
-                    <?php unset($_SESSION['import_result']); ?>
+                <div
+                    class="alert alert-<?php echo $_SESSION['import_result']['errors'] > 0 ? 'warning' : 'success'; ?>">
+                    <h4>Processing Results</h4>
+                    <p><strong>Successfully updated to 'done':</strong>
+                        <?php echo $_SESSION['import_result']['success']; ?> orders (including header, items, and
+                        payment records)</p>
+                    <?php if ($_SESSION['import_result']['skipped'] > 0): ?>
+                    <p><strong>Skipped:</strong> <?php echo $_SESSION['import_result']['skipped']; ?> tracking numbers
+                    </p>
+                    <?php endif; ?>
+                    <?php if ($_SESSION['import_result']['errors'] > 0): ?>
+                    <p><strong>Failed:</strong> <?php echo $_SESSION['import_result']['errors']; ?> tracking numbers</p>
+                    <?php if (!empty($_SESSION['import_result']['messages'])): ?>
+                    <details>
+                        <summary>View Error Details</summary>
+                        <ul class="mt-2">
+                            <?php foreach ($_SESSION['import_result']['messages'] as $message): ?>
+                            <li><?php echo htmlspecialchars($message); ?></li>
+                            <?php endforeach; ?>
+                        </ul>
+                    </details>
+                    <?php endif; ?>
+                    <?php endif; ?>
+                    <?php if (!empty($_SESSION['import_result']['warnings'])): ?>
+                    <details>
+                        <summary>View Warnings</summary>
+                        <ul class="mt-2">
+                            <?php foreach ($_SESSION['import_result']['warnings'] as $warning): ?>
+                            <li><?php echo htmlspecialchars($warning); ?></li>
+                            <?php endforeach; ?>
+                        </ul>
+                    </details>
+                    <?php endif; ?>
+                </div>
+                <?php unset($_SESSION['import_result']); ?>
                 <?php endif; ?>
-                
+
                 <?php if (isset($_SESSION['import_error'])): ?>
-                    <div class="alert alert-danger">
-                        <strong>Error:</strong> <?php echo htmlspecialchars($_SESSION['import_error']); ?>
-                    </div>
-                    <?php unset($_SESSION['import_error']); ?>
+                <div class="alert alert-danger">
+                    <strong>Error:</strong> <?php echo htmlspecialchars($_SESSION['import_error']); ?>
+                </div>
+                <?php unset($_SESSION['import_error']); ?>
                 <?php endif; ?>
 
                 <!-- Info Box -->
@@ -626,11 +653,11 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                 </div> -->
 
                 <!-- Instruction Box Component - Place this in your complete_mark_upload.php after page header -->
-<div class="instruction-box">
-    <h4>📦 How to Use Delivery Complete CSV Upload</h4>
-    
-    <!-- What Happens When You Upload -->
-    <!-- <div class="what-happens">
+                <div class="instruction-box">
+                    <h4>📦 How to Use Delivery Complete CSV Upload</h4>
+
+                    <!-- What Happens When You Upload -->
+                    <!-- <div class="what-happens">
         <h5>🔄 What Happens When You Upload the CSV:</h5>
         <ul>
             <li><strong>Order Status Updated:</strong> Changes from <code>delivered</code> to <code>done</code> (order completed)</li>
@@ -641,95 +668,125 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
         </ul>
     </div> -->
 
-    <!-- System Actions Breakdown -->
-    <div class="system-actions">
-       
-        
-        <div class="action-item">
-            <div class="action-item-title">1️⃣ Order Header Table</div>
-            <p class="action-item-desc">
-                Status: <code>delivered</code> <span class="arrow">→</span> <code>done</code><br>
-                Pay Status: <code>unpaid</code> <span class="arrow">→</span> <code>paid</code><br>
-                Pay By: Records your user ID
-            </p>
-        </div>
+                    <!-- System Actions Breakdown -->
+                    <div class="system-actions">
 
-        <div class="action-item">
-            <div class="action-item-title">2️⃣ Order Items Table</div>
-            <p class="action-item-desc">
-                All items in the order updated:<br>
-                Status: <span class="arrow">→</span> <code>done</code><br>
-                Pay Status: <span class="arrow">→</span> <code>paid</code>
-            </p>
-        </div>
 
-        <div class="action-item">
-            <div class="action-item-title">3️⃣ Payment Record Created</div>
-            <p class="action-item-desc">
-                New payment entry with:<br>
-                • Order ID linked<br>
-                • Amount: From order total<br>
-                • Method: COD (Cash on Delivery)<br>
-                • Date: Current date/time<br>
-                • Pay By: Your user ID
-            </p>
-        </div>
-    </div>
-    
-    <!-- Important Requirements -->
-    <div class="important-notes">
-        <h5>⚠️ Important Requirements:</h5>
-        <ul>
-            <li><strong>Only 'delivered' orders</strong> can be marked as complete - orders with other statuses will be skipped</li>
-            <li><strong>Tracking numbers must exist</strong> in the database - invalid tracking numbers will be rejected</li>
-            <li><strong>No duplicate processing</strong> - if payment record already exists, it won't be duplicated</li>
-            <li><strong>Maximum file size:</strong> 5MB</li>
-            <li><strong>CSV format only</strong> - must be a valid CSV file</li>
-            <li><strong>Valid tracking format:</strong> 5-50 characters, alphanumeric with hyphens/underscores only</li>
-        </ul>
-    </div>
-    
-    <!-- Quick Tips -->
-    <div class="quick-tips">
-        <h5>💡 Quick Tips:</h5>
-        <ul>
-            <li><strong>Verify order status first:</strong> Make sure orders are in 'delivered' status before uploading</li>
-            <li><strong>Double-check tracking numbers:</strong> Incorrect numbers will cause errors</li>
-            <li><strong>Keep a backup:</strong> Save your original CSV file before uploading</li>
-            <li><strong>Review the report:</strong> After upload, check the detailed results for any failed entries</li>
-            <li><strong>Transaction safety:</strong> Each order is processed safely - if something fails, it won't partially update</li>
-            <li><strong>Empty rows ignored:</strong> Blank rows in your CSV are automatically skipped</li>
-        </ul>
-    </div>
-</div>
+                        <div class="action-item">
+                            <div class="action-item-title">1️⃣ Order Header Table</div>
+                            <p class="action-item-desc">
+                                Status: <code>delivered</code> <span class="arrow">→</span> <code>done</code><br>
+                                Pay Status: <code>unpaid</code> <span class="arrow">→</span> <code>paid</code><br>
+                                Pay By: Records your user ID
+                            </p>
+                        </div>
+
+                        <div class="action-item">
+                            <div class="action-item-title">2️⃣ Order Items Table</div>
+                            <p class="action-item-desc">
+                                All items in the order updated:<br>
+                                Status: <span class="arrow">→</span> <code>done</code><br>
+                                Pay Status: <span class="arrow">→</span> <code>paid</code>
+                            </p>
+                        </div>
+
+                        <div class="action-item">
+                            <div class="action-item-title">3️⃣ Payment Record Created</div>
+                            <p class="action-item-desc">
+                                New payment entry with:<br>
+                                • Order ID linked<br>
+                                • Amount: From order total<br>
+                                • Method: COD (Cash on Delivery)<br>
+                                • Date: Current date/time<br>
+                                • Pay By: Your user ID
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Important Requirements -->
+                    <div class="important-notes">
+                        <h5>⚠️ Important Requirements:</h5>
+                        <ul>
+                            <li><strong>Only 'delivered' orders</strong> can be marked as complete - orders with other
+                                statuses will be skipped</li>
+                            <li><strong>Tracking numbers must exist</strong> in the database - invalid tracking numbers
+                                will be rejected</li>
+                            <li><strong>No duplicate processing</strong> - if payment record already exists, it won't be
+                                duplicated</li>
+                            <li><strong>Maximum file size:</strong> 5MB</li>
+                            <li><strong>CSV format only</strong> - must be a valid CSV file</li>
+                            <li><strong>Valid tracking format:</strong> 5-50 characters, alphanumeric with
+                                hyphens/underscores only</li>
+                        </ul>
+                    </div>
+
+                    <!-- Quick Tips -->
+                    <div class="quick-tips">
+                        <h5>💡 Quick Tips:</h5>
+                        <ul>
+                            <li><strong>Verify order status first:</strong> Make sure orders are in 'delivered' status
+                                before uploading</li>
+                            <li><strong>Double-check tracking numbers:</strong> Incorrect numbers will cause errors</li>
+                            <li><strong>Keep a backup:</strong> Save your original CSV file before uploading</li>
+                            <li><strong>Review the report:</strong> After upload, check the detailed results for any
+                                failed entries</li>
+                            <li><strong>Transaction safety:</strong> Each order is processed safely - if something
+                                fails, it won't partially update</li>
+                            <li><strong>Empty rows ignored:</strong> Blank rows in your CSV are automatically skipped
+                            </li>
+                        </ul>
+                    </div>
+                </div>
 
                 <div class="lead-upload-container">
                     <form method="POST" enctype="multipart/form-data" id="uploadForm">
                         <!-- Download CSV Template Section -->
                         <div class="file-upload-section">
                             <a href="/order_management/dist/templates/delivery_csv.php" class="choose-file-btn">
-                                 Download CSV Template
+                                Download CSV Template
                             </a>
+                            <div class="customer-form-group">
+                                <label for="courier_id" class="form-label">
+                                    Select Courier
+                                </label>
+                                <?php if ($is_main_admin == 1) { 
+                                // Fetch active couriers for dropdown
+                                    $courierSql = "SELECT co_id, tenant_id, courier_id, courier_name FROM couriers WHERE status = 'active' ORDER BY courier_name ASC";
+                                } else { 
+                                    $courierSql = "SELECT co_id, tenant_id, courier_id, courier_name FROM couriers WHERE status = 'active' AND tenant_id = $teanent_id ORDER BY courier_name ASC";                   
+                                }
+                                 $courierResult = $conn->query($courierSql); ?>
+                                <select class="form-select" id="co_id" name="co_id" required>
+                                    <option value="">Select Courier</option>
+                                    <?php
+                                    if ($courierResult && $courierResult->num_rows > 0) {
+                                        while ($courier = $courierResult->fetch_assoc()) {
+                                            echo "<option value='{$courier['co_id']}'>" . htmlspecialchars($courier['courier_name']) . " - ".($courier['courier_id']) . " - ".TenantName($courier['tenant_id']); "</option>";
+                                        }
+                                    }
+                                    ?>
+                                </select>
+                                <div class="error-feedback" id="courier-error"></div>
 
+                            </div>
                             <div class="file-upload-box">
                                 <p><strong>Select CSV File</strong></p>
                                 <p id="file-name">No file selected</p>
-                                <input type="file" id="csv_file" name="csv_file" accept=".csv" style="display: none;" required>
-                                <button type="button" class="choose-file-btn" onclick="document.getElementById('csv_file').click()">
-                                     Choose File
+                                <input type="file" id="csv_file" name="csv_file" accept=".csv" style="display: none;"
+                                    required>
+                                <button type="button" class="choose-file-btn"
+                                    onclick="document.getElementById('csv_file').click()">
+                                    Choose File
                                 </button>
                             </div>
-                        </div>
-                        
-                        <hr>
-                        
-                        <!-- Action Buttons -->
-                        <div class="action-buttons">
-                            <button type="button" class="action-btn reset-btn" id="resetBtn"> Reset</button>
-                            <button type="submit" class="action-btn import-btn" id="importBtn">
-                               Update to Complete
-                            </button>
-                        </div>
+                            <hr>
+                            <!-- Action Buttons -->
+                            <div class="action-buttons">
+                                <button type="button" class="action-btn reset-btn" id="resetBtn"> Reset</button>
+                                <button type="submit" class="action-btn import-btn" id="importBtn">
+                                    Update to Complete
+                                </button>
+                            </div>
                     </form>
                 </div>
             </div>
@@ -741,124 +798,125 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
 
     <!-- Scripts -->
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/scripts.php'); ?>
-    
+
     <script>
-        // Form validation
-        document.getElementById('uploadForm').addEventListener('submit', function(e) {
-            const fileInput = document.getElementById('csv_file');
-            
-            // Check if file is selected
-            if (!fileInput.files.length) {
-                e.preventDefault();
-                alert('Please upload the CSV file before proceeding.');
-                return false;
-            }
-            
-            // Additional file validation
-            const file = fileInput.files[0];
-            
+    // Form validation
+    document.getElementById('uploadForm').addEventListener('submit', function(e) {
+        const fileInput = document.getElementById('csv_file');
+
+        // Check if file is selected
+        if (!fileInput.files.length) {
+            e.preventDefault();
+            alert('Please upload the CSV file before proceeding.');
+            return false;
+        }
+
+        // Additional file validation
+        const file = fileInput.files[0];
+
+        // Check file extension
+        const validExtensions = ['.csv'];
+        const fileName = file.name.toLowerCase();
+        const isValidExtension = validExtensions.some(ext => fileName.endsWith(ext));
+
+        if (!isValidExtension) {
+            e.preventDefault();
+            alert('Please upload a valid CSV file.');
+            return false;
+        }
+
+        // Check file size (5MB limit)
+        const maxSize = 5 * 1024 * 1024; // 5MB in bytes
+        if (file.size > maxSize) {
+            e.preventDefault();
+            alert('File size must be less than 5MB. Please upload a smaller CSV file.');
+            return false;
+        }
+
+        // Show loading state
+        const importBtn = document.getElementById('importBtn');
+        importBtn.disabled = true;
+        importBtn.innerHTML = ' Processing...';
+
+        return true;
+    });
+
+    // Reset button functionality
+    document.getElementById('resetBtn').addEventListener('click', function() {
+        if (confirm('Are you sure you want to reset the form?')) {
+            // Reset file input
+            document.getElementById('csv_file').value = '';
+            document.getElementById('file-name').textContent = 'No file selected';
+
+            // Reset import button
+            const importBtn = document.getElementById('importBtn');
+            importBtn.disabled = false;
+            importBtn.innerHTML = ' Update to Complete';
+        }
+    });
+
+    // Show selected file name and validate file type
+    document.getElementById('csv_file').addEventListener('change', function() {
+        const file = this.files[0];
+        const fileNameEl = document.getElementById('file-name');
+
+        if (file) {
             // Check file extension
             const validExtensions = ['.csv'];
             const fileName = file.name.toLowerCase();
             const isValidExtension = validExtensions.some(ext => fileName.endsWith(ext));
-            
+
             if (!isValidExtension) {
-                e.preventDefault();
-                alert('Please upload a valid CSV file.');
-                return false;
+                alert('Please select a valid CSV file.');
+                this.value = '';
+                fileNameEl.textContent = 'No file selected';
+                return;
             }
-            
+
             // Check file size (5MB limit)
             const maxSize = 5 * 1024 * 1024; // 5MB in bytes
             if (file.size > maxSize) {
-                e.preventDefault();
-                alert('File size must be less than 5MB. Please upload a smaller CSV file.');
-                return false;
-            }
-            
-            // Show loading state
-            const importBtn = document.getElementById('importBtn');
-            importBtn.disabled = true;
-            importBtn.innerHTML = ' Processing...';
-            
-            return true;
-        });
-        
-        // Reset button functionality
-        document.getElementById('resetBtn').addEventListener('click', function() {
-            if (confirm('Are you sure you want to reset the form?')) {
-                // Reset file input
-                document.getElementById('csv_file').value = '';
-                document.getElementById('file-name').textContent = 'No file selected';
-                
-                // Reset import button
-                const importBtn = document.getElementById('importBtn');
-                importBtn.disabled = false;
-                importBtn.innerHTML = ' Update to Complete';
-            }
-        });
-        
-        // Show selected file name and validate file type
-        document.getElementById('csv_file').addEventListener('change', function() {
-            const file = this.files[0];
-            const fileNameEl = document.getElementById('file-name');
-            
-            if (file) {
-                // Check file extension
-                const validExtensions = ['.csv'];
-                const fileName = file.name.toLowerCase();
-                const isValidExtension = validExtensions.some(ext => fileName.endsWith(ext));
-                
-                if (!isValidExtension) {
-                    alert('Please select a valid CSV file.');
-                    this.value = '';
-                    fileNameEl.textContent = 'No file selected';
-                    return;
-                }
-                
-                // Check file size (5MB limit)
-                const maxSize = 5 * 1024 * 1024; // 5MB in bytes
-                if (file.size > maxSize) {
-                    alert('File size must be less than 5MB.');
-                    this.value = '';
-                    fileNameEl.textContent = 'No file selected';
-                    return;
-                }
-                
-                fileNameEl.textContent = file.name + ' (' + (file.size / 1024).toFixed(1) + ' KB)';
-            } else {
+                alert('File size must be less than 5MB.');
+                this.value = '';
                 fileNameEl.textContent = 'No file selected';
+                return;
             }
-        });
+
+            fileNameEl.textContent = file.name + ' (' + (file.size / 1024).toFixed(1) + ' KB)';
+        } else {
+            fileNameEl.textContent = 'No file selected';
+        }
+    });
     </script>
 
     <style>
-        .info-box {
-            background-color: #e8f4fd;
-            border: 1px solid #bee5eb;
-            border-radius: 0.375rem;
-            padding: 1rem;
-            margin-bottom: 1.5rem;
-        }
-        
-        .info-box h4 {
-            color: #0c5460;
-            margin-bottom: 0.5rem;
-        }
-        
-        .info-box p {
-            color: #0c5460;
-            margin-bottom: 0.5rem;
-        }
-        
-        .info-box ul {
-            color: #0c5460;
-            margin-left: 1.5rem;
-        }
-        
-        .info-box li {
-            margin-bottom: 0.25rem;
-        }
+    .info-box {
+        background-color: #e8f4fd;
+        border: 1px solid #bee5eb;
+        border-radius: 0.375rem;
+        padding: 1rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .info-box h4 {
+        color: #0c5460;
+        margin-bottom: 0.5rem;
+    }
+
+    .info-box p {
+        color: #0c5460;
+        margin-bottom: 0.5rem;
+    }
+
+    .info-box ul {
+        color: #0c5460;
+        margin-left: 1.5rem;
+    }
+
+    .info-box li {
+        margin-bottom: 0.25rem;
+    }
     </style>
 </body>
+
 </html>

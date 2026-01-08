@@ -16,6 +16,10 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/connection/db_connec
 include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/navbar.php');
 include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php');
 
+// Check if user is main admin
+$is_main_admin = $_SESSION['is_main_admin'];
+$teanent_id = $_SESSION['tenant_id'];
+
 // Handle search and filter parameters
 $search = isset($_GET['search']) ? trim($_GET['search']) : '';
 $customer_id_filter = isset($_GET['customer_id_filter']) ? trim($_GET['customer_id_filter']) : '';
@@ -26,20 +30,38 @@ $status_filter = isset($_GET['status_filter']) ? trim($_GET['status_filter']) : 
 $city_filter = isset($_GET['city_filter']) ? trim($_GET['city_filter']) : '';
 $date_from = isset($_GET['date_from']) ? trim($_GET['date_from']) : '';
 $date_to = isset($_GET['date_to']) ? trim($_GET['date_to']) : '';
+$tenant_id_filter = isset($_GET['tenant_id_filter']) ? trim($_GET['tenant_id_filter']) : '';
+
 
 // Pagination settings
 $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 10;
 $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
 $offset = ($page - 1) * $limit;
 
-// Base SQL for counting total records with city join
-$countSql = "SELECT COUNT(*) as total FROM customers c LEFT JOIN city_table ct ON c.city_id = ct.city_id";
+//if 
+    // if ($is_main_admin == 1){
+        //A user main id =1 
+        // Base SQL for counting total records with city join
+        $countSql = "SELECT COUNT(*) as total FROM customers c LEFT JOIN city_table ct ON c.city_id = ct.city_id";
 
-// Main query with city join - ADDED phone_2
-$sql = "SELECT c.customer_id, c.name, c.email, c.phone, c.phone_2, c.address_line1, c.address_line2, 
-        c.city_id, ct.city_name, c.status, c.created_at, c.updated_at 
-        FROM customers c
-        LEFT JOIN city_table ct ON c.city_id = ct.city_id";
+        // Main query with city join - ADDED phone_2
+        $sql = "SELECT c.customer_id, c.name, c.email, c.phone, c.phone_2, c.address_line1, c.address_line2, 
+                c.city_id, ct.city_name, c.status, c.created_at, c.updated_at, t.company_name
+                FROM customers c
+                LEFT JOIN city_table ct ON c.city_id = ct.city_id
+                LEFT JOIN tenants t ON c.tenant_id = t.tenant_id";
+    // } else {
+    //     //B user main id  =0
+    //     // Base SQL for counting total records with city join
+    //     $countSql = "SELECT COUNT(*) as total FROM customers c WHERE c.tenant_id = $teanent_id LEFT JOIN city_table ct ON c.city_id = ct.city_id";
+
+    //     // Main query with city join - ADDED phone_2
+    //     $sql = "SELECT c.customer_id, c.name, c.email, c.phone, c.phone_2, c.address_line1, c.address_line2, 
+    //             c.city_id, ct.city_name, c.status, c.created_at, c.updated_at, t.company_name
+    //             FROM customers c WHERE c.tenant_id = $teanent_id
+    //             LEFT JOIN city_table ct ON c.city_id = ct.city_id
+    //             LEFT JOIN tenants t ON c.tenant_id = t.tenant_id";
+    // }
 
 // Build search conditions
 $searchConditions = [];
@@ -55,7 +77,8 @@ if (!empty($search)) {
                         c.phone_2 LIKE '%$searchTerm%' OR
                         c.address_line1 LIKE '%$searchTerm%' OR
                         c.address_line2 LIKE '%$searchTerm%' OR
-                        ct.city_name LIKE '%$searchTerm%')";
+                        ct.city_name LIKE '%$searchTerm%' OR
+                        t.company_name LIKE '%$searchTerm%')";
 }
 
 // Specific Customer ID filter
@@ -105,6 +128,12 @@ if (!empty($date_to)) {
     $searchConditions[] = "DATE(c.created_at) <= '$dateToTerm'";
 }
 
+// Specific tenant ID filter
+if (!empty($tenant_id_filter)) {
+    $tenantIdTerm = $conn->real_escape_string($tenant_id_filter);
+    $searchConditions[] = "c.tenant_id = '$tenantIdTerm'";
+}
+
 // Apply all search conditions
 if (!empty($searchConditions)) {
     $finalSearchCondition = " WHERE " . implode(' AND ', $searchConditions);
@@ -112,8 +141,17 @@ if (!empty($searchConditions)) {
     $sql .= $finalSearchCondition;
 }
 
-// Add ordering and pagination
+if ($is_main_admin == 1){
+    // Add ordering and pagination
 $sql .= " ORDER BY c.created_at DESC LIMIT $limit OFFSET $offset";
+
+
+}else{
+// Add ordering and pagination
+$sql .= " WHERE c.tenant_id = $teanent_id ORDER BY c.created_at DESC LIMIT $limit OFFSET $offset";
+
+}
+    
 
 // Execute queries
 $countResult = $conn->query($countSql);
@@ -132,16 +170,25 @@ $city_sql = "SELECT DISTINCT c.city_id, ct.city_name
              ORDER BY ct.city_name";
 $city_result = $conn->query($city_sql);
 $cities = $city_result->fetch_all(MYSQLI_ASSOC);
+
+// Get unique tenants for filter dropdown
+$tenant_sql = "SELECT DISTINCT tenant_id, company_name 
+               FROM tenants";
+$tenant_result = $conn->query($tenant_sql);
+$tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
+
+
 ?>
 
 <!doctype html>
-<html lang="en" data-pc-preset="preset-1" data-pc-sidebar-caption="true" data-pc-direction="ltr" dir="ltr" data-pc-theme="light">
+<html lang="en" data-pc-preset="preset-1" data-pc-sidebar-caption="true" data-pc-direction="ltr" dir="ltr"
+    data-pc-theme="light">
 
 <head>
     <title>Order Management Admin Portal - Customer Management</title>
-    
+
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/head.php'); ?>
-    
+
     <!-- Stylesheets -->
     <link rel="stylesheet" href="../assets/css/style.css" id="main-style-link" />
     <link rel="stylesheet" href="../assets/css/orders.css" id="main-style-link" />
@@ -154,7 +201,7 @@ $cities = $city_result->fetch_all(MYSQLI_ASSOC);
 
     <div class="pc-container">
         <div class="pc-content">
-            
+
             <!-- Page Header -->
             <div class="page-header">
                 <div class="page-block">
@@ -165,67 +212,85 @@ $cities = $city_result->fetch_all(MYSQLI_ASSOC);
             </div>
 
             <div class="main-content-wrapper">
-                
+
                 <!-- Customer Filter Section -->
                 <div class="tracking-container">
                     <form class="tracking-form" method="GET" action="">
                         <div class="form-group">
                             <label for="customer_id_filter">Customer ID</label>
-                            <input type="number" id="customer_id_filter" name="customer_id_filter" 
-                                   placeholder="Enter customer ID" 
-                                   value="<?php echo htmlspecialchars($customer_id_filter); ?>">
+                            <input type="number" id="customer_id_filter" name="customer_id_filter"
+                                placeholder="Enter customer ID"
+                                value="<?php echo htmlspecialchars($customer_id_filter); ?>">
                         </div>
-                        
+
                         <div class="form-group">
                             <label for="customer_name_filter">Customer Name</label>
-                            <input type="text" id="customer_name_filter" name="customer_name_filter" 
-                                   placeholder="Enter customer name" 
-                                   value="<?php echo htmlspecialchars($customer_name_filter); ?>">
+                            <input type="text" id="customer_name_filter" name="customer_name_filter"
+                                placeholder="Enter customer name"
+                                value="<?php echo htmlspecialchars($customer_name_filter); ?>">
                         </div>
-                        
+
                         <div class="form-group">
                             <label for="email_filter">Email</label>
-                            <input type="text" id="email_filter" name="email_filter" 
-                                   placeholder="Enter email" 
-                                   value="<?php echo htmlspecialchars($email_filter); ?>">
+                            <input type="text" id="email_filter" name="email_filter" placeholder="Enter email"
+                                value="<?php echo htmlspecialchars($email_filter); ?>">
                         </div>
-                        
+
                         <div class="form-group">
                             <label for="phone_filter">Phone</label>
-                            <input type="text" id="phone_filter" name="phone_filter" 
-                                   placeholder="Search phone numbers" 
-                                   value="<?php echo htmlspecialchars($phone_filter); ?>">
+                            <input type="text" id="phone_filter" name="phone_filter" placeholder="Search phone numbers"
+                                value="<?php echo htmlspecialchars($phone_filter); ?>">
                         </div>
-                        
+
                         <div class="form-group">
                             <label for="status_filter">Status</label>
                             <select id="status_filter" name="status_filter">
                                 <option value="">All Status</option>
-                                <option value="Active" <?php echo ($status_filter == 'Active') ? 'selected' : ''; ?>>Active</option>
-                                <option value="Inactive" <?php echo ($status_filter == 'Inactive') ? 'selected' : ''; ?>>Inactive</option>
+                                <option value="Active" <?php echo ($status_filter == 'Active') ? 'selected' : ''; ?>>
+                                    Active</option>
+                                <option value="Inactive"
+                                    <?php echo ($status_filter == 'Inactive') ? 'selected' : ''; ?>>Inactive</option>
                             </select>
                         </div>
-                        
+
                         <div class="form-group">
                             <label for="city_filter">City</label>
                             <select id="city_filter" name="city_filter">
                                 <option value="">All Cities</option>
                                 <?php foreach ($cities as $city): ?>
-                                    <option value="<?php echo htmlspecialchars($city['city_id']); ?>" 
-                                            <?php echo $city_filter == $city['city_id'] ? 'selected' : ''; ?>>
-                                        <?php echo htmlspecialchars($city['city_name'] ? $city['city_name'] : 'City ' . $city['city_id']); ?>
-                                    </option>
+                                <option value="<?php echo htmlspecialchars($city['city_id']); ?>"
+                                    <?php echo $city_filter == $city['city_id'] ? 'selected' : ''; ?>>
+                                    <?php echo htmlspecialchars($city['city_name'] ? $city['city_name'] : 'City ' . $city['city_id']); ?>
+                                </option>
                                 <?php endforeach; ?>
                             </select>
                         </div>
-                        
+
+                        <?php if ($is_main_admin == 1) { ?>
+                        <div class="form-group">
+                            <label for="tenant_id_filter">Teanent ID</label>
+                            <select id="tenant_id_filter" name="tenant_id_filter">
+                                <option value="">All Companies</option>
+                                <?php foreach ($tenants as $tenant): ?>
+                                <option value="<?php echo htmlspecialchars($tenant['tenant_id']); ?>"
+                                    <?php echo $tenant_id_filter == $tenant['tenant_id'] ? 'selected' : ''; ?>>
+                                    <?php echo htmlspecialchars($tenant['company_name'] ? $tenant['company_name'] : 'Company ' . $tenant['tenant_id']); ?>
+                                </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <?php } else { ?>
+                                <!--<input type="hidden" name="teanetID" value="0">-->
+                                <?php } ?>
+
                         <div class="form-group">
                             <div class="button-group">
                                 <button type="submit" class="search-btn">
                                     <i class="fas fa-search"></i>
                                     Search
                                 </button>
-                                <button type="button" class="search-btn" onclick="clearFilters()" style="background: #6c757d;">
+                                <button type="button" class="search-btn" onclick="clearFilters()"
+                                    style="background: #6c757d;">
                                     <i class="fas fa-times"></i>
                                     Clear
                                 </button>
@@ -250,112 +315,137 @@ $cities = $city_result->fetch_all(MYSQLI_ASSOC);
                                 <th>Customer Name</th>
                                 <th>Phone & Email</th>
                                 <th>Address</th>
+                                <?php if ($is_main_admin == 1) { ?>
+                                <th>Teanet Company Name</th>
+                                <?php } else { ?>
+                                <!--<input type="hidden" name="teanetID" value="0">-->
+                                <?php } ?>
                                 <th>Status</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
                         <tbody id="customersTableBody">
                             <?php if ($result && $result->num_rows > 0): ?>
-                                <?php while ($row = $result->fetch_assoc()): ?>
-                                    <tr>
-                                        <!-- Customer ID -->
-                                        <td><?php echo htmlspecialchars($row['customer_id']); ?></td>
-                                        
-                                        <!-- Customer Name -->
-                                        <td class="customer-name">
-                                            <div class="customer-info">
-                                                <h6 style="margin: 0; font-size: 14px;"><?php echo htmlspecialchars($row['name']); ?></h6>
-                                            </div>
-                                        </td>
-                                        
-                                        <!-- Phone & Email (Combined Column) - UPDATED to show phone_2 -->
-                                        <td>
-                                            <div style="line-height: 1.6;">
-                                                <div style="font-weight: 500; margin-bottom: 2px;">
-                                                    <i class="fas fa-phone" style="font-size: 11px; margin-right: 4px;"></i>
-                                                    <?php echo htmlspecialchars($row['phone']); ?>
-                                                </div>
-                                                <?php if (!empty($row['phone_2'])): ?>
-                                                    <div style="font-size: 12px; color: #6c757d; margin-bottom: 2px;">
-                                                        <i class="fas fa-phone" style="font-size: 10px; margin-right: 4px;"></i>
-                                                        <?php echo htmlspecialchars($row['phone_2']); ?>
-                                                    </div>
-                                                <?php endif; ?>
-                                                <?php if (!empty($row['email'])): ?>
-                                                    <div style="font-size: 12px; color: #007bff;">
-                                                        <i class="fas fa-envelope" style="font-size: 10px; margin-right: 4px;"></i>
-                                                        <?php echo htmlspecialchars($row['email']); ?>
-                                                    </div>
-                                                <?php endif; ?>
-                                            </div>
-                                        </td>
-                                        
-                                        <!-- Address -->
-                                        <td>
-                                            <div class="address-truncate" title="<?php echo htmlspecialchars($row['address_line1'] . ($row['address_line2'] ? ', ' . $row['address_line2'] : '') . ($row['city_name'] ? ', ' . $row['city_name'] : '')); ?>">
-                                                <?php echo htmlspecialchars($row['address_line1']); ?>
-                                                <?php if (!empty($row['address_line2'])): ?>
-                                                    <br><small style="color: #6c757d;"><?php echo htmlspecialchars($row['address_line2']); ?></small>
-                                                <?php endif; ?>
-                                                <?php if (!empty($row['city_name'])): ?>
-                                                    <br><small style="color: #007bff; font-weight: 500;"><?php echo htmlspecialchars($row['city_name']); ?></small>
-                                                <?php endif; ?>
-                                            </div>
-                                        </td>
-                                        
-                                        <!-- Status Badge -->
-                                        <td>
-                                            <?php if ($row['status'] === 'Active'): ?>
-                                                <span class="status-badge pay-status-paid">Active</span>
-                                            <?php else: ?>
-                                                <span class="status-badge pay-status-unpaid">Inactive</span>
-                                            <?php endif; ?>
-                                        </td>
-                                        
-                                        <!-- Action Buttons - ADDED phone_2 data attribute -->
-                                        <td class="actions">
-                                            <div class="action-buttons-group">
-                                                <button type="button" class="action-btn view-btn view-customer-btn"
-                                                        data-customer-id="<?= $row['customer_id'] ?>"
-                                                        data-customer-name="<?= htmlspecialchars($row['name']) ?>"
-                                                        data-customer-email="<?= htmlspecialchars($row['email']) ?>"
-                                                        data-customer-phone="<?= htmlspecialchars($row['phone']) ?>"
-                                                        data-customer-phone2="<?= htmlspecialchars($row['phone_2'] ?? '') ?>"
-                                                        data-customer-address1="<?= htmlspecialchars($row['address_line1']) ?>"
-                                                        data-customer-address2="<?= htmlspecialchars($row['address_line2'] ?? '') ?>"
-                                                        data-customer-city="<?= htmlspecialchars($row['city_id']) ?>"
-                                                        data-customer-city-name="<?= htmlspecialchars($row['city_name'] ?? '') ?>"
-                                                        data-customer-status="<?= htmlspecialchars($row['status']) ?>"
-                                                        data-customer-created="<?= htmlspecialchars($row['created_at']) ?>"
-                                                        data-customer-updated="<?= htmlspecialchars($row['updated_at']) ?>"
-                                                        title="View Customer Details">
-                                                    <i class="fas fa-eye"></i>
-                                                </button>
-                                                
-                                                <button class="action-btn dispatch-btn" title="Edit Customer" 
-                                                        onclick="editCustomer(<?php echo $row['customer_id']; ?>)">
-                                                    <i class="fas fa-edit"></i>
-                                                </button>
-                                          
-                                                <button type="button" class="action-btn <?= $row['status'] == 'Active' ? 'deactivate-btn' : 'activate-btn' ?> toggle-status-btn"
-                                                  data-customer-id="<?= $row['customer_id'] ?>"
-                                                  data-current-status="<?= $row['status'] ?>"
-                                                  data-customer-name="<?= htmlspecialchars($row['name']) ?>"
-                                                   title="<?= $row['status'] == 'Active' ? 'Deactivate Customer' : 'Activate Customer' ?>"
-                                                   data-action="<?= $row['status'] == 'Active' ? 'deactivate' : 'activate' ?>">
-                                                       <i class="fas <?= $row['status'] == 'Active' ? 'fa-user-times' : 'fa-user-check' ?>"></i>
-                                                </button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                <?php endwhile; ?>
+                            <?php while ($row = $result->fetch_assoc()): ?>
+                            <tr>
+                                <!-- Customer ID -->
+                                <td><?php echo htmlspecialchars($row['customer_id']); ?></td>
+
+                                <!-- Customer Name -->
+                                <td class="customer-name">
+                                    <div class="customer-info">
+                                        <h6 style="margin: 0; font-size: 14px;">
+                                            <?php echo htmlspecialchars($row['name']); ?></h6>
+                                    </div>
+                                </td>
+
+                                <!-- Phone & Email (Combined Column) - UPDATED to show phone_2 -->
+                                <td>
+                                    <div style="line-height: 1.6;">
+                                        <div style="font-weight: 500; margin-bottom: 2px;">
+                                            <i class="fas fa-phone" style="font-size: 11px; margin-right: 4px;"></i>
+                                            <?php echo htmlspecialchars($row['phone']); ?>
+                                        </div>
+                                        <?php if (!empty($row['phone_2'])): ?>
+                                        <div style="font-size: 12px; color: #6c757d; margin-bottom: 2px;">
+                                            <i class="fas fa-phone" style="font-size: 10px; margin-right: 4px;"></i>
+                                            <?php echo htmlspecialchars($row['phone_2']); ?>
+                                        </div>
+                                        <?php endif; ?>
+                                        <?php if (!empty($row['email'])): ?>
+                                        <div style="font-size: 12px; color: #007bff;">
+                                            <i class="fas fa-envelope" style="font-size: 10px; margin-right: 4px;"></i>
+                                            <?php echo htmlspecialchars($row['email']); ?>
+                                        </div>
+                                        <?php endif; ?>
+                                    </div>
+                                </td>
+
+                                <!-- Address -->
+                                <td>
+                                    <div class="address-truncate"
+                                        title="<?php echo htmlspecialchars($row['address_line1'] . ($row['address_line2'] ? ', ' . $row['address_line2'] : '') . ($row['city_name'] ? ', ' . $row['city_name'] : '')); ?>">
+                                        <?php echo htmlspecialchars($row['address_line1']); ?>
+                                        <?php if (!empty($row['address_line2'])): ?>
+                                        <br><small
+                                            style="color: #6c757d;"><?php echo htmlspecialchars($row['address_line2']); ?></small>
+                                        <?php endif; ?>
+                                        <?php if (!empty($row['city_name'])): ?>
+                                        <br><small
+                                            style="color: #007bff; font-weight: 500;"><?php echo htmlspecialchars($row['city_name']); ?></small>
+                                        <?php endif; ?>
+                                    </div>
+                                </td>
+
+                                <!-- Teanaent Company Name -->
+                                <?php if ($is_main_admin == 1) { ?>
+                                <td class="customer-name">
+                                    <div class="customer-info">
+                                        <h6 style="margin: 0; font-size: 14px;">
+                                            <?php echo htmlspecialchars($row['company_name']); ?></h6>
+                                    </div>
+                                </td>
+                                <?php } else { ?>
+                                <!--<input type="hidden" name="teanetID" value="0">-->
+                                <?php } ?>
+
+                                <!-- Status Badge -->
+                                <td>
+                                    <?php if ($row['status'] === 'Active'): ?>
+                                    <span class="status-badge pay-status-paid">Active</span>
+                                    <?php else: ?>
+                                    <span class="status-badge pay-status-unpaid">Inactive</span>
+                                    <?php endif; ?>
+                                </td>
+
+                                <!-- Action Buttons - ADDED phone_2 data attribute -->
+                                <td class="actions">
+                                    <div class="action-buttons-group">
+                                        <button type="button" class="action-btn view-btn view-customer-btn"
+                                            data-customer-id="<?= $row['customer_id'] ?>"
+                                            data-customer-name="<?= htmlspecialchars($row['name']) ?>"
+                                            data-customer-email="<?= htmlspecialchars($row['email']) ?>"
+                                            data-customer-phone="<?= htmlspecialchars($row['phone']) ?>"
+                                            data-customer-phone2="<?= htmlspecialchars($row['phone_2'] ?? '') ?>"
+                                            data-customer-address1="<?= htmlspecialchars($row['address_line1']) ?>"
+                                            data-customer-address2="<?= htmlspecialchars($row['address_line2'] ?? '') ?>"
+                                            data-customer-city="<?= htmlspecialchars($row['city_id']) ?>"
+                                            data-customer-city-name="<?= htmlspecialchars($row['city_name'] ?? '') ?>"
+                                            data-customer-status="<?= htmlspecialchars($row['status']) ?>"
+                                            data-customer-created="<?= htmlspecialchars($row['created_at']) ?>"
+                                            data-customer-updated="<?= htmlspecialchars($row['updated_at']) ?>"
+                                            title="View Customer Details">
+                                            <i class="fas fa-eye"></i>
+                                        </button>
+
+                                        <button class="action-btn dispatch-btn" title="Edit Customer"
+                                            onclick="editCustomer(<?php echo $row['customer_id']; ?>)">
+                                            <i class="fas fa-edit"></i>
+                                        </button>
+
+                                        <button type="button"
+                                            class="action-btn <?= $row['status'] == 'Active' ? 'deactivate-btn' : 'activate-btn' ?> toggle-status-btn"
+                                            data-customer-id="<?= $row['customer_id'] ?>"
+                                            data-current-status="<?= $row['status'] ?>"
+                                            data-customer-name="<?= htmlspecialchars($row['name']) ?>"
+                                            title="<?= $row['status'] == 'Active' ? 'Deactivate Customer' : 'Activate Customer' ?>"
+                                            data-action="<?= $row['status'] == 'Active' ? 'deactivate' : 'activate' ?>">
+                                            <i
+                                                class="fas <?= $row['status'] == 'Active' ? 'fa-user-times' : 'fa-user-check' ?>"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                            <?php endwhile; ?>
                             <?php else: ?>
-                                <tr>
-                                    <td colspan="6" class="text-center" style="padding: 40px; text-align: center; color: #666;">
-                                        <i class="fas fa-users" style="font-size: 2rem; margin-bottom: 10px; display: block;"></i>
-                                        No customers found
-                                    </td>
-                                </tr>
+                            <tr>
+                                <td colspan="6" class="text-center"
+                                    style="padding: 40px; text-align: center; color: #666;">
+                                    <i class="fas fa-users"
+                                        style="font-size: 2rem; margin-bottom: 10px; display: block;"></i>
+                                    No customers found
+                                </td>
+                            </tr>
                             <?php endif; ?>
                         </tbody>
                     </table>
@@ -364,26 +454,29 @@ $cities = $city_result->fetch_all(MYSQLI_ASSOC);
                 <!-- Pagination Controls -->
                 <div class="pagination">
                     <div class="pagination-info">
-                        Showing <?php echo $offset + 1; ?> to <?php echo min($offset + $limit, $totalRows); ?> of <?php echo $totalRows; ?> entries
+                        Showing <?php echo $offset + 1; ?> to <?php echo min($offset + $limit, $totalRows); ?> of
+                        <?php echo $totalRows; ?> entries
                     </div>
                     <div class="pagination-controls">
                         <?php if ($page > 1): ?>
-                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page - 1; ?>&limit=<?php echo $limit; ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&email_filter=<?php echo urlencode($email_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&status_filter=<?php echo urlencode($status_filter); ?>&city_filter=<?php echo urlencode($city_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&search=<?php echo urlencode($search); ?>'">
-                                <i class="fas fa-chevron-left"></i>
-                            </button>
+                        <button class="page-btn"
+                            onclick="window.location.href='?page=<?php echo $page - 1; ?>&limit=<?php echo $limit; ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&email_filter=<?php echo urlencode($email_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&status_filter=<?php echo urlencode($status_filter); ?>&city_filter=<?php echo urlencode($city_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&search=<?php echo urlencode($search); ?>'">
+                            <i class="fas fa-chevron-left"></i>
+                        </button>
                         <?php endif; ?>
-                        
+
                         <?php for ($i = max(1, $page - 2); $i <= min($totalPages, $page + 2); $i++): ?>
-                            <button class="page-btn <?php echo ($i == $page) ? 'active' : ''; ?>" 
-                                    onclick="window.location.href='?page=<?php echo $i; ?>&limit=<?php echo $limit; ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&email_filter=<?php echo urlencode($email_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&status_filter=<?php echo urlencode($status_filter); ?>&city_filter=<?php echo urlencode($city_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&search=<?php echo urlencode($search); ?>'">
-                                <?php echo $i; ?>
-                            </button>
+                        <button class="page-btn <?php echo ($i == $page) ? 'active' : ''; ?>"
+                            onclick="window.location.href='?page=<?php echo $i; ?>&limit=<?php echo $limit; ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&email_filter=<?php echo urlencode($email_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&status_filter=<?php echo urlencode($status_filter); ?>&city_filter=<?php echo urlencode($city_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&search=<?php echo urlencode($search); ?>'">
+                            <?php echo $i; ?>
+                        </button>
                         <?php endfor; ?>
-                        
+
                         <?php if ($page < $totalPages): ?>
-                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page + 1; ?>&limit=<?php echo $limit; ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&email_filter=<?php echo urlencode($email_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&status_filter=<?php echo urlencode($status_filter); ?>&city_filter=<?php echo urlencode($city_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&search=<?php echo urlencode($search); ?>'">
-                                <i class="fas fa-chevron-right"></i>
-                            </button>
+                        <button class="page-btn"
+                            onclick="window.location.href='?page=<?php echo $page + 1; ?>&limit=<?php echo $limit; ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&email_filter=<?php echo urlencode($email_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&status_filter=<?php echo urlencode($status_filter); ?>&city_filter=<?php echo urlencode($city_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&search=<?php echo urlencode($search); ?>'">
+                            <i class="fas fa-chevron-right"></i>
+                        </button>
                         <?php endif; ?>
                     </div>
                 </div>
@@ -481,160 +574,161 @@ $cities = $city_result->fetch_all(MYSQLI_ASSOC);
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/scripts.php'); ?>
 
     <script>
-        function clearFilters() {
-            window.location.href = 'customer_list.php';
+    function clearFilters() {
+        window.location.href = 'customer_list.php';
+    }
+
+    // Customer Details Modal Functions - UPDATED to handle phone_2
+    function openCustomerModal(button) {
+        const modal = document.getElementById('customerDetailsModal');
+
+        // Extract data from button attributes
+        const customerId = button.getAttribute('data-customer-id');
+        const customerName = button.getAttribute('data-customer-name');
+        const customerEmail = button.getAttribute('data-customer-email');
+        const customerPhone = button.getAttribute('data-customer-phone');
+        const customerPhone2 = button.getAttribute('data-customer-phone2');
+        const customerAddress1 = button.getAttribute('data-customer-address1');
+        const customerAddress2 = button.getAttribute('data-customer-address2');
+        const customerCity = button.getAttribute('data-customer-city');
+        const customerCityName = button.getAttribute('data-customer-city-name');
+        const customerStatus = button.getAttribute('data-customer-status');
+        const customerCreated = button.getAttribute('data-customer-created');
+        const customerUpdated = button.getAttribute('data-customer-updated');
+
+        // Populate modal fields
+        document.getElementById('modal-customer-id').textContent = customerId;
+        document.getElementById('modal-customer-name').textContent = customerName;
+        document.getElementById('modal-customer-email').textContent = customerEmail || 'N/A';
+        document.getElementById('modal-customer-phone').textContent = customerPhone;
+
+        // Handle phone_2 - show/hide row based on value
+        const phone2Row = document.getElementById('phone2-row');
+        const phone2Value = document.getElementById('modal-customer-phone2');
+        if (customerPhone2 && customerPhone2.trim() !== '') {
+            phone2Value.textContent = customerPhone2;
+            phone2Row.style.display = 'flex';
+        } else {
+            phone2Row.style.display = 'none';
         }
 
-        // Customer Details Modal Functions - UPDATED to handle phone_2
-        function openCustomerModal(button) {
+        // Build address display
+        let addressDisplay = customerAddress1;
+        if (customerAddress2 && customerAddress2.trim() !== '') {
+            addressDisplay += `<span class="address-line">${customerAddress2}</span>`;
+        }
+        document.getElementById('modal-customer-address').innerHTML = addressDisplay;
+
+        document.getElementById('modal-customer-city').textContent = customerCityName || customerCity || 'N/A';
+
+        // Set status badge
+        const statusElement = document.getElementById('modal-customer-status');
+        statusElement.textContent = customerStatus;
+        statusElement.className = 'status-badge ' + (customerStatus === 'Active' ? 'status-active' : 'status-inactive');
+
+        // Format dates
+        document.getElementById('modal-customer-created').textContent = formatDateTime(customerCreated);
+        document.getElementById('modal-customer-updated').textContent = formatDateTime(customerUpdated);
+
+        // Show modal
+        modal.style.display = 'block';
+    }
+
+    function closeCustomerModal() {
+        document.getElementById('customerDetailsModal').style.display = 'none';
+    }
+
+    function formatDateTime(dateString) {
+        if (!dateString) return 'N/A';
+        try {
+            const date = new Date(dateString);
+            return date.toLocaleString();
+        } catch (e) {
+            return dateString;
+        }
+    }
+
+    // Event listeners for view buttons
+    document.addEventListener('DOMContentLoaded', function() {
+        const viewButtons = document.querySelectorAll('.view-customer-btn');
+        viewButtons.forEach(button => {
+            button.addEventListener('click', function() {
+                openCustomerModal(this);
+            });
+        });
+
+        // Close modal when clicking outside
+        window.onclick = function(event) {
             const modal = document.getElementById('customerDetailsModal');
-            
-            // Extract data from button attributes
-            const customerId = button.getAttribute('data-customer-id');
-            const customerName = button.getAttribute('data-customer-name');
-            const customerEmail = button.getAttribute('data-customer-email');
-            const customerPhone = button.getAttribute('data-customer-phone');
-            const customerPhone2 = button.getAttribute('data-customer-phone2');
-            const customerAddress1 = button.getAttribute('data-customer-address1');
-            const customerAddress2 = button.getAttribute('data-customer-address2');
-            const customerCity = button.getAttribute('data-customer-city');
-            const customerCityName = button.getAttribute('data-customer-city-name');
-            const customerStatus = button.getAttribute('data-customer-status');
-            const customerCreated = button.getAttribute('data-customer-created');
-            const customerUpdated = button.getAttribute('data-customer-updated');
-
-            // Populate modal fields
-            document.getElementById('modal-customer-id').textContent = customerId;
-            document.getElementById('modal-customer-name').textContent = customerName;
-            document.getElementById('modal-customer-email').textContent = customerEmail || 'N/A';
-            document.getElementById('modal-customer-phone').textContent = customerPhone;
-            
-            // Handle phone_2 - show/hide row based on value
-            const phone2Row = document.getElementById('phone2-row');
-            const phone2Value = document.getElementById('modal-customer-phone2');
-            if (customerPhone2 && customerPhone2.trim() !== '') {
-                phone2Value.textContent = customerPhone2;
-                phone2Row.style.display = 'flex';
-            } else {
-                phone2Row.style.display = 'none';
-            }
-            
-            // Build address display
-            let addressDisplay = customerAddress1;
-            if (customerAddress2 && customerAddress2.trim() !== '') {
-                addressDisplay += `<span class="address-line">${customerAddress2}</span>`;
-            }
-            document.getElementById('modal-customer-address').innerHTML = addressDisplay;
-            
-            document.getElementById('modal-customer-city').textContent = customerCityName || customerCity || 'N/A';
-            
-            // Set status badge
-            const statusElement = document.getElementById('modal-customer-status');
-            statusElement.textContent = customerStatus;
-            statusElement.className = 'status-badge ' + (customerStatus === 'Active' ? 'status-active' : 'status-inactive');
-            
-            // Format dates
-            document.getElementById('modal-customer-created').textContent = formatDateTime(customerCreated);
-            document.getElementById('modal-customer-updated').textContent = formatDateTime(customerUpdated);
-
-            // Show modal
-            modal.style.display = 'block';
-        }
-
-        function closeCustomerModal() {
-            document.getElementById('customerDetailsModal').style.display = 'none';
-        }
-
-        function formatDateTime(dateString) {
-            if (!dateString) return 'N/A';
-            try {
-                const date = new Date(dateString);
-                return date.toLocaleString();
-            } catch (e) {
-                return dateString;
+            if (event.target === modal) {
+                closeCustomerModal();
             }
         }
+    });
 
-        // Event listeners for view buttons
-        document.addEventListener('DOMContentLoaded', function() {
-            const viewButtons = document.querySelectorAll('.view-customer-btn');
-            viewButtons.forEach(button => {
-                button.addEventListener('click', function() {
-                    openCustomerModal(this);
-                });
+    function editCustomer(customerId) {
+        window.location.href = 'edit_customer.php?id=' + customerId;
+    }
+
+    function closeConfirmationModal() {
+        document.getElementById('statusConfirmationModal').style.display = 'none';
+    }
+
+    // Toggle Customer Status Functionality
+    document.addEventListener('DOMContentLoaded', function() {
+        // Add event listeners for toggle status buttons
+        const toggleButtons = document.querySelectorAll('.toggle-status-btn');
+        toggleButtons.forEach(button => {
+            button.addEventListener('click', function() {
+                openStatusConfirmationModal(this);
             });
-
-            // Close modal when clicking outside
-            window.onclick = function(event) {
-                const modal = document.getElementById('customerDetailsModal');
-                if (event.target === modal) {
-                    closeCustomerModal();
-                }
-            }
         });
 
-        function editCustomer(customerId) {
-            window.location.href = 'edit_customer.php?id=' + customerId;
-        }
+        // Close modal when clicking outside
+        window.onclick = function(event) {
+            const customerModal = document.getElementById('customerDetailsModal');
+            const statusModal = document.getElementById('statusConfirmationModal');
 
-        function closeConfirmationModal() {
-            document.getElementById('statusConfirmationModal').style.display = 'none';
-        }
-
-              // Toggle Customer Status Functionality
-        document.addEventListener('DOMContentLoaded', function() {
-            // Add event listeners for toggle status buttons
-            const toggleButtons = document.querySelectorAll('.toggle-status-btn');
-            toggleButtons.forEach(button => {
-                button.addEventListener('click', function() {
-                    openStatusConfirmationModal(this);
-                });
-            });
-            
-            // Close modal when clicking outside
-            window.onclick = function(event) {
-                const customerModal = document.getElementById('customerDetailsModal');
-                const statusModal = document.getElementById('statusConfirmationModal');
-                
-                if (event.target === customerModal) {
-                    closeCustomerModal();
-                }
-                if (event.target === statusModal) {
-                    closeConfirmationModal();
-                }
+            if (event.target === customerModal) {
+                closeCustomerModal();
             }
-        });
-
-        function openStatusConfirmationModal(button) {
-            const customerId = button.getAttribute('data-customer-id');
-            const customerName = button.getAttribute('data-customer-name');
-            const currentStatus = button.getAttribute('data-current-status');
-            
-            // Determine action based on current status
-            const isActive = currentStatus.toLowerCase() === 'active';
-            const actionText = isActive ? 'deactivate' : 'activate';
-            const buttonText = isActive ? 'Yes, deactivate user!' : 'Yes, activate user!';
-            
-            // Update modal content
-            document.getElementById('action-text').textContent = actionText;
-            document.getElementById('confirm-user-name').textContent = customerName;
-            document.getElementById('confirm-button-text').textContent = buttonText;
-            
-            // Store data for confirmation
-            const confirmBtn = document.getElementById('confirmActionBtn');
-            confirmBtn.setAttribute('data-customer-id', customerId);
-            confirmBtn.setAttribute('data-new-status', isActive ? 'Inactive' : 'Active');
-            
-            // Add click handler to confirm button
-            confirmBtn.onclick = function() {
-                toggleCustomerStatus(customerId, isActive ? 'Inactive' : 'Active');};
-            
-            // Show modal
-            document.getElementById('statusConfirmationModal').style.display = 'block';
+            if (event.target === statusModal) {
+                closeConfirmationModal();
+            }
         }
+    });
 
-        function toggleCustomerStatus(customerId, newStatus) {
-            fetch('toggle_customer_status.php', {
+    function openStatusConfirmationModal(button) {
+        const customerId = button.getAttribute('data-customer-id');
+        const customerName = button.getAttribute('data-customer-name');
+        const currentStatus = button.getAttribute('data-current-status');
+
+        // Determine action based on current status
+        const isActive = currentStatus.toLowerCase() === 'active';
+        const actionText = isActive ? 'deactivate' : 'activate';
+        const buttonText = isActive ? 'Yes, deactivate user!' : 'Yes, activate user!';
+
+        // Update modal content
+        document.getElementById('action-text').textContent = actionText;
+        document.getElementById('confirm-user-name').textContent = customerName;
+        document.getElementById('confirm-button-text').textContent = buttonText;
+
+        // Store data for confirmation
+        const confirmBtn = document.getElementById('confirmActionBtn');
+        confirmBtn.setAttribute('data-customer-id', customerId);
+        confirmBtn.setAttribute('data-new-status', isActive ? 'Inactive' : 'Active');
+
+        // Add click handler to confirm button
+        confirmBtn.onclick = function() {
+            toggleCustomerStatus(customerId, isActive ? 'Inactive' : 'Active');
+        };
+
+        // Show modal
+        document.getElementById('statusConfirmationModal').style.display = 'block';
+    }
+
+    function toggleCustomerStatus(customerId, newStatus) {
+        fetch('toggle_customer_status.php', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -649,10 +743,10 @@ $cities = $city_result->fetch_all(MYSQLI_ASSOC);
                 if (data.success) {
                     // Close confirmation modal
                     closeConfirmationModal();
-                    
+
                     // Show success message
                     alert('Customer status updated successfully!');
-                    
+
                     // Reload page to reflect changes
                     location.reload();
                 } else {
@@ -663,64 +757,68 @@ $cities = $city_result->fetch_all(MYSQLI_ASSOC);
                 console.error('Error:', error);
                 alert('An error occurred while updating the customer status.');
             });
-        }
+    }
 
-        // Date range filter validation
-        document.addEventListener('DOMContentLoaded', function() {
-            const dateFromInput = document.getElementById('date_from');
-            const dateToInput = document.getElementById('date_to');
-            
-            if (dateFromInput && dateToInput) {
-                dateFromInput.addEventListener('change', function() {
-                    if (this.value && dateToInput.value && new Date(this.value) > new Date(dateToInput.value)) {
-                        alert('From date cannot be later than To date');
-                        this.value = '';
-                    }
-                });
-                
-                dateToInput.addEventListener('change', function() {
-                    if (this.value && dateFromInput.value && new Date(this.value) < new Date(dateFromInput.value)) {
-                        alert('To date cannot be earlier than From date');
-                        this.value = '';
-                    }
-                });
-            }
-        });
+    // Date range filter validation
+    document.addEventListener('DOMContentLoaded', function() {
+        const dateFromInput = document.getElementById('date_from');
+        const dateToInput = document.getElementById('date_to');
 
-        // Add loading states for buttons
-        function addLoadingState(button) {
-            const originalText = button.innerHTML;
-            button.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
-            button.disabled = true;
-            
-            return function() {
-                button.innerHTML = originalText;
-                button.disabled = false;
-            };
-        }
-
-        // Enhanced search with debouncing
-        let searchTimeout;
-        function debounceSearch(func, delay) {
-            return function(...args) {
-                clearTimeout(searchTimeout);
-                searchTimeout = setTimeout(() => func.apply(this, args), delay);
-            };
-        }
-
-        // Auto-submit search form with debouncing
-        document.addEventListener('DOMContentLoaded', function() {
-            const searchInputs = document.querySelectorAll('#customer_name_filter, #email_filter, #phone_filter');
-            const debouncedSubmit = debounceSearch(function() {
-                document.querySelector('.tracking-form').submit();
-            }, 500);
-            
-            searchInputs.forEach(input => {
-                input.addEventListener('input', debouncedSubmit);
+        if (dateFromInput && dateToInput) {
+            dateFromInput.addEventListener('change', function() {
+                if (this.value && dateToInput.value && new Date(this.value) > new Date(dateToInput
+                        .value)) {
+                    alert('From date cannot be later than To date');
+                    this.value = '';
+                }
             });
+
+            dateToInput.addEventListener('change', function() {
+                if (this.value && dateFromInput.value && new Date(this.value) < new Date(dateFromInput
+                        .value)) {
+                    alert('To date cannot be earlier than From date');
+                    this.value = '';
+                }
+            });
+        }
+    });
+
+    // Add loading states for buttons
+    function addLoadingState(button) {
+        const originalText = button.innerHTML;
+        button.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        button.disabled = true;
+
+        return function() {
+            button.innerHTML = originalText;
+            button.disabled = false;
+        };
+    }
+
+    // Enhanced search with debouncing
+    let searchTimeout;
+
+    function debounceSearch(func, delay) {
+        return function(...args) {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => func.apply(this, args), delay);
+        };
+    }
+
+    // Auto-submit search form with debouncing
+    document.addEventListener('DOMContentLoaded', function() {
+        const searchInputs = document.querySelectorAll('#customer_name_filter, #email_filter, #phone_filter');
+        const debouncedSubmit = debounceSearch(function() {
+            document.querySelector('.tracking-form').submit();
+        }, 500);
+
+        searchInputs.forEach(input => {
+            input.addEventListener('input', debouncedSubmit);
         });
+    });
     </script>
 
 
 </body>
+
 </html>
