@@ -46,6 +46,19 @@ if ($user_role['role_id'] != 1) {
 $roleQuery = "SELECT * FROM roles ORDER BY name";
 $roleResult = mysqli_query($conn, $roleQuery);
 
+// Fetch tenants if user is main admin 
+$tenants = [];
+$is_main_admin = isset($_SESSION['is_main_admin']) && $_SESSION['is_main_admin'] == 1;
+if ($is_main_admin) {
+    $tenantQuery = "SELECT tenant_id, company_name FROM tenants WHERE status = 'active' ORDER BY company_name";
+    $tenantResult = mysqli_query($conn, $tenantQuery);
+    if ($tenantResult) {
+        while ($row = mysqli_fetch_assoc($tenantResult)) {
+            $tenants[] = $row;
+        }
+    }
+}
+
 // Function to generate CSRF token
 // function generateCSRFToken() {
 //     if (!isset($_SESSION['csrf_token'])) {
@@ -163,6 +176,28 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
 .password-input-group .form-control {
     padding-right: 40px;
 }
+
+/* Hide browser's default password reveal */
+input[type="password"]::-webkit-textfield-decoration-container {
+    display: none !important;
+}
+
+input[type="password"]::-webkit-contacts-auto-fill-button,
+input[type="password"]::-webkit-credentials-auto-fill-button {
+    display: none !important;
+}
+
+input[type="password"]::-ms-reveal,
+input[type="password"]::-ms-clear {
+    display: none;
+}
+
+/* For Firefox */
+input[type="password"] {
+    text-security: disc;
+    -webkit-text-security: disc;
+    -moz-text-security: disc;
+}
 </style>
 </head>
 
@@ -279,17 +314,8 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                                 </div>
                             </div>
 
-                            <!-- Fourth Row: Address and Role -->
+                            <!-- Fourth Row: Role and Tenant (is_main_admin Only) -->
                             <div class="form-row">
-                                <div class="customer-form-group">
-                                    <label for="address" class="form-label">
-                                        <i class="fas fa-map-marker-alt"></i> Address<span class="required">*</span>
-                                    </label>
-                                    <textarea class="form-control" id="address" name="address" rows="3"
-                                        placeholder="Enter complete address" required></textarea>
-                                    <div class="error-feedback" id="address-error"></div>
-                                </div>
-
                                 <div class="customer-form-group">
                                     <label for="role" class="form-label">
                                         <i class="fas fa-user-tag"></i> Role<span class="required">*</span>
@@ -297,7 +323,7 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                                     <select class="form-select" id="role" name="role" required>
                                         <option value="">Select Role...</option>
                                         <?php
-if ($roleResult && mysqli_num_rows($roleResult) > 0) {
+                                        if ($roleResult && mysqli_num_rows($roleResult) > 0) {
                                             while ($role = mysqli_fetch_assoc($roleResult)) {
                                                 echo "<option value='{$role['name']}'>" . htmlspecialchars($role['name']) . "</option>";
                                             }
@@ -309,6 +335,39 @@ if ($roleResult && mysqli_num_rows($roleResult) > 0) {
                                         ?>
                                     </select>
                                     <div class="error-feedback" id="role-error"></div>
+                                </div>
+
+                                <?php if ($is_main_admin): ?>
+                                <div class="customer-form-group">
+                                    <label for="tenant_id" class="form-label">
+                                        <i class="fas fa-building"></i> Tenant/Company<span class="required">*</span>
+                                    </label>
+                                    <select class="form-select" id="tenant_id" name="tenant_id" required>
+                                        <option value="">Select Tenant...</option>
+                                        <?php foreach ($tenants as $tenant): ?>
+                                            <option value="<?php echo $tenant['tenant_id']; ?>">
+                                                <?php echo htmlspecialchars($tenant['company_name']); ?>
+                                            </option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                    <div class="error-feedback" id="tenant_id-error"></div>
+                                </div>
+                                <?php else: ?>
+                                <div class="customer-form-group">
+                                    <!-- Empty space to maintain layout -->
+                                </div>
+                                <?php endif; ?>
+                            </div>
+
+                            <!-- Fifth Row: Address (Full Width) -->
+                            <div class="form-row single">
+                                <div class="customer-form-group">
+                                    <label for="address" class="form-label">
+                                        <i class="fas fa-map-marker-alt"></i> Address<span class="required">*</span>
+                                    </label>
+                                    <textarea class="form-control" id="address" name="address" rows="3"
+                                        placeholder="Enter complete address" required></textarea>
+                                    <div class="error-feedback" id="address-error"></div>
                                 </div>
                             </div>
                         </div>
@@ -667,6 +726,16 @@ if ($roleResult && mysqli_num_rows($roleResult) > 0) {
                     showSuccess('role');
                 }
             });
+
+            <?php if ($is_main_admin): ?>
+            $('#tenant_id').on('change', function() {
+                if ($(this).val() === '') {
+                    showError('tenant_id', 'Please select a tenant');
+                } else {
+                    showSuccess('tenant_id');
+                }
+            });
+            <?php endif; ?>
         }
         
         // Setup other event listeners
@@ -863,6 +932,7 @@ if ($roleResult && mysqli_num_rows($roleResult) > 0) {
             const nic = $('#nic').val();
             const address = $('#address').val();
             const role = $('#role').val();
+            const tenantId = $('#tenant_id').val();
             
             // Validate required fields
             const validations = [
@@ -874,6 +944,18 @@ if ($roleResult && mysqli_num_rows($roleResult) > 0) {
                 { field: 'address', validator: validateAddress, value: address },
                 { field: 'role', validator: validateRole, value: role }
             ];
+
+            // Add tenant validation if main admin
+            if ($('#tenant_id').length) {
+                validations.push({
+                    field: 'tenant_id',
+                    validator: function(val) {
+                        if (val === '') return { valid: false, message: 'Please select a tenant' };
+                        return { valid: true, message: '' };
+                    },
+                    value: tenantId
+                });
+            }
             
             validations.forEach(function(validation) {
                 const result = validation.validator(validation.value);

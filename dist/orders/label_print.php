@@ -2,7 +2,7 @@
 /**
  * Label Print Page
  * Displays orders for label printing with date filters
- * Includes three print format options: 10x10, 4x13, and 4x6
+ * Multi-tenant support added for Main Admins
  */
 
 // Start session management
@@ -24,9 +24,15 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/connection/db_connec
  * SEARCH AND FILTER PARAMETERS
  * Default: Today's date, Updated Date filter, Dispatch status
  */
+$is_main_admin = isset($_SESSION['is_main_admin']) ? (int)$_SESSION['is_main_admin'] : 0;
+$role_id = isset($_SESSION['role_id']) ? (int)$_SESSION['role_id'] : 0;
+$tenant_id_session = isset($_SESSION['tenant_id']) ? (int)$_SESSION['tenant_id'] : 0;
+
 $date = isset($_GET['date']) ? trim($_GET['date']) : date('Y-m-d'); // Default to today
 $time_from = isset($_GET['time_from']) ? trim($_GET['time_from']) : '';
 $time_to = isset($_GET['time_to']) ? trim($_GET['time_to']) : '';
+$tenant_filter = isset($_GET['tenant_filter']) ? trim($_GET['tenant_filter']) : '';
+
 $status_filter = 'dispatch'; // Always dispatch status
 $date_filter = 'updated_at'; // Always filter by updated_at
 
@@ -51,6 +57,23 @@ $time_to = preg_match('/^\d{1,2}:\d{2}$/', $time_to) ? $time_to : "";
 $where = [];
 $where[] = "o.interface IN ('individual', 'leads')";
 $where[] = "o.status = 'dispatch'"; // Always dispatch status
+
+// Access Control Logic
+if ($is_main_admin === 1 && $role_id === 1) {
+    // Main Admin: View All or Filter Specific Tenant
+    if (!empty($tenant_filter)) {
+        $tenant_id_safe = (int)$tenant_filter;
+        $where[] = "o.tenant_id = $tenant_id_safe";
+    }
+} elseif ($role_id === 1 && $is_main_admin === 0) {
+    // Tenant Admin: View All in their Tenant
+    $where[] = "o.tenant_id = $tenant_id_session";
+} else {
+    // Regular User: View Only Assigned Orders in their Tenant
+    $logged_user_id = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
+    $where[] = "o.tenant_id = $tenant_id_session";
+    $where[] = "o.user_id = $logged_user_id";
+}
 
 // Date and time range filter
 $startDateTime = $date . " 00:00:00";
@@ -108,6 +131,17 @@ if ($countResult && $countResult->num_rows > 0) {
 }
 $totalPages = ceil($totalRows / $limit);
 $result = $conn->query($sql);
+
+// Fetch tenants for Main Admin filter
+$tenants = [];
+if ($is_main_admin === 1 && $role_id === 1) {
+    $tenantsResult = $conn->query("SELECT tenant_id, company_name FROM tenants WHERE status = 'active' ORDER BY company_name ASC");
+    if ($tenantsResult) {
+        while ($t = $tenantsResult->fetch_assoc()) {
+            $tenants[] = $t;
+        }
+    }
+}
 
 // Include navigation components
 include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/navbar.php');
@@ -179,6 +213,21 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                                 <input type="hidden" name="status_filter" value="dispatch">
                             </div>
 
+                            <?php if ($is_main_admin === 1 && $role_id === 1): ?>
+                            <div class="filter-group">
+                                <label for="tenant_filter">Tenant</label>
+                                <select id="tenant_filter" name="tenant_filter">
+                                    <option value="">All Tenants</option>
+                                    <?php foreach ($tenants as $t): ?>
+                                        <option value="<?php echo $t['tenant_id']; ?>" 
+                                            <?php echo ($tenant_filter == $t['tenant_id']) ? 'selected' : ''; ?>>
+                                            <?php echo htmlspecialchars($t['company_name']); ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                            <?php endif; ?>
+
                             <div class="filter-actions">
                                 <button type="submit" class="btn btn-primary">
                                     <i class="fas fa-filter"></i>
@@ -248,6 +297,9 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
             document.getElementById('date').value = '<?php echo date('Y-m-d'); ?>';
             document.getElementById('time_from').value = '';
             document.getElementById('time_to').value = '';
+            
+            const tenantFilter = document.getElementById('tenant_filter');
+            if(tenantFilter) tenantFilter.value = '';
             
             // Submit the form to apply the cleared filters
             document.getElementById('filterForm').submit();

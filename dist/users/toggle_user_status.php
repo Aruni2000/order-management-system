@@ -58,15 +58,24 @@ if (!in_array($new_status, ['active', 'inactive'])) {
 }
 
 try {
-    // Check if user exists
+    $is_main_admin = isset($_SESSION['is_main_admin']) && $_SESSION['is_main_admin'] == 1;
+    $session_tenant_id = $_SESSION['tenant_id'] ?? null;
     $check_sql = "SELECT id, name, status FROM users WHERE id = ?";
+    if (!$is_main_admin && $session_tenant_id !== null) {
+        $check_sql .= " AND tenant_id = ?";
+    }
+
     $check_stmt = $conn->prepare($check_sql);
     
     if (!$check_stmt) {
         throw new Exception("Prepare failed: " . $conn->error);
     }
     
-    $check_stmt->bind_param("i", $target_user_id);
+    if (!$is_main_admin && $session_tenant_id !== null) {
+        $check_stmt->bind_param("ii", $target_user_id, $session_tenant_id);
+    } else {
+        $check_stmt->bind_param("i", $target_user_id);
+    }
     $check_stmt->execute();
     $result = $check_stmt->get_result();
     

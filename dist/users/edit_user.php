@@ -54,13 +54,38 @@ function generateCSRFToken() {
 $user_data = null;
 $errorMsg = "";
 
+// Fetch tenants if user is main admin
+$tenants = [];
+$is_main_admin = isset($_SESSION['is_main_admin']) && $_SESSION['is_main_admin'] == 1;
+if ($is_main_admin) {
+    $tenant_sql = "SELECT tenant_id, company_name FROM tenants WHERE status = 'active' ORDER BY company_name ASC";
+    $tenant_result = mysqli_query($conn, $tenant_sql);
+    if ($tenant_result) {
+        while ($row = mysqli_fetch_assoc($tenant_result)) {
+            $tenants[] = $row;
+        }
+    }
+}
+
 if (isset($_GET['id']) && !empty($_GET['id'])) {
     $userId = (int)$_GET['id'];
     
-    // Fetch user data from database
-    $stmt = mysqli_prepare($conn, "SELECT * FROM users WHERE id = ?");
+    // Fetch user data from database with tenant boundary check
+    $session_tenant_id = $_SESSION['tenant_id'] ?? null;
+    
+    // Build query - Remove tenant restriction for main admins
+    $query = "SELECT * FROM users WHERE id = ?";
+    if (!$is_main_admin && $session_tenant_id !== null) {
+        $query .= " AND tenant_id = ?";
+    }
+
+    $stmt = mysqli_prepare($conn, $query);
     if ($stmt) {
-        mysqli_stmt_bind_param($stmt, "i", $userId);
+        if (!$is_main_admin && $session_tenant_id !== null) {
+            mysqli_stmt_bind_param($stmt, "ii", $userId, $session_tenant_id);
+        } else {
+            mysqli_stmt_bind_param($stmt, "i", $userId);
+        }
         mysqli_stmt_execute($stmt);
         $result = mysqli_stmt_get_result($stmt);
         $user_data = mysqli_fetch_assoc($result);
@@ -172,7 +197,7 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
     color: #6c757d;
     cursor: pointer;
     padding: 5px;
-+    z-index: 10;
++   z-index: 10;
 }
 
 .password-toggle:hover {
@@ -181,6 +206,28 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
 
 .password-input-group .form-control {
     padding-right: 40px;
+}
+
+/* Hide browser's default password reveal */
+input[type="password"]::-webkit-textfield-decoration-container {
+    display: none !important;
+}
+
+input[type="password"]::-webkit-contacts-auto-fill-button,
+input[type="password"]::-webkit-credentials-auto-fill-button {
+    display: none !important;
+}
+
+input[type="password"]::-ms-reveal,
+input[type="password"]::-ms-clear {
+    display: none;
+}
+
+/* For Firefox */
+input[type="password"] {
+    text-security: disc;
+    -webkit-text-security: disc;
+    -moz-text-security: disc;
 }
 </style>
 </head>
@@ -304,30 +351,25 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                                     <label for="status" class="form-label">
                                         <i class="fas fa-toggle-on"></i> Status<span class="required">*</span>
                                     </label>
-                                    <select class="form-select" id="status" name="status" required>
+                                    <select class="form-select" id="status" name="status" <?php echo ($userId == 1) ? 'disabled' : ''; ?> required>
                                         <option value="active" <?php echo (($user_data['status'] ?? '') === 'active' || ($user_data['status'] ?? '') === 'Active') ? 'selected' : ''; ?>>Active</option>
                                         <option value="inactive" <?php echo (($user_data['status'] ?? '') === 'inactive' || ($user_data['status'] ?? '') === 'Inactive') ? 'selected' : ''; ?>>Inactive</option>
                                     </select>
+                                    <?php if ($userId == 1): ?>
+                                        <input type="hidden" name="status" value="<?php echo htmlspecialchars($user_data['status'] ?? 'active'); ?>">
+                                        <small class="text-muted">Status cannot be changed for the primary administrator account.</small>
+                                    <?php endif; ?>
                                     <div class="error-feedback" id="status-error"></div>
                                 </div>
                             </div>
 
-                            <!-- Fourth Row: Address and Role -->
+                            <!-- Fourth Row: Role and Tenant (is_main_admin Only) -->
                             <div class="form-row">
-                                <div class="customer-form-group">
-                                    <label for="address" class="form-label">
-                                        <i class="fas fa-map-marker-alt"></i> Address<span class="required">*</span>
-                                    </label>
-                                    <textarea class="form-control" id="address" name="address" rows="3"
-                                        placeholder="Enter complete address" required><?php echo htmlspecialchars($user_data['address'] ?? ''); ?></textarea>
-                                    <div class="error-feedback" id="address-error"></div>
-                                </div>
-
                                 <div class="customer-form-group">
                                     <label for="role" class="form-label">
                                         <i class="fas fa-user-tag"></i> Role<span class="required">*</span>
                                     </label>
-                                    <select class="form-select" id="role" name="role" required>
+                                    <select class="form-select" id="role" name="role" <?php echo ($userId == 1) ? 'disabled' : ''; ?> required>
                                         <option value="">Select Role...</option>
                                         <?php
                                         // Check if we have role_id or role field
@@ -352,7 +394,44 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                                         }
                                         ?>
                                     </select>
+                                    <?php if ($userId == 1): ?>
+                                        <input type="hidden" name="role" value="<?php echo htmlspecialchars($user_data['role_name'] ?? 'Admin'); ?>">
+                                        <small class="text-muted">Role cannot be changed for the primary administrator account.</small>
+                                    <?php endif; ?>
                                     <div class="error-feedback" id="role-error"></div>
+                                </div>
+
+                                <?php if ($is_main_admin): ?>
+                                <div class="customer-form-group">
+                                    <label for="tenant_id" class="form-label">
+                                        <i class="fas fa-building"></i> Tenant/Company
+                                    </label>
+                                    <select class="form-select" id="tenant_id" name="tenant_id" disabled>
+                                        <option value="">Select Tenant...</option>
+                                        <?php foreach ($tenants as $tenant): ?>
+                                            <option value="<?php echo $tenant['tenant_id']; ?>" <?php echo ($user_data['tenant_id'] == $tenant['tenant_id']) ? 'selected' : ''; ?>>
+                                                <?php echo htmlspecialchars($tenant['company_name']); ?>
+                                            </option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                    <div class="error-feedback" id="tenant_id-error"></div>
+                                </div>
+                                <?php else: ?>
+                                <div class="customer-form-group">
+                                    <!-- Empty space to maintain layout -->
+                                </div>
+                                <?php endif; ?>
+                            </div>
+
+                            <!-- Fifth Row: Address (Full Width) -->
+                            <div class="form-row single">
+                                <div class="customer-form-group">
+                                    <label for="address" class="form-label">
+                                        <i class="fas fa-map-marker-alt"></i> Address<span class="required">*</span>
+                                    </label>
+                                    <textarea class="form-control" id="address" name="address" rows="3"
+                                        placeholder="Enter complete address" required><?php echo htmlspecialchars($user_data['address'] ?? ''); ?></textarea>
+                                    <div class="error-feedback" id="address-error"></div>
                                 </div>
                             </div>
                         </div>
@@ -841,7 +920,7 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
             
             return null;
         }
-
+        
        
         // Show/hide error functions
         function showError(fieldId, message) {
@@ -884,19 +963,35 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
             const mobile = $('#mobile').val();
             const nic = $('#nic').val();
             const address = $('#address').val();
+            const status = $('#status').val();
             const role = $('#role').val();
             const password = $('#password').val();
+            const tenantId = $('#tenant_id').val();
             
             // Validate required fields
             const validations = [
                 { field: 'full_name', validator: validateFullName, value: fullName },
                 { field: 'email', validator: validateEmail, value: email },
+                { field: 'password', validator: validatePassword, value: password },
                 { field: 'mobile', validator: validateMobile, value: mobile },
                 { field: 'nic', validator: validateNIC, value: nic },
                 { field: 'address', validator: validateAddress, value: address },
-                { field: 'role', validator: validateRole, value: role },
-                { field: 'password', validator: validatePassword, value: password }
+                { field: 'status', validator: (val) => val ? {valid: true} : {valid: false, message: 'Status is required'}, value: status },
+                { field: 'role', validator: validateRole, value: role }
             ];
+
+            //Removed tenant validation as it's now disabled/read-only
+
+            //  if ($('#tenant_id').length) {
+            //     validations.push({
+            //         field: 'tenant_id',
+            //         validator: function(val) {
+            //             if (val === '') return { valid: false, message: 'Please select a tenant' };
+            //             return { valid: true, message: '' };
+            //         },
+            //         value: tenantId
+            //     });
+            // }
             
             validations.forEach(function(validation) {
                 const result = validation.validator(validation.value);

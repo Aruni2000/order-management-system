@@ -39,6 +39,8 @@ $date_from = isset($_GET['date_from']) ? trim($_GET['date_from']) : '';
 $date_to = isset($_GET['date_to']) ? trim($_GET['date_to']) : '';
 $status_filter = isset($_GET['status_filter']) ? trim($_GET['status_filter']) : '';
 $pay_status_filter = isset($_GET['pay_status_filter']) ? trim($_GET['pay_status_filter']) : '';
+$tenant_filter = isset($_GET['tenant_filter']) ? trim($_GET['tenant_filter']) : '';
+$my_leads_only = isset($_GET['my_leads_only']) && $_GET['my_leads_only'] == '1';
 
 $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 10;
 $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
@@ -46,29 +48,65 @@ $offset = ($page - 1) * $limit;
 
 /**
  * DATABASE QUERIES
- * Main query to fetch leads assigned to logged-in user (orders with interface='leads')
+ * Main query to fetch leads (orders with interface='leads')
+ * Access Control: 
+ * - is_main_admin = 1 AND role_id = 1: See all leads
+ * - role_id = 1 AND is_main_admin = 0: See all leads in their tenant
+ * - Others: See only assigned leads
  */
 
-// Base SQL for counting total records - FILTERED BY LOGGED USER
+// Get user permissions and tenant info
+$is_main_admin = isset($_SESSION['is_main_admin']) ? (int)$_SESSION['is_main_admin'] : 0;
+$role_id = isset($_SESSION['role_id']) ? (int)$_SESSION['role_id'] : 0;
+$tenant_id = isset($_SESSION['tenant_id']) ? (int)$_SESSION['tenant_id'] : 0;
+
+// Base WHERE clause components
+$baseWhere = "i.interface = 'leads'";
+$accessFilter = "";
+
+if ($is_main_admin === 1 && $role_id === 1) {
+    // is_main_admin = 1 AND role_id = 1: See all leads from all tenants
+    if ($my_leads_only) {
+        $accessFilter = " AND i.user_id = $logged_user_id";
+    } elseif (!empty($tenant_filter)) {
+        $accessFilter = " AND i.tenant_id = " . (int)$tenant_filter;
+    } else {
+        $accessFilter = "";
+    }
+} elseif ($role_id === 1 && $is_main_admin === 0) {
+    // role_id = 1 AND is_main_admin = 0: See all leads within their own tenant
+    if ($my_leads_only) {
+        $accessFilter = " AND i.tenant_id = $tenant_id AND i.user_id = $logged_user_id";
+    } else {
+        $accessFilter = " AND i.tenant_id = $tenant_id";
+    }
+} else {
+    // Regular User/Moderator/Others: See only leads assigned to them
+    $accessFilter = " AND i.user_id = $logged_user_id";
+}
+
+// Base SQL for counting total records
 $countSql = "SELECT COUNT(*) as total FROM order_header i 
              LEFT JOIN customers c ON i.customer_id = c.customer_id
              LEFT JOIN users u ON i.user_id = u.id
-             WHERE i.interface = 'leads' AND i.user_id = $logged_user_id";
+             WHERE $baseWhere $accessFilter";
 
-// Main query with all required joins - FILTERED BY LOGGED USER
+// Main query with all required joins
 $sql = "SELECT i.*, 
                c.name as customer_name, 
                c.phone as customer_phone,
                u.id as user_id,
                u.name as user_name,
                u.email as user_email,
+               t.company_name as tenant_name,
                i.pay_status as order_pay_status,
                i.created_at,
                i.updated_at
         FROM order_header i 
         LEFT JOIN customers c ON i.customer_id = c.customer_id
         LEFT JOIN users u ON i.user_id = u.id
-        WHERE i.interface = 'leads' AND i.user_id = $logged_user_id";
+        LEFT JOIN tenants t ON i.tenant_id = t.tenant_id
+        WHERE $baseWhere $accessFilter";
 
 // Build search conditions
 $searchConditions = [];
@@ -84,7 +122,9 @@ if (!empty($search)) {
                         i.due_date LIKE '%$searchTerm%' OR 
                         i.total_amount LIKE '%$searchTerm%' OR
                         i.status LIKE '%$searchTerm%' OR 
-                        i.pay_status LIKE '%$searchTerm%')";
+                        i.pay_status LIKE '%$searchTerm%' OR
+                        t.company_name LIKE '%$searchTerm%' OR
+                        u.name LIKE '%$searchTerm%')";
 }
 
 // Specific Order ID filter
@@ -156,6 +196,17 @@ $userInfo = $userInfoResult->fetch_assoc();
 include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/navbar.php');
 include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php');
 
+// Fetch tenants for filter if main admin
+$tenants = [];
+if ($is_main_admin === 1 && $role_id === 1) {
+    $tenantsQuery = "SELECT tenant_id, company_name FROM tenants WHERE status = 'active' ORDER BY company_name ASC";
+    $tenantsResult = $conn->query($tenantsQuery);
+    if ($tenantsResult && $tenantsResult->num_rows > 0) {
+        while ($t = $tenantsResult->fetch_assoc()) {
+            $tenants[] = $t;
+        }
+    }
+}
 ?>
 
 <!doctype html>
@@ -214,6 +265,31 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
     font-size: 14px;
     opacity: 0.9;
 }
+
+.user-info {
+    font-size: 13px;
+}
+
+.user-name {
+    font-weight: 600;
+    color: #333;
+}
+
+.user-id {
+    color: #666;
+    font-size: 11px;
+}
+
+.user-email {
+    color: #888;
+    font-size: 11px;
+    font-style: italic;
+}
+
+.tenant-info {
+    font-weight: 600;
+    color: #4e73df;
+}
 </style>
 </head>
 
@@ -245,6 +321,20 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                 <div class="tracking-container">
                    
                     <form class="tracking-form" method="GET" action="">
+                        <?php if ($is_main_admin === 1 && $role_id === 1): ?>
+                        <div class="form-group">
+                            <label for="tenant_filter">Tenant</label>
+                            <select id="tenant_filter" name="tenant_filter">
+                                <option value="">All Tenants</option>
+                                <?php foreach ($tenants as $t): ?>
+                                    <option value="<?php echo $t['tenant_id']; ?>" <?php echo ($tenant_filter == $t['tenant_id']) ? 'selected' : ''; ?>>
+                                        <?php echo htmlspecialchars($t['company_name']); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <?php endif; ?>
+
                         <div class="form-group">
                             <label for="order_id_filter">Order ID</label>
                             <input type="text" id="order_id_filter" name="order_id_filter" 
@@ -308,6 +398,12 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                         
                         <div class="form-group">
                             <div class="button-group">
+                                <?php if ($role_id === 1): ?>
+                                <div style="display: flex; align-items: center; margin-right: 20px;">
+                                    <input type="checkbox" id="my_leads_only" name="my_leads_only" value="1" <?php if (isset($_GET['my_leads_only']) && $_GET['my_leads_only'] == '1') echo 'checked'; ?>>
+                                    <label for="my_leads_only" style="margin-left: 8px; margin-bottom: 0; white-space: nowrap;">My Leads</label>
+                                </div>
+                                <?php endif; ?>
                                 <button type="submit" class="search-btn">
                                     <i class="fas fa-search"></i>
                                     Search
@@ -336,9 +432,11 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                                 <th>Order ID</th>
                                 <th>Customer Name</th>
                                 <th>Phone Number</th>
+                                <th>Tenant</th>
                                 <th>Total Amount</th>
                                 <th>Pay Status</th>
                                 <th>Status</th>
+                                <th>Assigned User</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
@@ -389,6 +487,11 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                                             }
                                             echo htmlspecialchars($phoneNumber);
                                             ?>
+                                        </td>
+
+                                        <!-- Tenant Column -->
+                                        <td class="tenant-info">
+                                            <?php echo isset($row['tenant_name']) ? htmlspecialchars($row['tenant_name']) : 'N/A'; ?>
                                         </td>
                                        
                                         <!-- Total Amount with Currency -->
@@ -478,6 +581,19 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                                             ?>
                                             <span class="status-badge <?php echo $badgeClass; ?>"><?php echo $statusText; ?></span>
                                         </td>
+
+                                        <!-- Assigned User Column -->
+                                        <td class="user-info">
+                                            <?php if (isset($row['user_name']) && !empty($row['user_name'])): ?>
+                                                <div class="user-name"><?php echo htmlspecialchars($row['user_name']); ?></div>
+                                                <div class="user-id">ID: <?php echo htmlspecialchars($row['user_id']); ?></div>
+                                                <?php if (!empty($row['user_email'])): ?>
+                                                    <div class="user-email"><?php echo htmlspecialchars($row['user_email']); ?></div>
+                                                <?php endif; ?>
+                                            <?php else: ?>
+                                                <span style="color: #999;">Unassigned</span>
+                                            <?php endif; ?>
+                                        </td>
                                         
                                         <!-- Action Buttons -->
                                         <td class="actions">
@@ -495,7 +611,7 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                                 <?php endwhile; ?>
                             <?php else: ?>
                                 <tr>
-                                    <td colspan="7" class="text-center" style="padding: 40px; text-align: center; color: #666;">
+                                    <td colspan="9" class="text-center" style="padding: 40px; text-align: center; color: #666;">
                                         No leads assigned to you
                                     </td>
                                 </tr>
@@ -511,20 +627,20 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                     </div>
                     <div class="pagination-controls">
                         <?php if ($page > 1): ?>
-                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page - 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&status_filter=<?php echo urlencode($status_filter); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&search=<?php echo urlencode($search); ?>'">
+                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page - 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&status_filter=<?php echo urlencode($status_filter); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&tenant_filter=<?php echo urlencode($tenant_filter); ?>&search=<?php echo urlencode($search); ?>&my_leads_only=<?php echo $my_leads_only ? '1' : '0'; ?>'">
                                 <i class="fas fa-chevron-left"></i>
                             </button>
                         <?php endif; ?>
                         
                         <?php for ($i = max(1, $page - 2); $i <= min($totalPages, $page + 2); $i++): ?>
                             <button class="page-btn <?php echo ($i == $page) ? 'active' : ''; ?>" 
-                                    onclick="window.location.href='?page=<?php echo $i; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&status_filter=<?php echo urlencode($status_filter); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&search=<?php echo urlencode($search); ?>'">
+                                    onclick="window.location.href='?page=<?php echo $i; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&status_filter=<?php echo urlencode($status_filter); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&tenant_filter=<?php echo urlencode($tenant_filter); ?>&search=<?php echo urlencode($search); ?>&my_leads_only=<?php echo $my_leads_only ? '1' : '0'; ?>'">
                                 <?php echo $i; ?>
                             </button>
                         <?php endfor; ?>
                         
                         <?php if ($page < $totalPages): ?>
-                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page + 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&status_filter=<?php echo urlencode($status_filter); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&search=<?php echo urlencode($search); ?>'">
+                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page + 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&status_filter=<?php echo urlencode($status_filter); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&tenant_filter=<?php echo urlencode($tenant_filter); ?>&search=<?php echo urlencode($search); ?>&my_leads_only=<?php echo $my_leads_only ? '1' : '0'; ?>'">
                                 <i class="fas fa-chevron-right"></i>
                             </button>
                         <?php endif; ?>
@@ -550,6 +666,9 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
         document.getElementById('date_to').value = '';
         document.getElementById('status_filter').value = '';
         document.getElementById('pay_status_filter').value = '';
+        if (document.getElementById('tenant_filter')) {
+            document.getElementById('tenant_filter').value = '';
+        }
         
         window.location.href = window.location.pathname;
     }
