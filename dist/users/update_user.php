@@ -109,6 +109,10 @@ function detectUserChanges($existingData, $newData, $passwordChanged = false) {
     if ($existingData['role_name'] !== $newData['role_name']) {
         $changes[] = "Role changed from '{$existingData['role_name']}' to '{$newData['role_name']}'";
     }
+
+    if (isset($newData['tenant_id']) && $existingData['tenant_id'] != $newData['tenant_id']) {
+        $changes[] = "Tenant changed";
+    }
     
     if ($passwordChanged) {
         $changes[] = "Password updated";
@@ -137,16 +141,30 @@ try {
         jsonResponse(false, 'Invalid user ID provided.');
     }
 
-    // Check if user exists and get current data - MODIFIED to include role_name
-    $checkStmt = $conn->prepare("SELECT u.id, u.name, u.email, u.nic, u.mobile, u.address, u.status, u.role_id, r.name as role_name 
+    // Check if user exists and get current data - MODIFIED to include role_name and tenant_id
+    $checkQuery = "SELECT u.id, u.name, u.email, u.nic, u.mobile, u.address, u.status, u.role_id, u.tenant_id, r.name as role_name 
                                 FROM users u 
                                 LEFT JOIN roles r ON u.role_id = r.id 
-                                WHERE u.id = ?");
+                                WHERE u.id = ?";
+    
+    $is_main_admin = isset($_SESSION['is_main_admin']) && $_SESSION['is_main_admin'] == 1;
+    $session_tenant_id = $_SESSION['tenant_id'] ?? null;
+    
+    if (!$is_main_admin && $session_tenant_id !== null) {
+        $checkQuery .= " AND u.tenant_id = ?";
+    }
+
+    $checkStmt = $conn->prepare($checkQuery);
     if (!$checkStmt) {
         jsonResponse(false, 'Database error occurred. Please try again.');
     }
     
-    $checkStmt->bind_param("i", $userId);
+    if (!$is_main_admin && $session_tenant_id !== null) {
+        $checkStmt->bind_param("ii", $userId, $session_tenant_id);
+    } else {
+        $checkStmt->bind_param("i", $userId);
+    }
+    
     $checkStmt->execute();
     $existingUser = $checkStmt->get_result()->fetch_assoc();
     $checkStmt->close();
@@ -164,6 +182,7 @@ try {
     $address = trim($_POST['address'] ?? '');
     $status = strtolower($_POST['status'] ?? 'active');
     $role = $_POST['role'] ?? '';
+    $input_tenant_id = $_POST['tenant_id'] ?? null;
     
     // Convert role to role_id
     $role_mapping = [];
@@ -265,8 +284,14 @@ try {
         'address' => $address,
         'status' => $status,
         'role_id' => $role_id,
-        'role_name' => $role_name
+        'role_name' => $role_name,
+        'tenant_id' => $existingUser['tenant_id']
     ];
+
+    // Tenant change is no longer allowed via edit form
+    // if ($is_main_admin && !empty($input_tenant_id)) {
+    //     $newData['tenant_id'] = (int)$input_tenant_id;
+    // }
     
     // Check if any field has actually changed (excluding password for now)
     $hasChanges = false;
@@ -297,7 +322,7 @@ try {
         // Update with new password
         $hashed_password = password_hash($password, PASSWORD_BCRYPT);
         $stmt = $conn->prepare("UPDATE users SET name = ?, email = ?, password = ?, mobile = ?, nic = ?, 
-                               address = ?, status = ?, role_id = ?, updated_at = NOW() 
+                               address = ?, status = ?, role_id = ?, tenant_id = ?, updated_at = NOW() 
                                WHERE id = ?");
         
         if ($stmt === false) {
@@ -305,14 +330,14 @@ try {
             jsonResponse(false, 'Database error occurred. Please try again.');
         }
         
-        $stmt->bind_param("sssssssii", 
+        $stmt->bind_param("sssssssiii", 
             $name, $email, $hashed_password, $mobile, $nic, $address, 
-            $status, $role_id, $userId
+            $status, $role_id, $newData['tenant_id'], $userId
         );
     } else {
         // Update without changing password
         $stmt = $conn->prepare("UPDATE users SET name = ?, email = ?, mobile = ?, nic = ?, 
-                               address = ?, status = ?, role_id = ?, updated_at = NOW() 
+                               address = ?, status = ?, role_id = ?, tenant_id = ?, updated_at = NOW() 
                                WHERE id = ?");
         
         if ($stmt === false) {
@@ -320,9 +345,9 @@ try {
             jsonResponse(false, 'Database error occurred. Please try again.');
         }
         
-        $stmt->bind_param("ssssssii", 
+        $stmt->bind_param("ssssssiii", 
             $name, $email, $mobile, $nic, $address, 
-            $status, $role_id, $userId
+            $status, $role_id, $newData['tenant_id'], $userId
         );
     }
 

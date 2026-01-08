@@ -93,6 +93,8 @@ try {
     $address = trim($_POST['address'] ?? '');
     $status = strtolower($_POST['status'] ?? 'active');
     $role = $_POST['role'] ?? '';
+    $input_tenant_id = $_POST['tenant_id'] ?? null;
+    $is_main_admin = isset($_SESSION['is_main_admin']) && $_SESSION['is_main_admin'] == 1;
     
     // Convert role to role_id
     $role_mapping = [];
@@ -125,6 +127,11 @@ try {
     if (empty($nic)) $fieldErrors['nic'] = "NIC number is required.";
     if (empty($address)) $fieldErrors['address'] = "Address is required.";
     if (!isset($role_mapping[$role])) $fieldErrors['role'] = "Please select a valid role.";
+    
+    // Validate tenant selection if main admin
+    if ($is_main_admin && empty($input_tenant_id)) {
+        $fieldErrors['tenant_id'] = "Please select a tenant.";
+    }
     
     // Email format validation (security critical)
     if (!empty($email) && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
@@ -181,19 +188,36 @@ try {
     $commission_per_parcel = 0.00;
     $percentage_drawdown = 0.00;
 
+    // Get tenant_id
+    if ($is_main_admin && !empty($input_tenant_id)) {
+        $tenant_id = intval($input_tenant_id);
+        
+        // Final verification for tenant_id (optional but recommended)
+        $tenantCheck = $conn->prepare("SELECT tenant_id FROM tenants WHERE tenant_id = ? AND status = 'active'");
+        $tenantCheck->bind_param("i", $tenant_id);
+        $tenantCheck->execute();
+        if ($tenantCheck->get_result()->num_rows === 0) {
+            $fieldErrors['tenant_id'] = "Selected tenant is invalid or inactive.";
+            jsonResponse(false, 'Invalid tenant selection.', $fieldErrors);
+        }
+        $tenantCheck->close();
+    } else {
+        $tenant_id = $_SESSION['tenant_id'] ?? null;
+    }
+
     // Prepare insert query
     $stmt = $conn->prepare("INSERT INTO users (name, email, password, mobile, nic, address, status, role_id, 
-                            commission_type, commission_per_parcel, percentage_drawdown, created_at) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())");
+                            commission_type, commission_per_parcel, percentage_drawdown, tenant_id, created_at) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())");
     
     if ($stmt === false) {
         $conn->rollback();
         jsonResponse(false, 'Database error occurred. Please try again.');
     }
     
-    $stmt->bind_param("sssssssissd", 
+    $stmt->bind_param("sssssssissdi", 
         $name, $email, $hashed_password, $mobile, $nic, $address, 
-        $status, $role_id, $commission_type, $commission_per_parcel, $percentage_drawdown
+        $status, $role_id, $commission_type, $commission_per_parcel, $percentage_drawdown, $tenant_id
     );
 
     // Execute insert

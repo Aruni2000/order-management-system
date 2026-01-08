@@ -40,6 +40,7 @@ $date_to = isset($_GET['date_to']) ? trim($_GET['date_to']) : '';
 $status_filter = isset($_GET['status_filter']) ? trim($_GET['status_filter']) : '';
 $pay_status_filter = isset($_GET['pay_status_filter']) ? trim($_GET['pay_status_filter']) : '';
 $tenant_filter = isset($_GET['tenant_filter']) ? trim($_GET['tenant_filter']) : '';
+$my_leads_only = isset($_GET['my_leads_only']) && $_GET['my_leads_only'] == '1';
 
 $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 10;
 $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
@@ -65,14 +66,20 @@ $accessFilter = "";
 
 if ($is_main_admin === 1 && $role_id === 1) {
     // is_main_admin = 1 AND role_id = 1: See all leads from all tenants
-    if (!empty($tenant_filter)) {
+    if ($my_leads_only) {
+        $accessFilter = " AND i.user_id = $logged_user_id";
+    } elseif (!empty($tenant_filter)) {
         $accessFilter = " AND i.tenant_id = " . (int)$tenant_filter;
     } else {
         $accessFilter = "";
     }
 } elseif ($role_id === 1 && $is_main_admin === 0) {
     // role_id = 1 AND is_main_admin = 0: See all leads within their own tenant
-    $accessFilter = " AND i.tenant_id = $tenant_id";
+    if ($my_leads_only) {
+        $accessFilter = " AND i.tenant_id = $tenant_id AND i.user_id = $logged_user_id";
+    } else {
+        $accessFilter = " AND i.tenant_id = $tenant_id";
+    }
 } else {
     // Regular User/Moderator/Others: See only leads assigned to them
     $accessFilter = " AND i.user_id = $logged_user_id";
@@ -391,6 +398,12 @@ if ($is_main_admin === 1 && $role_id === 1) {
                         
                         <div class="form-group">
                             <div class="button-group">
+                                <?php if ($role_id === 1): ?>
+                                <div style="display: flex; align-items: center; margin-right: 20px;">
+                                    <input type="checkbox" id="my_leads_only" name="my_leads_only" value="1" <?php if (isset($_GET['my_leads_only']) && $_GET['my_leads_only'] == '1') echo 'checked'; ?>>
+                                    <label for="my_leads_only" style="margin-left: 8px; margin-bottom: 0; white-space: nowrap;">My Leads</label>
+                                </div>
+                                <?php endif; ?>
                                 <button type="submit" class="search-btn">
                                     <i class="fas fa-search"></i>
                                     Search
@@ -614,20 +627,20 @@ if ($is_main_admin === 1 && $role_id === 1) {
                     </div>
                     <div class="pagination-controls">
                         <?php if ($page > 1): ?>
-                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page - 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&status_filter=<?php echo urlencode($status_filter); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&tenant_filter=<?php echo urlencode($tenant_filter); ?>&search=<?php echo urlencode($search); ?>'">
+                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page - 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&status_filter=<?php echo urlencode($status_filter); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&tenant_filter=<?php echo urlencode($tenant_filter); ?>&search=<?php echo urlencode($search); ?>&my_leads_only=<?php echo $my_leads_only ? '1' : '0'; ?>'">
                                 <i class="fas fa-chevron-left"></i>
                             </button>
                         <?php endif; ?>
                         
                         <?php for ($i = max(1, $page - 2); $i <= min($totalPages, $page + 2); $i++): ?>
                             <button class="page-btn <?php echo ($i == $page) ? 'active' : ''; ?>" 
-                                    onclick="window.location.href='?page=<?php echo $i; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&status_filter=<?php echo urlencode($status_filter); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&tenant_filter=<?php echo urlencode($tenant_filter); ?>&search=<?php echo urlencode($search); ?>'">
+                                    onclick="window.location.href='?page=<?php echo $i; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&status_filter=<?php echo urlencode($status_filter); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&tenant_filter=<?php echo urlencode($tenant_filter); ?>&search=<?php echo urlencode($search); ?>&my_leads_only=<?php echo $my_leads_only ? '1' : '0'; ?>'">
                                 <?php echo $i; ?>
                             </button>
                         <?php endfor; ?>
                         
                         <?php if ($page < $totalPages): ?>
-                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page + 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&status_filter=<?php echo urlencode($status_filter); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&tenant_filter=<?php echo urlencode($tenant_filter); ?>&search=<?php echo urlencode($search); ?>'">
+                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page + 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&status_filter=<?php echo urlencode($status_filter); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&tenant_filter=<?php echo urlencode($tenant_filter); ?>&search=<?php echo urlencode($search); ?>&my_leads_only=<?php echo $my_leads_only ? '1' : '0'; ?>'">
                                 <i class="fas fa-chevron-right"></i>
                             </button>
                         <?php endif; ?>

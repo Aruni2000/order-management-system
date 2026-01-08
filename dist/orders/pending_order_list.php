@@ -64,6 +64,7 @@ $customer_name_filter = isset($_GET['customer_name_filter']) ? trim($_GET['custo
 $date_from = isset($_GET['date_from']) ? trim($_GET['date_from']) : '';
 $date_to = isset($_GET['date_to']) ? trim($_GET['date_to']) : '';
 $pay_status_filter = isset($_GET['pay_status_filter']) ? trim($_GET['pay_status_filter']) : '';
+$tenant_id_filter = isset($_GET['tenant_id_filter']) ? trim($_GET['tenant_id_filter']) : '';
 
 // AFTER (Fixed Code):
 $tenant_id_filter = isset($_GET['tenant_id_filter']) ? trim($_GET['tenant_id_filter']) : '';
@@ -1620,8 +1621,8 @@ function fetchTrackingNumber(courierId) {
                 if (!response.ok) {
                     throw new Error(`HTTP error! status: ${response.status}`);
                 }
-                return response.json();
             })
+            .then(response => response.json())
             .then(data => {
                 if (data.success) {
                     alert('Order cancelled successfully!');
@@ -2651,7 +2652,7 @@ function fetchApiTrackingNumbers(courierId) {
     // Store courier API capabilities - populated from PHP data
     const courierCapabilities = {
         <?php
-        // Fetch all courier capabilities and create JavaScript object
+       // Fetch all courier capabilities and create JavaScript object
         $capabilities_query = "SELECT courier_id, has_api_new, has_api_existing FROM couriers WHERE status = 'active'";
         $capabilities_result = $conn->query($capabilities_query);
         

@@ -24,25 +24,39 @@ $action_type_filter = isset($_GET['action_type_filter']) ? trim($_GET['action_ty
 $inquiry_id_filter = isset($_GET['inquiry_id_filter']) ? trim($_GET['inquiry_id_filter']) : '';
 $date_from = isset($_GET['date_from']) ? trim($_GET['date_from']) : '';
 $date_to = isset($_GET['date_to']) ? trim($_GET['date_to']) : '';
+$tenant_filter = isset($_GET['tenant_filter']) ? trim($_GET['tenant_filter']) : '';
+
+$is_main_admin = isset($_SESSION['is_main_admin']) && $_SESSION['is_main_admin'] == 1;
 
 // Pagination settings
 $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 10;
 $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
 $offset = ($page - 1) * $limit;
 
-// Base SQL for counting total records
-$countSql = "SELECT COUNT(*) as total FROM user_logs ul 
-             LEFT JOIN users u ON ul.user_id = u.id";
-
-// Main query - joining user_logs with users table to get user names
+// Main query - joining user_logs with users table and tenants table
 $sql = "SELECT ul.id as log_id, ul.user_id, ul.action_type, ul.inquiry_id, 
                ul.details, ul.created_at,
-               u.name as username, u.email as user_email
+               u.name as username, u.email as user_email,
+               t.company_name as tenant_name
         FROM user_logs ul 
-        LEFT JOIN users u ON ul.user_id = u.id";
+        LEFT JOIN users u ON ul.user_id = u.id
+        LEFT JOIN tenants t ON u.tenant_id = t.tenant_id";
+
+$countSql = "SELECT COUNT(*) as total FROM user_logs ul 
+             LEFT JOIN users u ON ul.user_id = u.id
+             LEFT JOIN tenants t ON u.tenant_id = t.tenant_id";
 
 // Build search conditions
 $searchConditions = [];
+
+// Filter by tenant_id if set
+$session_tenant_id = $_SESSION['tenant_id'] ?? null;
+if (!$is_main_admin && $session_tenant_id !== null) {
+    $searchConditions[] = "u.tenant_id = " . (int)$session_tenant_id;
+} elseif ($is_main_admin && !empty($tenant_filter)) {
+    $searchConditions[] = "u.tenant_id = " . (int)$tenant_filter;
+}
+
 
 // General search condition
 if (!empty($search)) {
@@ -107,31 +121,49 @@ if (!$result) {
     die("Query failed: " . $conn->error);
 }
 
-// Get unique action types for filter dropdown
-$action_types_sql = "SELECT DISTINCT action_type FROM user_logs WHERE action_type IS NOT NULL AND action_type != '' ORDER BY action_type";
+// Get unique action types for filter dropdown - restricted by tenant
+$action_types_sql = "SELECT DISTINCT ul.action_type FROM user_logs ul 
+                    LEFT JOIN users u ON ul.user_id = u.id 
+                    WHERE ul.action_type IS NOT NULL AND ul.action_type != ''";
+if ($session_tenant_id !== null) {
+    $action_types_sql .= " AND u.tenant_id = " . (int)$session_tenant_id;
+}
+$action_types_sql .= " ORDER BY ul.action_type";
 $action_types_result = $conn->query($action_types_sql);
+
 $action_types = [];
 if ($action_types_result && $action_types_result->num_rows > 0) {
     $action_types = $action_types_result->fetch_all(MYSQLI_ASSOC);
 }
 
-// Get unique users for filter dropdown
-$users_sql = "SELECT DISTINCT u.id, u.name FROM users u 
-              INNER JOIN user_logs ul ON u.id = ul.user_id 
-              WHERE u.name IS NOT NULL AND u.name != '' 
-              ORDER BY u.name";
-$users_result = $conn->query($users_sql);
-$users_list = [];
-if ($users_result && $users_result->num_rows > 0) {
-    $users_list = $users_result->fetch_all(MYSQLI_ASSOC);
-}
+    // List of users for filter
+    $users_sql = "SELECT DISTINCT u.id, u.name FROM users u JOIN user_logs ul ON u.id = ul.user_id";
+    if (!$is_main_admin && $session_tenant_id !== null) {
+        $users_sql .= " WHERE u.tenant_id = " . (int)$session_tenant_id;
+    }
+    $users_sql .= " ORDER BY u.name ASC";
+    $users_result = $conn->query($users_sql);
+    $users_list = [];
+    if ($users_result && $users_result->num_rows > 0) {
+        $users_list = $users_result->fetch_all(MYSQLI_ASSOC);
+    }
+
+    // List of tenants for filter (if main admin)
+    $tenants_list = [];
+    if ($is_main_admin) {
+        $tenants_sql = "SELECT tenant_id, company_name FROM tenants WHERE status = 'active' ORDER BY company_name ASC";
+        $tenants_result = $conn->query($tenants_sql);
+        if ($tenants_result && $tenants_result->num_rows > 0) {
+            $tenants_list = $tenants_result->fetch_all(MYSQLI_ASSOC);
+        }
+    }
 
 // Function to format details JSON
 function formatLogDetails($details) {
     if (empty($details)) {
         return 'No details available';
     }
-    
+
     // Try to decode JSON
     $decoded = json_decode($details, true);
     if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
@@ -139,22 +171,37 @@ function formatLogDetails($details) {
         
         // Exclude unwanted fields
         $excludeFields = ['ip_address', 'user_agent'];
-        
+
         foreach ($decoded as $key => $value) {
-            if (!in_array($key, $excludeFields)) {
-                $formattedKey = ucwords(str_replace('_', ' ', $key));
+            if (in_array($key, $excludeFields)) {
+                continue;
+            }
+
+            $formattedKey = ucwords(str_replace('_', ' ', $key));
+
+            // Handle detailed changes with 'from' and 'to'
+            if (is_array($value) && isset($value['from']) && isset($value['to'])) {
+                $from = htmlspecialchars($value['from'] ?: 'N/A');
+                $to = htmlspecialchars($value['to'] ?: 'N/A');
+                $formatted[] = "<strong>{$formattedKey}:</strong> Changed from '{$from}' to '{$to}'";
+            } else {
+                // Fallback for other fields
                 if (is_array($value) || is_object($value)) {
-                    $formattedValue = json_encode($value);
+                    $formattedValue = htmlspecialchars(json_encode($value));
                 } else {
-                    $formattedValue = $value;
+                    $formattedValue = htmlspecialchars((string)$value);
                 }
                 $formatted[] = "<strong>{$formattedKey}:</strong> {$formattedValue}";
             }
         }
-        
+
+        if (empty($formatted)) {
+            return 'No relevant details to display.';
+        }
+
         return implode('<br>', $formatted);
     }
-    
+
     // If not JSON, return as is
     return htmlspecialchars($details);
 }
@@ -172,6 +219,19 @@ function formatLogDetails($details) {
     <link rel="stylesheet" href="../assets/css/style.css" id="main-style-link" />
     <link rel="stylesheet" href="../assets/css/orders.css" id="main-style-link" />
     <link rel="stylesheet" href="../assets/css/customers.css" id="main-style-link" />
+    <style>
+        .orders-table th:last-child, 
+        .orders-table td.actions {
+            text-align: center !important;
+        }
+        .action-buttons-group {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 5px;
+            width: 100%;
+        }
+    </style>
 </head>
 
 <body>
@@ -207,6 +267,21 @@ function formatLogDetails($details) {
                                 <?php endforeach; ?>
                             </select>
                         </div>
+
+                        <?php if ($is_main_admin): ?>
+                        <div class="form-group">
+                            <label for="tenant_filter">Tenant</label>
+                            <select id="tenant_filter" name="tenant_filter">
+                                <option value="">All Tenants</option>
+                                <?php foreach ($tenants_list as $tenant): ?>
+                                    <option value="<?php echo $tenant['tenant_id']; ?>" 
+                                            <?php echo ($tenant_filter == $tenant['tenant_id']) ? 'selected' : ''; ?>>
+                                        <?php echo htmlspecialchars($tenant['company_name']); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <?php endif; ?>
                         
                         <div class="form-group">
                             <label for="action_type_filter">Action Type</label>
@@ -289,9 +364,15 @@ function formatLogDetails($details) {
                                         <!-- Combined User Info & Action -->
                                         <td class="user-action-combined">
                                             <div class="user-info-section">
-                                                <h6 style="margin: 0 0 5px 0; font-size: 14px; font-weight: 600; color: #333;">
+                                                <h6 style="margin: 0 0 2px 0; font-size: 14px; font-weight: 600; color: #333;">
                                                     <?php echo htmlspecialchars($row['username'] ?: 'Unknown User'); ?>
                                                 </h6>
+                                                <?php if ($is_main_admin && !empty($row['tenant_name'])): ?>
+                                                    <div style="color: #4b5563; font-size: 12px; font-weight: 500; margin-bottom: 2px;">
+                                                        <i class="fas fa-building" style="font-size: 10px; color: #94a3b8; margin-right: 4px;"></i>
+                                                        <?php echo htmlspecialchars($row['tenant_name']); ?>
+                                                    </div>
+                                                <?php endif; ?>
                                                 <small style="color: #6c757d; font-size: 12px; display: block;">
                                                     ID: <?php echo htmlspecialchars($row['user_id']); ?>
                                                 </small>
@@ -377,7 +458,7 @@ function formatLogDetails($details) {
                                 <?php endwhile; ?>
                             <?php else: ?>
                                 <tr>
-                                    <td colspan="6" class="text-center" style="padding: 40px; text-align: center; color: #666;">
+                                        <td colspan="6" class="text-center" style="padding: 40px; text-align: center; color: #666;">
                                         <i class="fas fa-history" style="font-size: 2rem; margin-bottom: 10px; display: block;"></i>
                                         No activity logs found
                                     </td>
@@ -394,20 +475,20 @@ function formatLogDetails($details) {
                     </div>
                     <div class="pagination-controls">
                         <?php if ($page > 1): ?>
-                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page - 1; ?>&limit=<?php echo $limit; ?>&user_name_filter=<?php echo urlencode($user_name_filter); ?>&action_type_filter=<?php echo urlencode($action_type_filter); ?>&inquiry_id_filter=<?php echo urlencode($inquiry_id_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&search=<?php echo urlencode($search); ?>'">
+                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page - 1; ?>&limit=<?php echo $limit; ?>&user_name_filter=<?php echo urlencode($user_name_filter); ?>&action_type_filter=<?php echo urlencode($action_type_filter); ?>&inquiry_id_filter=<?php echo urlencode($inquiry_id_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&search=<?php echo urlencode($search); ?>&tenant_filter=<?php echo urlencode($tenant_filter); ?>'">
                                 <i class="fas fa-chevron-left"></i>
                             </button>
                         <?php endif; ?>
                         
                         <?php for ($i = max(1, $page - 2); $i <= min($totalPages, $page + 2); $i++): ?>
                             <button class="page-btn <?php echo ($i == $page) ? 'active' : ''; ?>" 
-                                    onclick="window.location.href='?page=<?php echo $i; ?>&limit=<?php echo $limit; ?>&user_name_filter=<?php echo urlencode($user_name_filter); ?>&action_type_filter=<?php echo urlencode($action_type_filter); ?>&inquiry_id_filter=<?php echo urlencode($inquiry_id_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&search=<?php echo urlencode($search); ?>'">
+                                    onclick="window.location.href='?page=<?php echo $i; ?>&limit=<?php echo $limit; ?>&user_name_filter=<?php echo urlencode($user_name_filter); ?>&action_type_filter=<?php echo urlencode($action_type_filter); ?>&inquiry_id_filter=<?php echo urlencode($inquiry_id_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&search=<?php echo urlencode($search); ?>&tenant_filter=<?php echo urlencode($tenant_filter); ?>'">
                                 <?php echo $i; ?>
                             </button>
                         <?php endfor; ?>
                         
                         <?php if ($page < $totalPages): ?>
-                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page + 1; ?>&limit=<?php echo $limit; ?>&user_name_filter=<?php echo urlencode($user_name_filter); ?>&action_type_filter=<?php echo urlencode($action_type_filter); ?>&inquiry_id_filter=<?php echo urlencode($inquiry_id_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&search=<?php echo urlencode($search); ?>'">
+                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page + 1; ?>&limit=<?php echo $limit; ?>&user_name_filter=<?php echo urlencode($user_name_filter); ?>&action_type_filter=<?php echo urlencode($action_type_filter); ?>&inquiry_id_filter=<?php echo urlencode($inquiry_id_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&search=<?php echo urlencode($search); ?>&tenant_filter=<?php echo urlencode($tenant_filter); ?>'">
                                 <i class="fas fa-chevron-right"></i>
                             </button>
                         <?php endif; ?>
@@ -524,6 +605,12 @@ function openLogModal(button) {
 function formatDetailsForModal(details) {
     if (!details) return 'No details available';
     
+    const escapeHTML = (str) => {
+        const p = document.createElement('p');
+        p.textContent = str;
+        return p.innerHTML;
+    };
+
     try {
         const decoded = JSON.parse(details);
         if (typeof decoded === 'object' && decoded !== null) {
@@ -531,20 +618,33 @@ function formatDetailsForModal(details) {
             const formatted = [];
             
             for (const [key, value] of Object.entries(decoded)) {
-                if (!excludeFields.includes(key)) {
-                    const formattedKey = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-                    const formattedValue = typeof value === 'object' ? JSON.stringify(value) : value;
+                if (excludeFields.includes(key)) {
+                    continue;
+                }
+
+                const formattedKey = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                
+                if (typeof value === 'object' && value !== null && 'from' in value && 'to' in value) {
+                    const from = escapeHTML(value.from || 'N/A');
+                    const to = escapeHTML(value.to || 'N/A');
+                    formatted.push(`<strong>${formattedKey}:</strong> Changed from '${from}' to '${to}'`);
+                } else {
+                    const formattedValue = typeof value === 'object' ? escapeHTML(JSON.stringify(value)) : escapeHTML(value);
                     formatted.push(`<strong>${formattedKey}:</strong> ${formattedValue}`);
                 }
             }
             
+            if (formatted.length === 0) {
+                return 'No relevant details to display.';
+            }
             return formatted.join('<br>');
         }
     } catch (e) {
-        // Not JSON, return as is
+        // Not JSON, return as is but escaped
+        return escapeHTML(details);
     }
     
-    return details;
+    return escapeHTML(details);
 }
 
 function closeLogModal() {
@@ -640,6 +740,11 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 });
+
+// Clear all filters
+function clearFilters() {
+    window.location.href = 'user_logs.php';
+}
 </script>
 
 

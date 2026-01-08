@@ -171,8 +171,22 @@ try {
     if ($stmt->execute()) {
         $tenant_id = $conn->insert_id;
         
+        // Create initial branding record for the new tenant
+        $branding_sql = "INSERT INTO branding (company_name, email, hotline, tenant_id, active, created_at, updated_at) 
+                         VALUES (?, ?, ?, ?, 1, NOW(), NOW())";
+        $branding_stmt = $conn->prepare($branding_sql);
+        if ($branding_stmt) {
+            $branding_stmt->bind_param("sssi", $company_name, $email, $phone, $tenant_id);
+            if (!$branding_stmt->execute()) {
+                // error_log("Failed to create initial branding for tenant ID $tenant_id: " . $branding_stmt->error);
+            }
+            $branding_stmt->close();
+        }
+
+        
         // Commit transaction
         $conn->commit();
+
         
         $response['success'] = true;
         $response['message'] = 'Tenant "' . htmlspecialchars($company_name) . '" has been successfully added!';
