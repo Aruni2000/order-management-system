@@ -15,6 +15,26 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
 // Include the database connection file early
 include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/connection/db_connection.php');
 
+// Check if user is main admin
+$is_main_admin = $_SESSION['is_main_admin'];
+$teanent_id = $_SESSION['tenant_id'];
+$co_id =$_POST['co_id'];
+
+//function for tenant name
+function TenantName($tenant_id) {
+    global $conn;
+    $sql = "SELECT company_name FROM tenants WHERE tenant_id = ?";
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param("i", $tenant_id);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    if ($result && $result->num_rows > 0) {
+        $row = $result->fetch_assoc();
+        return $row['company_name'];
+    }
+    return "Unknown Tenant";
+}
+
 // Function to remove BOM and clean CSV headers
 function cleanCsvHeader($header) {
     // Remove BOM if present
@@ -69,7 +89,7 @@ function validateTrackingNumberInDB($trackingNumber, $conn) {
     $cleanTracking = $formatValidation['clean_tracking'];
     
     // Check if tracking number exists in database with return complete status
-    $findTrackingSql = "SELECT order_id, status FROM order_header WHERE tracking_number = ? LIMIT 1";
+    $findTrackingSql = "SELECT order_id, status FROM order_header WHERE tracking_number = ? AND co_id = ? LIMIT 1";
     $findTrackingStmt = $conn->prepare($findTrackingSql);
     if (!$findTrackingStmt) {
         return ['valid' => false, 'message' => 'Database error while validating tracking number'];
@@ -524,6 +544,30 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                             <a href="/order_management/dist/templates/return_csv.php" class="choose-file-btn">
                                  Download CSV Template
                             </a>
+                            <div class="customer-form-group">
+                                <label for="courier_id" class="form-label">
+                                    Select Courier
+                                </label>
+                                <?php if ($is_main_admin == 1) { 
+                                // Fetch active couriers for dropdown
+                                    $courierSql = "SELECT co_id, tenant_id, courier_id, courier_name FROM couriers WHERE status = 'active' ORDER BY courier_name ASC";
+                                } else { 
+                                    $courierSql = "SELECT co_id, tenant_id, courier_id, courier_name FROM couriers WHERE status = 'active' AND tenant_id = $teanent_id ORDER BY courier_name ASC";                   
+                                }
+                                 $courierResult = $conn->query($courierSql); ?>
+                                <select class="form-select" id="co_id" name="co_id" required>
+                                    <option value="">Select Courier</option>
+                                    <?php
+                                    if ($courierResult && $courierResult->num_rows > 0) {
+                                        while ($courier = $courierResult->fetch_assoc()) {
+                                            echo "<option value='{$courier['co_id']}'>" . htmlspecialchars($courier['courier_name']) . " - ".($courier['courier_id']) . " - ".TenantName($courier['tenant_id']); "</option>";
+                                        }
+                                    }
+                                    ?>
+                                </select>
+                                <div class="error-feedback" id="courier-error"></div>
+
+                            </div>
 
                             <div class="file-upload-box">
                                 <p><strong>Select CSV File</strong></p>
