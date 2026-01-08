@@ -39,7 +39,7 @@ function validateTrackingNumber($trackingNumber) {
     // Remove extra spaces
     $cleanTracking = trim($trackingNumber);
     
-    // Check tracking number length (adjust as needed for your system)
+    // Check tracking number length
     if (strlen($cleanTracking) < 5) {
         return ['valid' => false, 'message' => 'Tracking number must be at least 5 characters'];
     }
@@ -56,15 +56,15 @@ function validateTrackingNumber($trackingNumber) {
     return ['valid' => true, 'clean_tracking' => $cleanTracking];
 }
 
-// Function to check if tracking number already exists for the same courier
-function checkTrackingNumberExistsForCourier($trackingNumber, $courierId, $conn) {
-    $checkSql = "SELECT tracking_id FROM tracking WHERE tracking_id = ? AND courier_id = ? LIMIT 1";
+// Function to check if tracking number already exists for the same courier and tenant
+function checkTrackingNumberExistsForCourier($trackingNumber, $courierId, $tenantId, $conn) {
+    $checkSql = "SELECT tracking_id FROM tracking WHERE tracking_id = ? AND courier_id = ? AND tenant_id = ? LIMIT 1";
     $checkStmt = $conn->prepare($checkSql);
     if (!$checkStmt) {
         return ['exists' => false, 'error' => 'Database error while checking tracking number'];
     }
     
-    $checkStmt->bind_param("si", $trackingNumber, $courierId);
+    $checkStmt->bind_param("sii", $trackingNumber, $courierId, $tenantId);
     $checkStmt->execute();
     $result = $checkStmt->get_result();
     $exists = $result && $result->num_rows > 0;
@@ -117,8 +117,31 @@ function getCourierName($conn, $courierId) {
     }
 }
 
+// Function to get tenant name by ID
+function getTenantName($conn, $tenantId) {
+    $sql = "SELECT company_name FROM tenants WHERE tenant_id = ? LIMIT 1";
+    $stmt = $conn->prepare($sql);
+    
+    if (!$stmt) {
+        return "Unknown Tenant";
+    }
+    
+    $stmt->bind_param("i", $tenantId);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    
+    if ($result && $result->num_rows > 0) {
+        $row = $result->fetch_assoc();
+        $stmt->close();
+        return $row['company_name'];
+    } else {
+        $stmt->close();
+        return "Unknown Tenant";
+    }
+}
+
 // Function to validate entire row data
-function validateRowData($rowData, $rowNumber, $courierId, $conn) {
+function validateRowData($rowData, $rowNumber, $courierId, $tenantId, $conn) {
     $errors = [];
     $cleanData = [];
     
@@ -129,31 +152,31 @@ function validateRowData($rowData, $rowNumber, $courierId, $conn) {
     } else {
         $cleanData['tracking_number'] = $trackingValidation['clean_tracking'];
         
-        // Check if tracking number already exists for THIS courier
-        $existsCheck = checkTrackingNumberExistsForCourier($trackingValidation['clean_tracking'], $courierId, $conn);
+        // Check if tracking number already exists for THIS courier IN THIS TENANT
+        $existsCheck = checkTrackingNumberExistsForCourier($trackingValidation['clean_tracking'], $courierId, $tenantId, $conn);
         if ($existsCheck['error']) {
             $errors[] = "Row $rowNumber: " . $existsCheck['error'];
         } elseif ($existsCheck['exists']) {
-            $errors[] = "Row $rowNumber: Tracking number '{$trackingValidation['clean_tracking']}' already exists for this courier";
+            $errors[] = "Row $rowNumber: Tracking number '{$trackingValidation['clean_tracking']}' already exists for this courier in the selected tenant";
         }
     }
     
     return ['errors' => $errors, 'clean_data' => $cleanData];
 }
 
-// Get list of couriers for dropdown
-function getCouriers($conn) {
-    $couriers = [];
-    $sql = "SELECT courier_id, courier_name FROM couriers ORDER BY courier_name";
+// Function to get all tenants
+function getTenants($conn) {
+    $tenants = [];
+    $sql = "SELECT tenant_id, company_name FROM tenants WHERE status = 'active' ORDER BY company_name";
     $result = $conn->query($sql);
     
     if ($result && $result->num_rows > 0) {
         while ($row = $result->fetch_assoc()) {
-            $couriers[] = $row;
+            $tenants[] = $row;
         }
     }
     
-    return $couriers;
+    return $tenants;
 }
 
 // Initialize variables
@@ -162,13 +185,38 @@ $errorCount = 0;
 $skippedCount = 0;
 $errors = [];
 $warnings = [];
-$rowNumber = 2; // Start from row 2 (after header)
+$rowNumber = 2;
 
-// Get couriers for dropdown
-$couriers = getCouriers($conn);
+// Get all tenants for dropdown
+$tenants = getTenants($conn);
 
 // Process CSV file if form is submitted
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file']) && isset($_POST['courier_id'])) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file']) && isset($_POST['tenant_id']) && isset($_POST['courier_id'])) {
+    
+    // Validate tenant selection
+    $selectedTenantId = intval($_POST['tenant_id']);
+    if ($selectedTenantId <= 0) {
+        $_SESSION['import_error'] = 'Please select a valid tenant.';
+        ob_end_clean();
+        header("Location: tracking_upload.php");
+        exit();
+    }
+    
+    // Verify tenant exists
+    $tenantCheckSql = "SELECT tenant_id FROM tenants WHERE tenant_id = ? AND status = 'active' LIMIT 1";
+    $tenantCheckStmt = $conn->prepare($tenantCheckSql);
+    $tenantCheckStmt->bind_param("i", $selectedTenantId);
+    $tenantCheckStmt->execute();
+    $tenantResult = $tenantCheckStmt->get_result();
+    
+    if (!$tenantResult || $tenantResult->num_rows === 0) {
+        $_SESSION['import_error'] = 'Selected tenant does not exist or is inactive.';
+        $tenantCheckStmt->close();
+        ob_end_clean();
+        header("Location: tracking_upload.php");
+        exit();
+    }
+    $tenantCheckStmt->close();
     
     // Validate courier selection
     $selectedCourierId = intval($_POST['courier_id']);
@@ -179,15 +227,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file']) && isset
         exit();
     }
     
-    // Verify courier exists
-    $courierCheckSql = "SELECT courier_id FROM couriers WHERE courier_id = ? LIMIT 1";
+    // Verify courier exists AND belongs to selected tenant
+    $courierCheckSql = "SELECT courier_id FROM couriers WHERE courier_id = ? AND tenant_id = ? AND status = 'active' LIMIT 1";
     $courierCheckStmt = $conn->prepare($courierCheckSql);
-    $courierCheckStmt->bind_param("i", $selectedCourierId);
+    $courierCheckStmt->bind_param("ii", $selectedCourierId, $selectedTenantId);
     $courierCheckStmt->execute();
     $courierResult = $courierCheckStmt->get_result();
     
     if (!$courierResult || $courierResult->num_rows === 0) {
-        $_SESSION['import_error'] = 'Selected courier does not exist.';
+        $_SESSION['import_error'] = 'Selected courier does not exist or does not belong to the selected tenant.';
         $courierCheckStmt->close();
         ob_end_clean();
         header("Location: tracking_upload.php");
@@ -278,7 +326,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file']) && isset
                             $fieldMap[$index] = $dbField;
                             $foundColumns[] = $headerInfo['original'];
                             $found = true;
-                            break 2; // Break both loops
+                            break 2;
                         }
                     }
                 }
@@ -303,7 +351,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file']) && isset
                     $tempRowCount++;
                 }
             }
-            fseek($handle, $currentPos); // Reset file pointer
+            fseek($handle, $currentPos);
             
             if ($tempRowCount === 0) {
                 $_SESSION['import_error'] = 'CSV file has no data rows to process.';
@@ -313,8 +361,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file']) && isset
                 exit();
             }
             
-            // Prepare SQL statement to insert tracking numbers
-            $insertTrackingSql = "INSERT INTO tracking (tracking_id, courier_id, status, created_at, updated_at) VALUES (?, ?, 'unused', NOW(), NOW())";
+            // Prepare SQL statement to insert tracking numbers WITH tenant_id
+            $insertTrackingSql = "INSERT INTO tracking (tenant_id, tracking_id, courier_id, status, created_at, updated_at) VALUES (?, ?, ?, 'unused', NOW(), NOW())";
             $insertTrackingStmt = $conn->prepare($insertTrackingSql);
             
             if (!$insertTrackingStmt) {
@@ -347,7 +395,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file']) && isset
                 }
                 
                 // Validate row data
-                $validation = validateRowData($trackingData, $rowNumber, $selectedCourierId, $conn);
+                $validation = validateRowData($trackingData, $rowNumber, $selectedCourierId, $selectedTenantId, $conn);
                 
                 if (!empty($validation['errors'])) {
                     $errors = array_merge($errors, $validation['errors']);
@@ -359,9 +407,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file']) && isset
                 // Use cleaned data
                 $trackingData = array_merge($trackingData, $validation['clean_data']);
                 
-                // Insert tracking number with selected courier
+                // Insert tracking number
                 try {
-                    $insertTrackingStmt->bind_param("si", $trackingData['tracking_number'], $selectedCourierId);
+                    $insertTrackingStmt->bind_param("isi", $selectedTenantId, $trackingData['tracking_number'], $selectedCourierId);
                     
                     if ($insertTrackingStmt->execute()) {
                         $successCount++;
@@ -386,17 +434,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file']) && isset
             // Close statement
             $insertTrackingStmt->close();
             
-            // Log the tracking upload activity if there were successful uploads
+            // Log the tracking upload activity
             if ($successCount > 0) {
                 $courierName = getCourierName($conn, $selectedCourierId);
-                $logDetails = "Tracking CSV upload: {$successCount} tracking numbers uploaded for courier ID: {$selectedCourierId} ({$courierName})";
+                $tenantName = getTenantName($conn, $selectedTenantId);
+                $logDetails = "Tracking CSV upload: {$successCount} tracking numbers uploaded for Tenant: {$tenantName} (ID: {$selectedTenantId}), Courier: {$courierName} (ID: {$selectedCourierId})";
                 
                 if (!logUserAction($conn, $currentUserId, 'tracking', 0, $logDetails)) {
-                    // Log the error but don't stop processing
                     error_log("Failed to log tracking upload action for user ID: " . $currentUserId);
                 }
             }
-            // Close the CSV file
+            
             fclose($handle);
             
             // Store results in session
@@ -404,8 +452,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file']) && isset
                 'success' => $successCount,
                 'errors' => $errorCount,
                 'skipped' => $skippedCount,
-                'messages' => array_slice($errors, 0, 50), // Limit to first 50 error messages
-                'warnings' => array_slice($warnings, 0, 20) // Limit to first 20 warnings
+                'messages' => array_slice($errors, 0, 50),
+                'warnings' => array_slice($warnings, 0, 20)
             ];
         
             ob_end_clean();
@@ -436,7 +484,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file']) && isset
     }
 }
 
-// Include UI files after processing POST request to avoid header issues
+// Include UI files
 include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/navbar.php');
 include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php');
 ?>
@@ -449,19 +497,16 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
     
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/head.php'); ?>
     
-    <!-- Stylesheets -->
     <link rel="stylesheet" href="../assets/css/style.css" id="main-style-link" />
     <link rel="stylesheet" href="../assets/css/leads.css" id="main-style-link" />
 </head>
 
 <body>
-    <!-- Page Loader -->
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/loader.php'); ?>
 
     <div class="pc-container">
         <div class="pc-content">
             
-            <!-- Page Header -->
             <div class="page-header">
                 <div class="page-block">
                     <div class="page-header-title">
@@ -470,12 +515,12 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                 </div>
             </div>
             <div class="main-content-wrapper">
-                <!-- Instructions Box -->
                 <div class="info-box">
                     <h4>📋 Instructions</h4>
                     <p><strong>How to upload tracking numbers:</strong></p>
                     <ul>
-                        <li>Select a courier from the dropdown menu</li>
+                        <li>Select a tenant from the dropdown menu</li>
+                        <li>Select a courier belonging to the selected tenant</li>
                         <li>Download the CSV template below</li>
                         <li>Fill in your tracking numbers in the template</li>
                         <li>Upload the completed CSV file</li>
@@ -487,11 +532,10 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                         <li>Tracking numbers must be 5-50 characters long</li>
                         <li>Only alphanumeric characters, hyphens, and underscores allowed</li>
                         <li>Maximum file size: 5MB</li>
-                        <li>Same tracking number can exist for different couriers, but not for the same courier</li>
+                        <li>Tracking numbers are unique per courier within each tenant</li>
                     </ul>
                 </div>
 
-                <!-- Display import results/errors -->
                 <?php if (isset($_SESSION['import_result'])): ?>
                     <div class="alert alert-<?php echo $_SESSION['import_result']['errors'] > 0 ? 'warning' : 'success'; ?>">
                         <h4>Processing Results</h4>
@@ -512,16 +556,6 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                                 </details>
                             <?php endif; ?>
                         <?php endif; ?>
-                        <?php if (!empty($_SESSION['import_result']['warnings'])): ?>
-                            <details>
-                                <summary>View Warnings</summary>
-                                <ul class="mt-2">
-                                    <?php foreach ($_SESSION['import_result']['warnings'] as $warning): ?>
-                                        <li><?php echo htmlspecialchars($warning); ?></li>
-                                    <?php endforeach; ?>
-                                </ul>
-                            </details>
-                        <?php endif; ?>
                     </div>
                     <?php unset($_SESSION['import_result']); ?>
                 <?php endif; ?>
@@ -535,30 +569,32 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
 
                 <div class="lead-upload-container">
                     <form method="POST" enctype="multipart/form-data" id="uploadForm">
-                        <!-- Download Template Button -->
                         <div class="template-download-section">
                             <a href="/order_management/dist/templates/tracking_csv.php" class="template-download-btn">
                                  Download CSV Template
                             </a>
                         </div>
 
-                        <!-- Main Form Row with Courier Selection and File Upload Side by Side -->
                         <div class="form-container">
-                            <!-- Left Side - Courier Selection -->
-                            <div class="courier-section">
-                                <label for="courier_id" class="form-label">Select Courier <span class="required">*</span></label>
-                                <select id="courier_id" name="courier_id" class="form-select" required>
-                                    <option value="">-- Select Courier --</option>
-                                    <?php foreach ($couriers as $courier): ?>
-                                        <option value="<?php echo $courier['courier_id']; ?>" 
-                                                <?php echo (isset($_POST['courier_id']) && $_POST['courier_id'] == $courier['courier_id']) ? 'selected' : ''; ?>>
-                                            <?php echo htmlspecialchars($courier['courier_name']); ?>
+                            <div class="tenant-section">
+                                <label for="tenant_id" class="form-label">Select Tenant <span class="required">*</span></label>
+                                <select id="tenant_id" name="tenant_id" class="form-select" required>
+                                    <option value="">Select Tenant</option>
+                                    <?php foreach ($tenants as $tenant): ?>
+                                        <option value="<?php echo $tenant['tenant_id']; ?>">
+                                            <?php echo htmlspecialchars($tenant['company_name']); ?>
                                         </option>
                                     <?php endforeach; ?>
                                 </select>
                             </div>
+                            
+                            <div class="courier-section">
+                                <label for="courier_id" class="form-label">Select Courier <span class="required">*</span></label>
+                                <select id="courier_id" name="courier_id" class="form-select" required disabled>
+                                    <option value=""> Select Tenant First </option>
+                                </select>
+                            </div>
 
-                            <!-- Right Side - File Upload -->
                             <div class="file-section">
                                 <label class="form-label">CSV File <span class="required">*</span></label>
                                 <div class="file-input-wrapper">
@@ -573,7 +609,6 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                             </div>
                         </div>
 
-                        <!-- Action Buttons -->
                         <div class="action-buttons">
                             <button type="button" class="action-btn reset-btn" id="resetBtn">Reset</button>
                             <button type="submit" class="action-btn import-btn" id="importBtn">
@@ -586,38 +621,69 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
         </div>
     </div>
 
-    <!-- Footer -->
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/footer.php'); ?>
-    <!-- Scripts -->
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/scripts.php'); ?>
     
     <script>
-        // Reset button functionality
+     // Load couriers when tenant is selected
+document.getElementById('tenant_id').addEventListener('change', function() {
+    const tenantId = this.value;
+    const courierSelect = document.getElementById('courier_id');
+    
+    courierSelect.innerHTML = '<option value="">Loading Couriers...</option>';
+    courierSelect.disabled = true;
+    
+    if (tenantId) {
+        fetch('get_couriers_by_tenant.php?tenant_id=' + tenantId)
+            .then(response => response.json())
+            .then(data => {
+                courierSelect.innerHTML = '<option value="">Select Courier</option>';
+                
+                if (data.success && data.couriers.length > 0) {
+                    data.couriers.forEach(courier => {
+                        const option = document.createElement('option');
+                        option.value = courier.courier_id;
+                        // Display courier name with ID
+                        option.textContent = courier.courier_name + ' (ID: ' + courier.courier_id + ')';
+                        courierSelect.appendChild(option);
+                    });
+                    courierSelect.disabled = false;
+                } else {
+                    courierSelect.innerHTML = '<option value="">No Couriers Available</option>';
+                }
+            })
+            .catch(error => {
+                console.error('Error fetching couriers:', error);
+                courierSelect.innerHTML = '<option value="">Error Loading Couriers</option>';
+            });
+    } else {
+        courierSelect.innerHTML = '<option value="">Select Tenant First</option>';
+    }
+});
+        
         document.getElementById('resetBtn').addEventListener('click', function() {
-            // Reset the form
             document.getElementById('uploadForm').reset();
-            
-            // Reset file display
             document.getElementById('file-name').textContent = 'No file chosen';
+            document.getElementById('courier_id').innerHTML = '<option value="">Select Tenant First </option>';
+            document.getElementById('courier_id').disabled = true;
             
-            // Reset courier selection
-            document.getElementById('courier_id').selectedIndex = 0;
-            
-            // Reset button text if it was changed
             const importBtn = document.getElementById('importBtn');
             importBtn.disabled = false;
             importBtn.innerHTML = ' Upload Tracking Numbers';
-            
-            // Optional: Show confirmation
-            // alert('Form has been reset');
         });
 
-        // Form validation
         document.getElementById('uploadForm').addEventListener('submit', function(e) {
-            const fileInput = document.getElementById('csv_file');
+            const tenantSelect = document.getElementById('tenant_id');
             const courierSelect = document.getElementById('courier_id');
+            const fileInput = document.getElementById('csv_file');
             
-            // Check if courier is selected
+            if (!tenantSelect.value) {
+                e.preventDefault();
+                alert('Please select a tenant before proceeding.');
+                tenantSelect.focus();
+                return false;
+            }
+            
             if (!courierSelect.value) {
                 e.preventDefault();
                 alert('Please select a courier before proceeding.');
@@ -625,17 +691,13 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                 return false;
             }
             
-            // Check if file is selected
             if (!fileInput.files.length) {
                 e.preventDefault();
                 alert('Please upload the CSV file before proceeding.');
                 return false;
             }
             
-            // Additional file validation
             const file = fileInput.files[0];
-            
-            // Check file extension
             const validExtensions = ['.csv'];
             const fileName = file.name.toLowerCase();
             const isValidExtension = validExtensions.some(ext => fileName.endsWith(ext));
@@ -646,15 +708,13 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                 return false;
             }
             
-            // Check file size (5MB limit)
-            const maxSize = 5 * 1024 * 1024; // 5MB in bytes
+            const maxSize = 5 * 1024 * 1024;
             if (file.size > maxSize) {
                 e.preventDefault();
                 alert('File size must be less than 5MB. Please upload a smaller CSV file.');
                 return false;
             }
             
-            // Show loading state
             const importBtn = document.getElementById('importBtn');
             importBtn.disabled = true;
             importBtn.innerHTML = '⏳ Processing...';
@@ -662,13 +722,11 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
             return true;
         });
         
-        // Show selected file name and validate file type
         document.getElementById('csv_file').addEventListener('change', function() {
             const file = this.files[0];
             const fileNameEl = document.getElementById('file-name');
             
             if (file) {
-                // Check file extension
                 const validExtensions = ['.csv'];
                 const fileName = file.name.toLowerCase();
                 const isValidExtension = validExtensions.some(ext => fileName.endsWith(ext));

@@ -1,3 +1,4 @@
+<!-- 2. BULK DISPATCH MODAL - UPDATED WITH DYNAMIC COURIER LOADING -->
 <div class="modal-overlay" id="bulkDispatchModal" style="display: none;">
     <div class="modal-container">
         <div class="modal-header">
@@ -24,28 +25,13 @@
                     </div>
                 </div>
 
-                <!-- Courier Selection -->
+                <!-- Courier Selection with Dynamic Tenant Filtering -->
                 <div class="form-group mb-3">
                     <label for="bulk_carrier" class="form-label">Courier Service <span class="text-danger">*</span></label>
                     <select class="form-control" id="bulk_carrier" name="bulk_carrier" required>
-                        <option value="" selected disabled>Select courier service</option>
-                        <?php
-                        // Fetch active couriers from the database
-                        $courier_query = "SELECT courier_id, courier_name FROM couriers WHERE status = 'active' ORDER BY courier_name";
-                        $courier_result = $conn->query($courier_query);
-                        
-                        if ($courier_result && $courier_result->num_rows > 0) {
-                            while($courier = $courier_result->fetch_assoc()): 
-                        ?>
-                            <option value="<?php echo $courier['courier_id']; ?>"><?php echo htmlspecialchars($courier['courier_name']); ?></option>
-                        <?php 
-                            endwhile;
-                        } else {
-                            echo '<option value="" disabled>No couriers available</option>';
-                        }
-                        ?>
+                        <option value="" selected disabled>Loading couriers...</option>
                     </select>
-                    <small class="form-text text-muted">All selected orders will be dispatched with this courier service</small>
+                    <small class="form-text text-muted" id="bulk-courier-help-text">Select orders first to see available couriers</small>
                 </div>
                 
                 <!-- Tracking Numbers Preview -->

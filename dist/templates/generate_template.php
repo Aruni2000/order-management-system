@@ -10,11 +10,11 @@ if (!isset($_SESSION['logged_in'])) {
 
 // Set CSV headers
 header('Content-Type: text/csv; charset=UTF-8');
-header('Content-Disposition: attachment; filename="order_import_template_' . date('Y-m-d') . '.csv"');
+header('Content-Disposition: attachment; filename="lead_import_template_' . date('Y-m-d') . '.csv"');
 header('Pragma: no-cache');
 header('Expires: 0');
 
-// Define CSV columns - Updated to match order_header table structure
+// Define CSV columns - Updated to include Quantity field
 $header = [
     'Full Name',
     'Phone Number', 
@@ -24,6 +24,7 @@ $header = [
     'Address Line 1',
     'Address Line 2',
     'Product Code',
+    'Quantity',
     'Total Amount',
     'Other'
 ];

@@ -1,3 +1,5 @@
+
+<!-- 3. API DISPATCH MODAL -->
 <div class="modal-overlay" id="apiDispatchModal" style="display: none;">
     <div class="modal-container">
         <div class="modal-header">
@@ -24,32 +26,57 @@
                     </div>
                 </div>
 
-            <!-- Courier Selection (only show couriers with API integration) -->
-<div class="form-group mb-3">
-    <label for="api_carrier" class="form-label">Courier Service <span class="text-danger">*</span></label>
-    <select class="form-control" id="api_carrier" name="api_carrier" required>
-        <option value="" selected disabled>Select API courier service</option>
-        <?php
-        // Fetch only couriers with API integration (either has_api_new = 1 OR has_api_existing = 1)
-        $api_courier_query = "SELECT courier_id, courier_name FROM couriers 
-                             WHERE status = 'active' 
-                             AND (has_api_new = 1 OR has_api_existing = 1) 
-                             ORDER BY courier_name";
-        $api_courier_result = $conn->query($api_courier_query);
-        
-        if ($api_courier_result && $api_courier_result->num_rows > 0) {
-            while($courier = $api_courier_result->fetch_assoc()): 
-        ?>
-            <option value="<?php echo $courier['courier_id']; ?>"><?php echo htmlspecialchars($courier['courier_name']); ?></option>
-        <?php 
-            endwhile;
-        } else {
-            echo '<option value="" disabled>No API couriers available</option>';
-        }
-        ?>
-    </select>
-    <small class="form-text text-muted">All selected orders will be dispatched with this API courier service</small>
-</div>
+                <!-- Courier Selection with Tenant Filtering and API Integration -->
+                <div class="form-group mb-3">
+                    <label for="api_carrier" class="form-label">Courier Service <span class="text-danger">*</span></label>
+                    <select class="form-control" id="api_carrier" name="api_carrier" required>
+                        <option value="" selected disabled>Select API courier service</option>
+                        <?php
+                        // Get session variables
+                        $session_tenant_id = isset($_SESSION['tenant_id']) ? (int)$_SESSION['tenant_id'] : 0;
+                        $is_main_admin = isset($_SESSION['is_main_admin']) ? (int)$_SESSION['is_main_admin'] : 0;
+                        
+                        // Build query - main admin sees all API couriers, regular tenant sees only their API couriers
+                        if ($is_main_admin === 1) {
+                            // Main admin sees all active API couriers
+                            $api_courier_query = "SELECT courier_id, courier_name, co_id 
+                                                 FROM couriers 
+                                                 WHERE status = 'active' 
+                                                 AND (has_api_new = 1 OR has_api_existing = 1)
+                                                 ORDER BY courier_name";
+                            $stmt_api = $conn->prepare($api_courier_query);
+                        } else {
+                            // Regular tenant sees only their API couriers
+                            $api_courier_query = "SELECT courier_id, courier_name, co_id 
+                                                 FROM couriers 
+                                                 WHERE status = 'active' 
+                                                 AND (has_api_new = 1 OR has_api_existing = 1)
+                                                 AND tenant_id = ? 
+                                                 ORDER BY courier_name";
+                            $stmt_api = $conn->prepare($api_courier_query);
+                            $stmt_api->bind_param("i", $session_tenant_id);
+                        }
+                        
+                        $stmt_api->execute();
+                        $api_courier_result = $stmt_api->get_result();
+                        
+                        if ($api_courier_result && $api_courier_result->num_rows > 0) {
+                            while($courier = $api_courier_result->fetch_assoc()): 
+                        ?>
+                            <option value="<?php echo $courier['courier_id']; ?>">
+                                <?php echo htmlspecialchars($courier['courier_name']); ?> (ID: <?php echo htmlspecialchars($courier['co_id']); ?>)
+                            </option>
+                        <?php 
+                            endwhile;
+                            $stmt_api->close();
+                        } else {
+                            echo '<option value="" disabled>No API couriers available</option>';
+                            $stmt_api->close();
+                        }
+                        ?>
+                    </select>
+                    <small class="form-text text-muted">All selected orders will be dispatched with this API courier service</small>
+                </div>
                 
                 <!-- Dispatch Type Selection -->
                 <div class="form-group mb-3">

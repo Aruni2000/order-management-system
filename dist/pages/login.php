@@ -288,9 +288,7 @@ $fe_conn->close();
         <div class="grid grid-cols-12 gap-1.5">
             <div class="col-span-12 sm:col-span-6 my-1">
                 <p class="m-0">
-                    <a href="https://www.feitsolutions.com/"
-                        class="text-theme-bodycolor dark:text-themedark-bodycolor hover:text-primary-500 dark:hover:text-primary-500"
-                        target="_blank">
+                    <a href="https://www.feitsolutions.com/" class="text-theme-bodycolor dark:text-themedark-bodycolor hover:text-primary-500 dark:hover:text-primary-500" target="_blank">
                         Copyright © 2025 FEITSolutions</a>, Designed by FEIT All rights reserved
                 </p>
             </div>

@@ -452,10 +452,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $status = 'pending';
 
          // Product processing with quantity
-// Product processing with quantity - FIXED VERSION
 $products = $_POST['order_product'];
 $product_prices = $_POST['order_product_price'];
-$product_quantities = $_POST['order_product_quantity'] ?? [];
+$product_quantities = $_POST['order_product_quantity'] ?? []; // NEW: Get quantities
 $discounts = $_POST['order_product_discount'] ?? [];
 $product_descriptions = $_POST['order_product_description'] ?? [];
 
@@ -469,8 +468,8 @@ foreach ($products as $key => $product_id) {
     if (empty($product_id)) continue;
     
     $original_price = floatval($product_prices[$key] ?? 0);
-    $quantity = intval($product_quantities[$key] ?? 1);
-    $discount = floatval($discounts[$key] ?? 0); // This is TOTAL discount for all items in this row
+    $quantity = intval($product_quantities[$key] ?? 1); // NEW: Get quantity (default 1)
+    $discount = floatval($discounts[$key] ?? 0);
     $description = $product_descriptions[$key] ?? '';
     
     // Ensure quantity is at least 1
@@ -478,93 +477,81 @@ foreach ($products as $key => $product_id) {
         $quantity = 1;
     }
     
-    // Calculate total price for this row
-    $row_total_price = $original_price * $quantity;
+    // Ensure discount doesn't exceed price
+    $discount = min($discount, $original_price);
     
-    // ✅ FIXED: Discount should not exceed total price for this row
-    if ($discount > $row_total_price) {
-        $discount = $row_total_price;
-    }
-    
-    // ✅ FIXED: Calculate subtotal and discount correctly
-    $subtotal_before_discounts += $row_total_price;
-    $total_discount += $discount; // Don't multiply by quantity - discount is already total!
+    // Calculate totals with quantity
+    $subtotal_before_discounts += ($original_price * $quantity);
+    $total_discount += ($discount * $quantity);
     $product_codes[] = $product_id;
     
     $order_items[] = [
         'product_id' => $product_id,
-        'quantity' => $quantity,
+        'quantity' => $quantity,           // NEW: Store quantity
         'original_price' => $original_price,
-        'discount' => $discount, // This is the TOTAL discount for this row
+        'discount' => $discount,
         'description' => $description
     ];
 }
             if (empty($order_items)) {
                 throw new Exception("No valid products to process in the order.");
             }
-$final_product_code = implode(',', $product_codes);
-$subtotal_after_discount = $subtotal_before_discounts - $total_discount;
 
-// UPDATED: Always use the delivery fee from POST data (no free delivery logic)
-// Delivery fee is already set from the form submission
-$total_amount = $subtotal_after_discount + $delivery_fee;
+            $final_product_code = implode(',', $product_codes);
+            $subtotal_after_discount = $subtotal_before_discounts - $total_discount;
 
+            // UPDATED: Always use the delivery fee from POST data (no free delivery logic)
+            // Delivery fee is already set from the form submission
+            $total_amount = $subtotal_after_discount + $delivery_fee;
 
-// The "subtotal" column in order_header should be the subtotal AFTER discount
-$order_subtotal = $subtotal_after_discount; // This is what we'll insert into the database
-
-// Optional: Log for debugging
-error_log("DEBUG - Subtotal before discount: Rs. $subtotal_before_discounts");
-error_log("DEBUG - Total discount: Rs. $total_discount");
-error_log("DEBUG - Order subtotal (after discount): Rs. $order_subtotal");
-error_log("DEBUG - Delivery fee applied: Rs. $delivery_fee");
-error_log("DEBUG - Total amount: Rs. $total_amount");
+            // Optional: Log for debugging
+            error_log("DEBUG - Order subtotal after discount: Rs. $subtotal_after_discount");
+            error_log("DEBUG - Delivery fee applied: Rs. $delivery_fee");
+            error_log("DEBUG - Total amount: Rs. $total_amount");
 
             // ==========================================
             // FIXED: INSERT ORDER_HEADER WITH TENANT_ID
             // ==========================================
             $insertOrderSql = "INSERT INTO order_header (
-                tenant_id, customer_id, user_id, co_id, issue_date, due_date, 
-                subtotal, discount, total_amount, delivery_fee,
-                notes, currency, status, pay_status, pay_date, created_by,
-                product_code, full_name, mobile, mobile_2,
-                address_line1, address_line2, city_id, zone_id, district_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            tenant_id, customer_id, user_id, issue_date, due_date, 
+            subtotal, discount, total_amount, delivery_fee,
+            notes, currency, status, pay_status, pay_date, created_by,
+            product_code, full_name, mobile, mobile_2,
+            address_line1, address_line2, city_id, zone_id, district_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
-            $stmt = $conn->prepare($insertOrderSql);
+    $stmt = $conn->prepare($insertOrderSql);
 
-            if (!$stmt) {
-                throw new Exception("Failed to prepare order header insert query: " . $conn->error);
-            }
+    if (!$stmt) {
+        throw new Exception("Failed to prepare order header insert query: " . $conn->error);
+    }
 
-  // ✅ UPDATED: Added co_id parameter (now 25 total parameters)
-$stmt->bind_param(
-    "iiiissddddsssssissssssiii",  // 25 parameters (added 'i' for co_id)
-    $tenant_id,                     // 1.  tenant_id
+  $stmt->bind_param(
+    "iiissddddsssssissssssiii",  // 24 parameters (added tenant_id)
+    $tenant_id,                     // 1.  tenant_id (NEW)
     $customer_id,                   // 2.  customer_id
     $user_id,                       // 3.  user_id
-    $co_id,                         // 4.  co_id
-    $order_date,                    // 5.  issue_date
-    $due_date,                      // 6.  due_date
-    $order_subtotal,                // 7.  subtotal 
-    $total_discount,                // 8.  discount
-    $total_amount,                  // 9.  total_amount
-    $delivery_fee,                  // 10. delivery_fee
-    $notes,                         // 11. notes
-    $currency,                      // 12. currency
-    $status,                        // 13. status
-    $pay_status,                    // 14. pay_status
-    $pay_date,                      // 15. pay_date
-    $user_id,                       // 16. created_by
-    $final_product_code,            // 17. product_code
-    $final_full_name,               // 18. full_name
-    $final_mobile,                  // 19. mobile
-    $final_mobile_2,                // 20. mobile_2
-    $final_address_line1,           // 21. address_line1
-    $final_address_line2,           // 22. address_line2
-    $final_city_id,                 // 23. city_id
-    $final_zone_id,                 // 24. zone_id
-    $final_district_id              // 25. district_id
+    $order_date,                    // 4.  issue_date
+    $due_date,                      // 5.  due_date
+    $subtotal_before_discounts,     // 6.  subtotal
+    $total_discount,                // 7.  discount
+    $total_amount,                  // 8.  total_amount
+    $delivery_fee,                  // 9.  delivery_fee
+    $notes,                         // 10. notes
+    $currency,                      // 11. currency
+    $status,                        // 12. status
+    $pay_status,                    // 13. pay_status
+    $pay_date,                      // 14. pay_date
+    $user_id,                       // 15. created_by
+    $final_product_code,            // 16. product_code
+    $final_full_name,               // 17. full_name (FROM FORM)
+    $final_mobile,                  // 18. mobile (FROM FORM)
+    $final_mobile_2,                // 19. mobile_2 (FROM FORM)
+    $final_address_line1,           // 20. address_line1 (FROM FORM)
+    $final_address_line2,           // 21. address_line2 (FROM FORM)
+    $final_city_id,                 // 22. city_id (FROM FORM)
+    $final_zone_id,                 // 23. zone_id (FROM CITY_TABLE)
+    $final_district_id              // 24. district_id (FROM CITY_TABLE)
 );
 
     if (!$stmt->execute()) {
@@ -593,7 +580,6 @@ $stmt->bind_param(
 
             
        // Order items insertion with quantity
-// Order items insertion with quantity - FIXED VERSION
 $insertItemSql = "INSERT INTO order_items (
     order_id, product_id, quantity, unit_price, discount, 
     total_amount, pay_status, status, description
@@ -606,18 +592,17 @@ if (!$stmt) {
 }
 
 foreach ($order_items as $item) {
-    // ✅ FIXED: Calculate total_amount: (unit_price × quantity) - total_discount
-    $row_total_price = $item['original_price'] * $item['quantity'];
-    $item_total = $row_total_price - $item['discount']; // Discount is already total for this row
+    // Calculate total_amount: (unit_price - discount) × quantity
+    $item_total = ($item['original_price'] - $item['discount']) * $item['quantity'];
     
     $stmt->bind_param(
-        "iiidissss",
+        "iiidissss",                    // Updated: added 'i' for quantity
         $order_id,                      // order_id
         $item['product_id'],            // product_id
-        $item['quantity'],              // quantity
-        $item['original_price'],        // unit_price
-        $item['discount'],              // discount (total discount for this row)
-        $item_total,                    // total_amount
+        $item['quantity'],              // quantity (NEW)
+        $item['original_price'],        // unit_price (original price per unit)
+        $item['discount'],              // discount (per unit)
+        $item_total,                    // total_amount ((price - discount) × quantity)
         $pay_status,                    // pay_status
         $status,                        // status
         $item['description']            // description
@@ -627,43 +612,27 @@ foreach ($order_items as $item) {
         throw new Exception("Failed to insert order item: " . $stmt->error);
     }
 }
+        
 
 
         // COURIER AND TRACKING ASSIGNMENT WITH ENHANCED FDE API
         // Get default courier (can be is_default = 1, 2, or 3)
-            // Get default courier for THIS TENANT with co_id
-            $getDefaultCourierSql = "SELECT co_id, courier_id, courier_name, api_key, client_id, 
-                                    origin_city_name, origin_state_name, is_default 
-                                    FROM couriers 
-                                    WHERE tenant_id = ? 
-                                    AND is_default IN (1, 2, 3) 
-                                    AND status = 'active' 
-                                    ORDER BY is_default ASC 
-                                    LIMIT 1";
+        $getDefaultCourierSql = "SELECT courier_id, courier_name, api_key, client_id, origin_city_name, origin_state_name, is_default FROM couriers WHERE is_default IN (1, 2, 3) AND status = 'active' ORDER BY is_default ASC LIMIT 1";
+        $courierResult = $conn->query($getDefaultCourierSql);
 
-            $courierStmt = $conn->prepare($getDefaultCourierSql);
-            $courierStmt->bind_param("i", $tenant_id);
-            $courierStmt->execute();
-            $courierResult = $courierStmt->get_result();
+        $tracking_assigned = false;
+        $courier_warning = '';
 
-            $tracking_assigned = false;
-            $courier_warning = '';
-            $co_id = null; // Initialize co_id
-
-            if ($courierResult && $courierResult->num_rows > 0) {
-                $defaultCourier = $courierResult->fetch_assoc();
-                
-                // ✅ CRITICAL: Store BOTH IDs
-                $co_id = $defaultCourier['co_id'];                    // Primary key from couriers table
-                $default_courier_id = $defaultCourier['courier_id'];  // Courier service ID (11, 12, 13, 14)
-                
-                $courier_type = $defaultCourier['is_default'];
-                $api_key = $defaultCourier['api_key'];
-                $client_id = $defaultCourier['client_id'];
-                $courier_name = $defaultCourier['courier_name'];
-                $origin_city_name = $defaultCourier['origin_city_name'];
-                $origin_state_name = $defaultCourier['origin_state_name'];
-                        
+        if ($courierResult && $courierResult->num_rows > 0) {
+            $defaultCourier = $courierResult->fetch_assoc();
+            $default_courier_id = $defaultCourier['courier_id'];
+            $courier_type = $defaultCourier['is_default']; // 1 = internal tracking, 2 = FDE New API, 3 = FDE Existing API
+            $api_key = $defaultCourier['api_key'];
+            $client_id = $defaultCourier['client_id'];
+            $courier_name = $defaultCourier['courier_name'];
+            $origin_city_name = $defaultCourier['origin_city_name'];
+            $origin_state_name = $defaultCourier['origin_state_name'];
+            
             // Fardar API start here
             if ($default_courier_id == 11) {
                 if ($courier_type == 1) {
@@ -686,14 +655,13 @@ foreach ($order_items as $item) {
                         $updateTrackingStmt->execute();
                         
                         // Update order_header with courier info and set status to 'dispatch'
-                       $updateOrderHeaderSql = "UPDATE order_header SET 
-                        co_id = ?,
-                        courier_id = ?, 
-                        tracking_number = ?, 
-                        status = 'dispatch' 
-                        WHERE order_id = ?";
-                    $updateOrderStmt = $conn->prepare($updateOrderHeaderSql);
-                    $updateOrderStmt->bind_param("iisi", $co_id, $default_courier_id, $tracking_number, $order_id);
+                        $updateOrderHeaderSql = "UPDATE order_header SET 
+                                                courier_id = ?, 
+                                                tracking_number = ?, 
+                                                status = 'dispatch' 
+                                                WHERE order_id = ?";
+                        $updateOrderStmt = $conn->prepare($updateOrderHeaderSql);
+                        $updateOrderStmt->bind_param("isi", $default_courier_id, $tracking_number, $order_id);
                         $updateOrderStmt->execute();
                         
                         // Update all order_items status to 'dispatch'
@@ -812,14 +780,13 @@ foreach ($order_items as $item) {
                             $tracking_number = $fde_result['waybill_no'] ?? ($fde_result['tracking_number'] ?? 'FDE' . $order_id);
                             
                             // Update order_header with courier info and set status to 'dispatch'
-                           $updateOrderHeaderSql = "UPDATE order_header SET 
-                            co_id = ?,
-                            courier_id = ?, 
-                            tracking_number = ?, 
-                            status = 'dispatch'
-                            WHERE order_id = ?";
-                        $updateOrderStmt = $conn->prepare($updateOrderHeaderSql);
-                        $updateOrderStmt->bind_param("iisi", $co_id, $default_courier_id, $tracking_number, $order_id);
+                            $updateOrderHeaderSql = "UPDATE order_header SET 
+                                                    courier_id = ?, 
+                                                    tracking_number = ?, 
+                                                    status = 'dispatch'
+                                                    WHERE order_id = ?";
+                            $updateOrderStmt = $conn->prepare($updateOrderHeaderSql);
+                            $updateOrderStmt->bind_param("isi", $default_courier_id, $tracking_number, $order_id);
                             $updateOrderStmt->execute();
                             
                             // Update all order_items status to 'dispatch'
@@ -977,15 +944,13 @@ foreach ($order_items as $item) {
                                 $updateTrackingStmt->execute();
                                 
                                 // Update order_header with courier info and set status to 'dispatch'
-                               $updateOrderHeaderSql = "UPDATE order_header SET 
-                            co_id = ?,
-                            courier_id = ?, 
-                            tracking_number = ?, 
-                            status = 'dispatch'
-                            WHERE order_id = ?";
-                        $updateOrderStmt = $conn->prepare($updateOrderHeaderSql);
-                        $updateOrderStmt->bind_param("iisi", $co_id, $default_courier_id, $tracking_number, $order_id);
-
+                                $updateOrderHeaderSql = "UPDATE order_header SET 
+                                                        courier_id = ?, 
+                                                        tracking_number = ?, 
+                                                        status = 'dispatch'
+                                                        WHERE order_id = ?";
+                                $updateOrderStmt = $conn->prepare($updateOrderHeaderSql);
+                                $updateOrderStmt->bind_param("isi", $default_courier_id, $tracking_number, $order_id);
                                 $updateOrderStmt->execute();
                                 
                                 // Update all order_items status to 'dispatch'
@@ -1052,15 +1017,13 @@ foreach ($order_items as $item) {
                         $updateTrackingStmt->execute();
                         
                         // Update order_header with courier info and set status to 'dispatch'
-                       $updateOrderHeaderSql = "UPDATE order_header SET 
-    co_id = ?,
-    courier_id = ?, 
-    tracking_number = ?, 
-    status = 'dispatch'
-    WHERE order_id = ?";
-$updateOrderStmt = $conn->prepare($updateOrderHeaderSql);
-$updateOrderStmt->bind_param("iisi", $co_id, $default_courier_id, $tracking_number, $order_id);
-
+                        $updateOrderHeaderSql = "UPDATE order_header SET 
+                                                courier_id = ?, 
+                                                tracking_number = ?, 
+                                                status = 'dispatch' 
+                                                WHERE order_id = ?";
+                        $updateOrderStmt = $conn->prepare($updateOrderHeaderSql);
+                        $updateOrderStmt->bind_param("isi", $default_courier_id, $tracking_number, $order_id);
                         $updateOrderStmt->execute();
                         
                         // Update all order_items status to 'dispatch'
@@ -1240,19 +1203,14 @@ $updateOrderStmt->bind_param("iisi", $co_id, $default_courier_id, $tracking_numb
                                                 if (!$updateTrackingStmt->execute()) {
                                                     throw new Exception("Failed to update tracking status: " . $updateTrackingStmt->error);
                                                 }
-
+                                                
                                                 // Update order header
-                                             $updateOrderHeaderSql = "UPDATE order_header SET 
-                                                    co_id = ?,
-                                                    courier_id = ?, 
-                                                    tracking_number = ?, 
-                                                    status = 'dispatch'
-                                                    WHERE order_id = ?";
+                                                $updateOrderHeaderSql = "UPDATE order_header SET courier_id = ?, tracking_number = ?, status = 'dispatch' WHERE order_id = ?";
                                                 $updateOrderStmt = $conn->prepare($updateOrderHeaderSql);
                                                 if (!$updateOrderStmt) {
                                                     throw new Exception("Failed to prepare order header update: " . $conn->error);
                                                 }
-                                                $updateOrderStmt->bind_param("iisi", $co_id, $default_courier_id, $tracking_number, $order_id);
+                                                $updateOrderStmt->bind_param("isi", $default_courier_id, $waybill_id, $order_id);
                                                 if (!$updateOrderStmt->execute()) {
                                                     throw new Exception("Failed to update order header: " . $updateOrderStmt->error);
                                                 }
@@ -1344,15 +1302,13 @@ $updateOrderStmt->bind_param("iisi", $co_id, $default_courier_id, $tracking_numb
                         $updateTrackingStmt->execute();
                         
                         // Update order_header with courier info and set status to 'dispatch'
-                       $updateOrderHeaderSql = "UPDATE order_header SET 
-    co_id = ?,
-    courier_id = ?, 
-    tracking_number = ?, 
-    status = 'dispatch'
-    WHERE order_id = ?";
-$updateOrderStmt = $conn->prepare($updateOrderHeaderSql);
-$updateOrderStmt->bind_param("iisi", $co_id, $default_courier_id, $tracking_number, $order_id);
-
+                        $updateOrderHeaderSql = "UPDATE order_header SET 
+                                                courier_id = ?, 
+                                                tracking_number = ?, 
+                                                status = 'dispatch' 
+                                                WHERE order_id = ?";
+                        $updateOrderStmt = $conn->prepare($updateOrderHeaderSql);
+                        $updateOrderStmt->bind_param("isi", $default_courier_id, $tracking_number, $order_id);
                         $updateOrderStmt->execute();
                         
                         // Update all order_items status to 'dispatch'
@@ -1429,15 +1385,11 @@ $updateOrderStmt->bind_param("iisi", $co_id, $default_courier_id, $tracking_numb
         if ($result['success']) {
             $tracking_number = $result['waybill_id'];
             
-         $updateOrderHeaderSql = "UPDATE order_header SET 
-    co_id = ?,
-    courier_id = ?, 
-    tracking_number = ?, 
-    status = 'dispatch'
-    WHERE order_id = ?";
-$updateOrderStmt = $conn->prepare($updateOrderHeaderSql);
-$updateOrderStmt->bind_param("iisi", $co_id, $default_courier_id, $tracking_number, $order_id);
-
+            $updateOrderHeaderSql = "UPDATE order_header SET 
+                                    courier_id = ?, tracking_number = ?, status = 'dispatch'
+                                    WHERE order_id = ?";
+            $updateStmt = $conn->prepare($updateOrderHeaderSql);
+            $updateStmt->bind_param("isi", $default_courier_id, $tracking_number, $order_id);
             $updateStmt->execute();
             $updateStmt->close();
             
@@ -1607,15 +1559,13 @@ $updateOrderStmt->bind_param("iisi", $co_id, $default_courier_id, $tracking_numb
                         $updateTrackingStmt->execute();
                         
                         // Update order_header with courier info and set status to 'dispatch'
-                      $updateOrderHeaderSql = "UPDATE order_header SET 
-    co_id = ?,
-    courier_id = ?, 
-    tracking_number = ?, 
-    status = 'dispatch'
-    WHERE order_id = ?";
-$updateOrderStmt = $conn->prepare($updateOrderHeaderSql);
-$updateOrderStmt->bind_param("iisi", $co_id, $default_courier_id, $tracking_number, $order_id);
-
+                        $updateOrderHeaderSql = "UPDATE order_header SET 
+                                                courier_id = ?, 
+                                                tracking_number = ?, 
+                                                status = 'dispatch' 
+                                                WHERE order_id = ?";
+                        $updateOrderStmt = $conn->prepare($updateOrderHeaderSql);
+                        $updateOrderStmt->bind_param("isi", $default_courier_id, $tracking_number, $order_id);
                         $updateOrderStmt->execute();
                         
                         // Update all order_items status to 'dispatch'

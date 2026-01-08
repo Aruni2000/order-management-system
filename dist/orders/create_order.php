@@ -97,13 +97,21 @@ $courierStatus = checkCourierStatus($conn);
 $sql = "SELECT id, name, description, lkr_price FROM products WHERE status = 'active' ORDER BY name ASC";
 $result = $conn->query($sql);
 
-// Updated customer query with proper JOIN to get city_name
+// Get tenant_id from session
+$session_tenant_id = $_SESSION['tenant_id'] ?? 1;
+
+// Updated customer query with tenant_id filter
 $customerSql = "SELECT c.*, ct.city_name 
                 FROM customers c 
                 LEFT JOIN city_table ct ON c.city_id = ct.city_id 
-                WHERE c.status = 'Active' 
+                WHERE c.tenant_id = ? 
+                AND c.status = 'Active' 
                 ORDER BY c.name ASC";
-$customerResult = $conn->query($customerSql);
+
+$customerStmt = $conn->prepare($customerSql);
+$customerStmt->bind_param("i", $session_tenant_id);
+$customerStmt->execute();
+$customerResult = $customerStmt->get_result();
 
 // Fetch cities for dropdown
 $citySql = "SELECT city_id, city_name FROM city_table WHERE is_active = 1 ORDER BY city_name ASC";
@@ -176,6 +184,62 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
     padding: 10px;
     color: #999;
     text-align: center;
+}
+
+/* NEW: Quantity column styling */
+.quantity-col {
+    width: 100px;
+    min-width: 80px;
+}
+
+.quantity-col input {
+    text-align: center;
+    font-weight: 600;
+}
+.duplicate-product-alert {
+    background-color: #fff3cd;
+    border: 1px solid #ffc107;
+    color: #856404;
+    padding: 12px 16px;
+    border-radius: 4px;
+    margin-bottom: 15px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    animation: slideIn 0.3s ease-out;
+}
+
+.duplicate-product-alert .alert-icon {
+    font-size: 20px;
+}
+
+.duplicate-product-alert .alert-message {
+    flex: 1;
+}
+
+.duplicate-product-alert .alert-close {
+    background: none;
+    border: none;
+    font-size: 20px;
+    cursor: pointer;
+    color: #856404;
+    padding: 0;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 </style>
 
@@ -428,6 +492,7 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                             <h5 class="section-title">Products</h5>
                         </div>
                         <div class="section-body">
+                              <div id="product-alert-container"></div>
                             <div style="overflow-x: auto;">
                                 <table class="products-table" id="order_table">
                                     <thead>
@@ -435,6 +500,7 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                                             <th class="action-col">Action</th>
                                             <th class="product-col">Product</th>
                                             <th class="description-col">Description</th>
+                                            <th class="quantity-col">Quantity</th>
                                             <th class="price-col">Price</th>
                                             <th class="discount-col">Discount</th>
                                             <th class="subtotal-col">Subtotal</th>
@@ -462,6 +528,14 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                                             </td>
                                             <td class="description-col">
                                                 <input type="text" name="order_product_description[]" class="form-control product-description">
+                                            </td>
+                                            <td class="quantity-col">
+                                                <input type="number" 
+                                                       name="order_product_quantity[]" 
+                                                       class="form-control quantity" 
+                                                       value="1" 
+                                                       min="1" 
+                                                       step="1">
                                             </td>
                                             <td class="price-col">
                                                 <div class="input-group">
@@ -705,11 +779,10 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     };
 
-// ========== PHONE VALIDATION MODULE (ADD THIS NEW SECTION) ==========
+// ========== PHONE VALIDATION MODULE ==========
 const PhoneValidator = {
     timeouts: {},
     
-    // Check if phone number exists in database
     checkPhoneExists: async (phone, currentCustomerId = 0) => {
         if (!phone || phone.length !== 10) return { exists: false };
         
@@ -723,43 +796,36 @@ const PhoneValidator = {
         }
     },
     
-    // Validate phone field with debouncing
     validatePhoneField: (fieldId, otherFieldId) => {
         const field = document.getElementById(fieldId);
         const otherField = document.getElementById(otherFieldId);
         
-        // Clear existing timeout
         if (PhoneValidator.timeouts[fieldId]) {
             clearTimeout(PhoneValidator.timeouts[fieldId]);
         }
         
-        // Remove previous error for this field
         const existingError = field.parentNode.querySelector('.phone-validation-error');
         if (existingError) existingError.remove();
         
         const phone = field.value.trim();
         const otherPhone = otherField.value.trim();
         
-        // Check if empty (allowed for phone_2)
         if (!phone) {
             FormValidator.validateAndToggleSubmit();
             return;
         }
         
-        // Check if same as other field
         if (phone === otherPhone && phone.length === 10) {
             ValidationUtils.showError(field, 'Phone numbers cannot be the same', 'phone-validation-error');
             FormValidator.validateAndToggleSubmit();
             return;
         }
         
-        // Check format
         if (phone.length !== 10) {
             FormValidator.validateAndToggleSubmit();
             return;
         }
         
-        // Debounced database check
         PhoneValidator.timeouts[fieldId] = setTimeout(async () => {
             const currentCustomerId = document.getElementById('customer_id').value || 0;
             const result = await PhoneValidator.checkPhoneExists(phone, currentCustomerId);
@@ -776,16 +842,14 @@ const PhoneValidator = {
             }
             
             FormValidator.validateAndToggleSubmit();
-        }, 500); // 500ms debounce
+        }, 500);
     }
 };
 
 // ========== EMAIL VALIDATION MODULE ==========
-// ========== UPDATED EMAIL VALIDATION WITH AUTO-FILL MODULE ==========
 const EmailValidator = {
     timeout: null,
 
-    // Validate email format using regex
     isValidFormat: (email) => {
         const emailRegex = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
         return emailRegex.test(email);
@@ -805,7 +869,6 @@ const EmailValidator = {
         }
     },
 
-    // NEW: Get customer data by email
     getCustomerByEmail: async (email) => {
         try {
             const response = await fetch(
@@ -818,56 +881,43 @@ const EmailValidator = {
         }
     },
 
-   // NEW: Auto-fill customer data
-autoFillCustomerData: (customerData) => {
-    // Set customer ID (hidden field)
-    document.getElementById('customer_id').value = customerData.customer_id;
-    
-    // Fill all form fields
-    document.getElementById('customer_name').value = customerData.name || '';
-    document.getElementById('customer_phone').value = customerData.phone || '';
-    document.getElementById('customer_phone_2').value = customerData.phone_2 || '';
-    document.getElementById('address_line1').value = customerData.address_line1 || '';
-    document.getElementById('address_line2').value = customerData.address_line2 || '';
-    document.getElementById('city_id').value = customerData.city_id || '';
-    document.getElementById('city_autocomplete').value = customerData.city_name || '';
-    
-    // Mark as existing customer
-    isExistingCustomer = true;
-    
-    // Keep all fields editable - CHANGED FROM true TO false
-    CustomerManager.toggleFields(false);
-    
-    // Clear any existing validation errors
-    ValidationUtils.clearErrors();
-    ValidationUtils.clearErrors('phone-validation-error');
-    ValidationUtils.clearErrors('email-validation-error');
-    
-    // Show success message
-    const emailField = document.getElementById('customer_email');
-    const successMsg = document.createElement('div');
-    successMsg.className = 'email-validation-success';
-    successMsg.style.color = '#28a745';
-    successMsg.style.fontSize = '0.875rem';
-    successMsg.style.marginTop = '0.25rem';
-    successMsg.textContent = '✓ Customer found — email already exists';
-    emailField.parentNode.appendChild(successMsg);
-    
-    // Remove success message after 3 seconds
-    setTimeout(() => {
-        const successEl = emailField.parentNode.querySelector('.email-validation-success');
-        if (successEl) successEl.remove();
-    }, 3000);
-    
-    // Validate form
-    FormValidator.validateAndToggleSubmit();
-    
-    console.log('Auto-filled customer data for:', customerData.name);
-},
+    autoFillCustomerData: (customerData) => {
+        document.getElementById('customer_id').value = customerData.customer_id;
+        document.getElementById('customer_name').value = customerData.name || '';
+        document.getElementById('customer_phone').value = customerData.phone || '';
+        document.getElementById('customer_phone_2').value = customerData.phone_2 || '';
+        document.getElementById('address_line1').value = customerData.address_line1 || '';
+        document.getElementById('address_line2').value = customerData.address_line2 || '';
+        document.getElementById('city_id').value = customerData.city_id || '';
+        document.getElementById('city_autocomplete').value = customerData.city_name || '';
+        
+        isExistingCustomer = true;
+        CustomerManager.toggleFields(false);
+        ValidationUtils.clearErrors();
+        ValidationUtils.clearErrors('phone-validation-error');
+        ValidationUtils.clearErrors('email-validation-error');
+        
+        const emailField = document.getElementById('customer_email');
+        const successMsg = document.createElement('div');
+        successMsg.className = 'email-validation-success';
+        successMsg.style.color = '#28a745';
+        successMsg.style.fontSize = '0.875rem';
+        successMsg.style.marginTop = '0.25rem';
+        successMsg.textContent = '✓ Customer found — email already exists';
+        emailField.parentNode.appendChild(successMsg);
+        
+        setTimeout(() => {
+            const successEl = emailField.parentNode.querySelector('.email-validation-success');
+            if (successEl) successEl.remove();
+        }, 3000);
+        
+        FormValidator.validateAndToggleSubmit();
+        console.log('Auto-filled customer data for:', customerData.name);
+    },
+
     validateEmailField: () => {
         const field = document.getElementById('customer_email');
 
-        // Clear old errors and success messages
         const oldError = field.parentNode.querySelector('.email-validation-error');
         if (oldError) oldError.remove();
         
@@ -876,7 +926,6 @@ autoFillCustomerData: (customerData) => {
 
         const email = field.value.trim();
         
-        // If email is empty, clear customer data if it was auto-filled
         if (!email) {
             if (isExistingCustomer) {
                 CustomerManager.clearFields();
@@ -885,7 +934,6 @@ autoFillCustomerData: (customerData) => {
             return;
         }
 
-        // First check: Email format validation
         if (!EmailValidator.isValidFormat(email)) {
             ValidationUtils.showError(
                 field,
@@ -896,20 +944,16 @@ autoFillCustomerData: (customerData) => {
             return;
         }
 
-        // Second check: Look up customer by email (with debounce)
         clearTimeout(EmailValidator.timeout);
 
         EmailValidator.timeout = setTimeout(async () => {
             const customerId = document.getElementById('customer_id').value || 0;
             
-            // NEW: Try to get customer data by email
             const customerResult = await EmailValidator.getCustomerByEmail(email);
             
             if (customerResult.exists && customerResult.customer) {
-                // Customer found - auto-fill data
                 EmailValidator.autoFillCustomerData(customerResult.customer);
             } else {
-                // No customer found - check if email is used (for new customers)
                 const duplicateResult = await EmailValidator.checkEmailExists(email, customerId);
                 
                 if (duplicateResult.exists) {
@@ -919,10 +963,8 @@ autoFillCustomerData: (customerData) => {
                         'email-validation-error'
                     );
                 } else {
-                    // Email is new - clear any existing customer data
                     if (isExistingCustomer) {
                         CustomerManager.clearFields();
-                        // Re-populate the email field
                         document.getElementById('customer_email').value = email;
                     }
                 }
@@ -933,7 +975,7 @@ autoFillCustomerData: (customerData) => {
     }
 };
 
-// ========== UPDATED CUSTOMER MANAGER ==========
+// ========== CUSTOMER MANAGER ==========
 const CustomerManager = {
     toggleFields: (readonly = false) => {
         const fields = ['customer_name', 'customer_email', 'customer_phone', 'customer_phone_2', 'city_autocomplete', 'address_line1', 'address_line2'];
@@ -959,7 +1001,7 @@ const CustomerManager = {
         document.getElementById('address_line2').value = '';
         ValidationUtils.clearErrors();
         ValidationUtils.clearErrors('phone-validation-error');
-        ValidationUtils.clearErrors('email-validation-error'); // ADDED THIS LINE
+        ValidationUtils.clearErrors('email-validation-error');
         isExistingCustomer = false;
         CustomerManager.toggleFields(false);
         FormValidator.validateAndToggleSubmit();
@@ -975,25 +1017,21 @@ const CustomerManager = {
 
         let isValid = true;
 
-        // Name is always required
         if (!name) {
             ValidationUtils.showError(document.getElementById('customer_name'), 'Customer name is required');
             isValid = false;
         }
 
-        // Check for phone validation errors
         const phoneErrors = document.querySelectorAll('.phone-validation-error');
         if (phoneErrors.length > 0) {
             isValid = false;
         }
 
-        // **FIXED: Check for email validation errors**
         const emailErrors = document.querySelectorAll('.email-validation-error');
         if (emailErrors.length > 0) {
             isValid = false;
         }
 
-        // Check if phones are the same
         if (phone && phone2 && phone === phone2 && phone.length === 10) {
             const phone2Field = document.getElementById('customer_phone_2');
             const existingError = phone2Field.parentNode.querySelector('.phone-validation-error');
@@ -1003,7 +1041,6 @@ const CustomerManager = {
             isValid = false;
         }
 
-        // For new customers, all fields required
         if (!isExistingCustomer) {
             if (!phone) {
                 ValidationUtils.showError(document.getElementById('customer_phone'), 'Phone number is required');
@@ -1013,7 +1050,6 @@ const CustomerManager = {
                 isValid = false;
             }
 
-            // Validate phone_2 ONLY if value is entered
             if (phone2 && !ValidationUtils.isValidPhone(phone2)) {
                 ValidationUtils.showError(document.getElementById('customer_phone_2'), 'Phone 2 must be 10 digits');
                 isValid = false;
@@ -1034,78 +1070,6 @@ const CustomerManager = {
     }
 };
 
-
-// ========== UPDATED EVENT LISTENERS ==========
-// Add these event listeners in your EventListeners.init() function:
-
-// Phone validation listeners
-document.getElementById('customer_phone').addEventListener('input', () => {
-    PhoneValidator.validatePhoneField('customer_phone', 'customer_phone_2');
-});
-
-document.getElementById('customer_phone_2').addEventListener('input', () => {
-    PhoneValidator.validatePhoneField('customer_phone_2', 'customer_phone');
-});
-document.getElementById('customer_email').addEventListener('input', () => {
-    EmailValidator.validateEmailField();
-});
-
-document.getElementById('customer_email').addEventListener('blur', () => {
-    EmailValidator.validateEmailField();
-});
-
-// Also validate when leaving the field
-document.getElementById('customer_phone').addEventListener('blur', () => {
-    PhoneValidator.validatePhoneField('customer_phone', 'customer_phone_2');
-});
-
-document.getElementById('customer_phone_2').addEventListener('blur', () => {
-    PhoneValidator.validatePhoneField('customer_phone_2', 'customer_phone');
-});
-// Phone input - only numbers, max 10 digits
-document.getElementById('customer_phone').addEventListener('input', function(e) {
-    // Remove any non-numeric characters
-    this.value = this.value.replace(/[^0-9]/g, '');
-    
-    // Limit to 10 digits
-    if (this.value.length > 10) {
-        this.value = this.value.slice(0, 10);
-    }
-    
-    // Trigger phone validation
-    PhoneValidator.validatePhoneField('customer_phone', 'customer_phone_2');
-});
-
-// Phone 2 input - only numbers, max 10 digits
-document.getElementById('customer_phone_2').addEventListener('input', function(e) {
-    // Remove any non-numeric characters
-    this.value = this.value.replace(/[^0-9]/g, '');
-    
-    // Limit to 10 digits
-    if (this.value.length > 10) {
-        this.value = this.value.slice(0, 10);
-    }
-    
-    // Trigger phone validation
-    PhoneValidator.validatePhoneField('customer_phone_2', 'customer_phone');
-});
-
-// Prevent pasting non-numeric content
-document.getElementById('customer_phone').addEventListener('paste', function(e) {
-    e.preventDefault();
-    const pastedText = (e.clipboardData || window.clipboardData).getData('text');
-    const numericOnly = pastedText.replace(/[^0-9]/g, '').slice(0, 10);
-    this.value = numericOnly;
-    PhoneValidator.validatePhoneField('customer_phone', 'customer_phone_2');
-});
-
-document.getElementById('customer_phone_2').addEventListener('paste', function(e) {
-    e.preventDefault();
-    const pastedText = (e.clipboardData || window.clipboardData).getData('text');
-    const numericOnly = pastedText.replace(/[^0-9]/g, '').slice(0, 10);
-    this.value = numericOnly;
-    PhoneValidator.validatePhoneField('customer_phone_2', 'customer_phone');
-});
     // ========== DATE VALIDATION ==========
     const DateValidator = {
         validate: () => {
@@ -1142,15 +1106,104 @@ document.getElementById('customer_phone_2').addEventListener('paste', function(e
         }
     };
 
-
-   // ========== PRODUCT MANAGEMENT ========== (Updated section)
+  // ========== PRODUCT MANAGEMENT WITH QUANTITY ==========
 const ProductManager = {
+    // NEW FUNCTION: Check if product already exists in the order
+    checkDuplicateProduct: (productId, currentRow) => {
+        if (!productId) return null;
+        
+        let existingRow = null;
+        document.querySelectorAll('#order_table tbody tr').forEach(row => {
+            // Skip the current row we're checking
+            if (row === currentRow) return;
+            
+            const productSelect = row.querySelector('.product-select');
+            if (productSelect && productSelect.value === productId) {
+                existingRow = row;
+            }
+        });
+        
+        return existingRow;
+    },
+
+    // NEW FUNCTION: Show duplicate product alert
+    showDuplicateAlert: (productName, existingRow) => {
+        const alertContainer = document.getElementById('product-alert-container');
+        
+        // Remove any existing alerts
+        alertContainer.innerHTML = '';
+        
+        // Create new alert
+        const alertDiv = document.createElement('div');
+        alertDiv.className = 'duplicate-product-alert';
+        alertDiv.innerHTML = `
+            <span class="alert-icon">⚠️</span>
+            <div class="alert-message">
+                <strong>Product Already Added!</strong><br>
+                "${productName}" is already in your order. Please increase the quantity of the existing item instead of adding it again.
+            </div>
+            <button class="alert-close" onclick="this.parentElement.remove()">&times;</button>
+        `;
+        
+        alertContainer.appendChild(alertDiv);
+        
+        // Highlight existing row with yellow background
+        if (existingRow) {
+            existingRow.style.backgroundColor = '#fff3cd';
+            existingRow.style.transition = 'background-color 0.3s';
+            
+            // Scroll to the existing row
+            existingRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            
+            // Remove highlight after 3 seconds
+            setTimeout(() => {
+                existingRow.style.backgroundColor = '';
+            }, 3000);
+        }
+        
+        // Auto-hide alert after 5 seconds
+        setTimeout(() => {
+            if (alertDiv.parentElement) {
+                alertDiv.style.opacity = '0';
+                alertDiv.style.transition = 'opacity 0.3s';
+                setTimeout(() => alertDiv.remove(), 300);
+            }
+        }, 5000);
+        
+        // Scroll to alert
+        alertDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    },
+
     updatePrice: (row) => {
         const productSelect = row.querySelector('.product-select');
         const selectedOption = productSelect.options[productSelect.selectedIndex];
         
         if (!productSelect.value) return;
 
+        // DUPLICATE CHECK: Check if product already exists
+        const productId = productSelect.value;
+        const productName = selectedOption.text;
+        
+        const existingRow = ProductManager.checkDuplicateProduct(productId, row);
+        
+        if (existingRow) {
+            // Show alert message
+            ProductManager.showDuplicateAlert(productName, existingRow);
+            
+            // Reset the current row's product selection
+            productSelect.value = '';
+            row.querySelector('.product-description').value = '';
+            row.querySelector('.price').value = '0.00';
+            row.querySelector('.discount').value = '0';
+            row.querySelector('.quantity').value = '1';
+            row.querySelector('.subtotal').value = '0.00';
+            
+            ProductManager.updateTotals();
+            FormValidator.validateAndToggleSubmit();
+            return; // Stop further execution
+        }
+
+        // Continue with normal product selection if no duplicate
         const priceField = row.querySelector('.price');
         const descriptionField = row.querySelector('.product-description');
         const description = selectedOption.getAttribute('data-description') || '';
@@ -1163,19 +1216,25 @@ const ProductManager = {
         ProductManager.checkForProducts();
     },
 
-    updateRowTotal: (row) => {
-        let price = parseFloat(row.querySelector('.price').value) || 0;
-        let discount = parseFloat(row.querySelector('.discount').value) || 0;
+updateRowTotal: (row) => {
+    let price = parseFloat(row.querySelector('.price').value) || 0;
+    let discount = parseFloat(row.querySelector('.discount').value) || 0;
+    let quantity = parseInt(row.querySelector('.quantity').value) || 1;
 
-        if (discount > price) {
-            discount = price;
-            row.querySelector('.discount').value = discount;
-        }
+    // Calculate total price before discount
+    let totalPrice = price * quantity;
 
-        let subtotal = price - discount;
-        row.querySelector('.subtotal').value = subtotal.toFixed(2);
-        ProductManager.updateTotals();
-    },
+    // Discount should not exceed total price
+    if (discount > totalPrice) {
+        discount = totalPrice;
+        row.querySelector('.discount').value = discount;
+    }
+
+    // FIXED CALCULATION: (price × quantity) - total_discount
+    let subtotal = totalPrice - discount;
+    row.querySelector('.subtotal').value = subtotal.toFixed(2);
+    ProductManager.updateTotals();
+},
 
     checkForProducts: () => {
         let hasProducts = false;
@@ -1192,57 +1251,52 @@ const ProductManager = {
         return hasProducts;
     },
 
-    updateTotals: () => {
-        let subtotal = 0;
-        let totalDiscount = 0;
+   updateTotals: () => {
+    let subtotal = 0;
+    let totalDiscount = 0;
 
-        document.querySelectorAll('#order_table tbody tr').forEach(row => {
-            let rowPrice = parseFloat(row.querySelector('.price').value) || 0;
-            let rowDiscount = parseFloat(row.querySelector('.discount').value) || 0;
+    document.querySelectorAll('#order_table tbody tr').forEach(row => {
+        let rowPrice = parseFloat(row.querySelector('.price').value) || 0;
+        let rowDiscount = parseFloat(row.querySelector('.discount').value) || 0;
+        let rowQuantity = parseInt(row.querySelector('.quantity').value) || 1;
 
-            if (rowDiscount > rowPrice) {
-                rowDiscount = rowPrice;
-                row.querySelector('.discount').value = rowDiscount;
-            }
+        // Calculate total price for this row
+        let rowTotalPrice = rowPrice * rowQuantity;
 
-            let rowSubtotal = rowPrice - rowDiscount;
-            row.querySelector('.subtotal').value = rowSubtotal.toFixed(2);
-
-            subtotal += rowPrice;
-            totalDiscount += rowDiscount;
-        });
-
-        document.getElementById('subtotal_display').textContent = subtotal.toFixed(2);
-        document.getElementById('subtotal_amount').value = subtotal.toFixed(2);
-        document.getElementById('discount_display').textContent = totalDiscount.toFixed(2);
-        document.getElementById('discount_amount').value = totalDiscount.toFixed(2);
-
-        let subtotalAfterDiscount = subtotal - totalDiscount;
-        const hasProducts = ProductManager.checkForProducts();
-
-        // ===== NEW LOGIC: Free delivery for orders >= 5000 =====
-        let finalDeliveryFee = 0;
-        if (hasProducts) {
-            if (subtotalAfterDiscount >= 5000) {
-                finalDeliveryFee = 0; // Free delivery
-                // Add visual indicator for free delivery
-                document.getElementById('delivery_fee_display').innerHTML = '<s style="color: #999;">' + deliveryFee.toFixed(2) + '</s> <span style="color: #28a745; font-weight: bold;">0.00 (FREE)</span>';
-            } else {
-                finalDeliveryFee = deliveryFee; // Normal delivery fee
-                document.getElementById('delivery_fee_display').textContent = deliveryFee.toFixed(2);
-            }
+        // Discount should not exceed total price for this row
+        if (rowDiscount > rowTotalPrice) {
+            rowDiscount = rowTotalPrice;
+            row.querySelector('.discount').value = rowDiscount;
         }
 
-        // Update delivery fee hidden input
-        document.getElementById('delivery_fee').value = finalDeliveryFee.toFixed(2);
+        // FIXED CALCULATION: (price × quantity) - total_discount
+        let rowSubtotal = rowTotalPrice - rowDiscount;
+        row.querySelector('.subtotal').value = rowSubtotal.toFixed(2);
 
-        // Calculate final total
-        let total = subtotalAfterDiscount + finalDeliveryFee;
+        subtotal += rowTotalPrice;
+        totalDiscount += rowDiscount; // Don't multiply by quantity!
+    });
 
-        document.getElementById('total_display').textContent = total.toFixed(2);
-        document.getElementById('total_amount').value = total.toFixed(2);
-        document.getElementById('lkr_total_amount').value = total.toFixed(2);
-    },
+    document.getElementById('subtotal_display').textContent = subtotal.toFixed(2);
+    document.getElementById('subtotal_amount').value = subtotal.toFixed(2);
+    document.getElementById('discount_display').textContent = totalDiscount.toFixed(2);
+    document.getElementById('discount_amount').value = totalDiscount.toFixed(2);
+
+    let subtotalAfterDiscount = subtotal - totalDiscount;
+    const hasProducts = ProductManager.checkForProducts();
+
+    // UPDATED: Always apply delivery fee if products exist (no free delivery logic)
+    let finalDeliveryFee = hasProducts ? deliveryFee : 0;
+    
+    document.getElementById('delivery_fee_display').textContent = finalDeliveryFee.toFixed(2);
+    document.getElementById('delivery_fee').value = finalDeliveryFee.toFixed(2);
+
+    let total = subtotalAfterDiscount + finalDeliveryFee;
+
+    document.getElementById('total_display').textContent = total.toFixed(2);
+    document.getElementById('total_amount').value = total.toFixed(2);
+    document.getElementById('lkr_total_amount').value = total.toFixed(2);
+},
 
     validate: () => {
         ValidationUtils.clearErrors('product-validation-error');
@@ -1293,6 +1347,8 @@ const ProductManager = {
                 input.value = '0.00';
             } else if (input.classList.contains('discount')) {
                 input.value = '0';
+            } else if (input.classList.contains('quantity')) {
+                input.value = '1';
             } else if (input.classList.contains('subtotal')) {
                 input.value = '0.00';
             } else {
@@ -1314,6 +1370,7 @@ const ProductManager = {
             let row = button.closest('tr');
             row.querySelector('.product-select').value = '';
             row.querySelector('.product-description').value = '';
+            row.querySelector('.quantity').value = '1';
             row.querySelector('.price').value = '0.00';
             row.querySelector('.discount').value = '0';
             row.querySelector('.subtotal').value = '0.00';
@@ -1324,8 +1381,7 @@ const ProductManager = {
     }
 };
 
- 
-// ========== UPDATED FORM VALIDATOR ==========
+// ========== FORM VALIDATOR ==========
 const FormValidator = {
     validateAndToggleSubmit: () => {
         const submitButton = document.getElementById('submit_order');
@@ -1333,7 +1389,6 @@ const FormValidator = {
         ValidationUtils.clearErrors();
         ValidationUtils.clearErrors('date-validation-error');
         ValidationUtils.clearErrors('product-validation-error');
-        // Don't clear phone-validation-error and email-validation-error - they're managed by their validators
 
         const customerValid = CustomerManager.validate();
         const datesValid = DateValidator.validate();
@@ -1361,13 +1416,11 @@ const FormValidator = {
             const cityIdInput = document.getElementById('city_id');
             const suggestionsDiv = document.getElementById('city_suggestions');
 
-            // Fetch cities
             fetch('get_cities.php')
                 .then(response => response.json())
                 .then(data => CityAutocomplete.cities = data)
                 .catch(error => console.error('Error loading cities:', error));
 
-            // Input event
             cityInput.addEventListener('input', function() {
                 const searchTerm = this.value.trim().toLowerCase();
                 
@@ -1385,7 +1438,6 @@ const FormValidator = {
                 CityAutocomplete.displaySuggestions(filteredCities, suggestionsDiv);
             });
 
-            // Keyboard navigation
             cityInput.addEventListener('keydown', function(e) {
                 const suggestions = document.querySelectorAll('.autocomplete-suggestion');
                 if (suggestions.length === 0) return;
@@ -1410,7 +1462,6 @@ const FormValidator = {
                 }
             });
 
-            // Blur event
             cityInput.addEventListener('blur', function() {
                 setTimeout(() => {
                     if (this.value.trim() === '') {
@@ -1420,7 +1471,6 @@ const FormValidator = {
                 }, 200);
             });
 
-            // Close on outside click
             document.addEventListener('click', function(e) {
                 if (e.target !== cityInput && e.target !== suggestionsDiv) {
                     suggestionsDiv.style.display = 'none';
@@ -1475,8 +1525,7 @@ const FormValidator = {
         }
     };
 
-  // ========== CUSTOMER MODAL ========== 
-// REPLACE the existing CustomerModal.init() section with this updated version
+  // ========== CUSTOMER MODAL ==========
 const CustomerModal = {
     init: () => {
         const modal = document.getElementById("customerModal");
@@ -1491,7 +1540,6 @@ const CustomerModal = {
             if (event.target == modal) modal.style.display = "none";
         });
 
-        // Search functionality
         searchInput.addEventListener('keyup', function() {
             const value = this.value.toLowerCase();
             document.querySelectorAll(".customer-row").forEach(row => {
@@ -1500,7 +1548,6 @@ const CustomerModal = {
             });
         });
 
-        // Select customer - UPDATED TO INCLUDE PHONE_2
         document.querySelectorAll(".select-customer-btn").forEach(btn => {
             btn.addEventListener('click', function() {
                 const row = this.closest('tr');
@@ -1509,7 +1556,7 @@ const CustomerModal = {
                 document.getElementById('customer_name').value = row.getAttribute('data-name');
                 document.getElementById('customer_email').value = row.getAttribute('data-email');
                 document.getElementById('customer_phone').value = row.getAttribute('data-phone');
-                document.getElementById('customer_phone_2').value = row.getAttribute('data-phone-2') || ''; // NEW: Set phone_2
+                document.getElementById('customer_phone_2').value = row.getAttribute('data-phone-2') || '';
                 document.getElementById('address_line1').value = row.getAttribute('data-address-line1');
                 document.getElementById('address_line2').value = row.getAttribute('data-address-line2');
                 document.getElementById('city_id').value = row.getAttribute('data-city-id');
@@ -1525,7 +1572,6 @@ const CustomerModal = {
             });
         });
 
-        // Add clear selection button
         const clearBtn = document.createElement('button');
         clearBtn.type = 'button';
         clearBtn.className = 'btn btn-outline-secondary ml-2';
@@ -1542,6 +1588,65 @@ const CustomerModal = {
             // Customer field validation
             ['customer_name', 'customer_email', 'customer_phone', 'address_line1', 'address_line2'].forEach(id => {
                 document.getElementById(id).addEventListener('input', FormValidator.validateAndToggleSubmit);
+            });
+
+            // Phone validation listeners
+            document.getElementById('customer_phone').addEventListener('input', () => {
+                PhoneValidator.validatePhoneField('customer_phone', 'customer_phone_2');
+            });
+
+            document.getElementById('customer_phone_2').addEventListener('input', () => {
+                PhoneValidator.validatePhoneField('customer_phone_2', 'customer_phone');
+            });
+
+            document.getElementById('customer_email').addEventListener('input', () => {
+                EmailValidator.validateEmailField();
+            });
+
+            document.getElementById('customer_email').addEventListener('blur', () => {
+                EmailValidator.validateEmailField();
+            });
+
+            document.getElementById('customer_phone').addEventListener('blur', () => {
+                PhoneValidator.validatePhoneField('customer_phone', 'customer_phone_2');
+            });
+
+            document.getElementById('customer_phone_2').addEventListener('blur', () => {
+                PhoneValidator.validatePhoneField('customer_phone_2', 'customer_phone');
+            });
+
+            // Phone input - only numbers, max 10 digits
+            document.getElementById('customer_phone').addEventListener('input', function(e) {
+                this.value = this.value.replace(/[^0-9]/g, '');
+                if (this.value.length > 10) {
+                    this.value = this.value.slice(0, 10);
+                }
+                PhoneValidator.validatePhoneField('customer_phone', 'customer_phone_2');
+            });
+
+            document.getElementById('customer_phone_2').addEventListener('input', function(e) {
+                this.value = this.value.replace(/[^0-9]/g, '');
+                if (this.value.length > 10) {
+                    this.value = this.value.slice(0, 10);
+                }
+                PhoneValidator.validatePhoneField('customer_phone_2', 'customer_phone');
+            });
+
+            // Prevent pasting non-numeric content
+            document.getElementById('customer_phone').addEventListener('paste', function(e) {
+                e.preventDefault();
+                const pastedText = (e.clipboardData || window.clipboardData).getData('text');
+                const numericOnly = pastedText.replace(/[^0-9]/g, '').slice(0, 10);
+                this.value = numericOnly;
+                PhoneValidator.validatePhoneField('customer_phone', 'customer_phone_2');
+            });
+
+            document.getElementById('customer_phone_2').addEventListener('paste', function(e) {
+                e.preventDefault();
+                const pastedText = (e.clipboardData || window.clipboardData).getData('text');
+                const numericOnly = pastedText.replace(/[^0-9]/g, '').slice(0, 10);
+                this.value = numericOnly;
+                PhoneValidator.validatePhoneField('customer_phone_2', 'customer_phone');
             });
 
             // Date validation
@@ -1561,7 +1666,18 @@ const CustomerModal = {
                     e.target.value = e.target.value.replace(/[^0-9]/g, '');
                 }
                 
-                if (e.target.classList.contains('price') || e.target.classList.contains('discount')) {
+                // UPDATED: Quantity handling - only allow positive integers
+                if (e.target.classList.contains('quantity')) {
+                    let value = parseInt(e.target.value) || 1;
+                    if (value < 1) {
+                        e.target.value = 1;
+                    }
+                }
+                
+                // UPDATED: Update totals when price, discount, OR quantity changes
+                if (e.target.classList.contains('price') || 
+                    e.target.classList.contains('discount') ||
+                    e.target.classList.contains('quantity')) {
                     ProductManager.updateRowTotal(e.target.closest('tr'));
                     FormValidator.validateAndToggleSubmit();
                 }
@@ -1590,7 +1706,6 @@ const CustomerModal = {
                     if (!DateValidator.validate()) issues.push('Order dates');
                     if (!ProductManager.validate()) issues.push('Product information');
                     if (!ProductManager.hasValidProduct()) issues.push('At least one complete product');
-                    // Check email validation errors
                 
                 if (document.querySelectorAll('.email-validation-error').length > 0) {
                     isValid = false;

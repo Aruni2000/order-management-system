@@ -1,8 +1,13 @@
 <?php
 /**
- * Koombiyo Bulk Existing Parcel API Handler - EXACT DATA VERSION
- * @version 2.2
- * @date 2025
+ * Koombiyo Bulk Existing Parcel API Handler - FIXED VERSION
+ * @version 2.3
+ * @date 2025-01-07
+ * 
+ * FIXES:
+ * - Added co_id update in order_header
+ * - Enhanced error handling and logging
+ * - Improved database transaction handling
  */
 
 session_start();
@@ -67,7 +72,7 @@ function addKoombiyoOrder($orderData, $apiKey = 'muABqMKZgkaZDAnbBWev') {
     
     $data = json_decode($response, true);
     
-    // Check if API returned success in the response body
+    // Check if API returned success
     if (isset($data['status']) && $data['status'] === 'success') {
         return ['success' => true, 'data' => $data, 'message' => 'Order successfully added'];
     } else {
@@ -95,9 +100,8 @@ function getParcelData($orderId, $conn) {
     return ['description' => $desc, 'weight' => number_format($weight, 1)];
 }
 
-// Get district and city for Koombiyo (use actual city names)
+// Get district and city for Koombiyo
 function getKoombiyoLocation($cityName) {
-    // Map common districts for Koombiyo
     $districtMap = [
         'colombo' => 1, 'gampaha' => 2, 'kalutara' => 3, 'kandy' => 4,
         'matale' => 5, 'nuwara eliya' => 6, 'galle' => 7, 'matara' => 8,
@@ -111,7 +115,6 @@ function getKoombiyoLocation($cityName) {
     
     $cityLower = strtolower(trim($cityName));
     
-    // Find district based on city name
     $district = 1; // Default to Colombo
     foreach ($districtMap as $districtName => $districtId) {
         if (strpos($cityLower, $districtName) !== false) {
@@ -130,34 +133,45 @@ try {
     include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/connection/db_connection.php');
     
     // Validations
-    if (!isset($_SESSION['logged_in']) || !$_SESSION['logged_in']) throw new Exception('Authentication required');
-    if ($_SERVER['REQUEST_METHOD'] !== 'POST') throw new Exception('Only POST method allowed');
-    if (!isset($_POST['order_ids']) || !isset($_POST['carrier_id'])) throw new Exception('Missing required parameters');
+    if (!isset($_SESSION['logged_in']) || !$_SESSION['logged_in']) {
+        throw new Exception('Authentication required');
+    }
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        throw new Exception('Only POST method allowed');
+    }
+    if (!isset($_POST['order_ids']) || !isset($_POST['carrier_id'])) {
+        throw new Exception('Missing required parameters');
+    }
     
     $orderIds = json_decode($_POST['order_ids'], true);
     $carrierId = (int)$_POST['carrier_id'];
     $dispatchNotes = $_POST['dispatch_notes'] ?? '';
     $userId = $_SESSION['user_id'] ?? 0;
     
-    if (!is_array($orderIds) || empty($orderIds)) throw new Exception('Invalid order IDs');
+    if (!is_array($orderIds) || empty($orderIds)) {
+        throw new Exception('Invalid order IDs');
+    }
     
-    // Get courier details
-    $stmt = $conn->prepare("SELECT courier_name, api_key, client_id FROM couriers WHERE courier_id = ? AND status = 'active' AND has_api_existing = 1");
+    // Get courier details INCLUDING co_id
+    $stmt = $conn->prepare("SELECT courier_id, courier_name, co_id, api_key, client_id FROM couriers WHERE courier_id = ? AND status = 'active' AND has_api_existing = 1");
     $stmt->bind_param("i", $carrierId);
     $stmt->execute();
     $courier = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
     
     if (!$courier || empty($courier['api_key'])) {
         throw new Exception('Invalid courier or missing API credentials');
     }
     
-    // Get tracking numbers (waybill IDs)
+    $courierCoId = $courier['co_id']; // Store co_id for later use
+    
+    // Get tracking numbers
     $orderCount = count($orderIds);
-    // This part is correct in your PHP
-$stmt = $conn->prepare("SELECT tracking_id FROM tracking WHERE courier_id = ? AND status = 'unused' ORDER BY id ASC LIMIT ?");
+    $stmt = $conn->prepare("SELECT tracking_id FROM tracking WHERE courier_id = ? AND status = 'unused' ORDER BY id ASC LIMIT ?");
     $stmt->bind_param("ii", $carrierId, $orderCount);
     $stmt->execute();
     $tracking = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $stmt->close();
     
     if (count($tracking) < $orderCount) {
         throw new Exception("Need $orderCount tracking numbers, only " . count($tracking) . " available");
@@ -166,7 +180,12 @@ $stmt = $conn->prepare("SELECT tracking_id FROM tracking WHERE courier_id = ? AN
     // Get orders
     $placeholders = str_repeat('?,', count($orderIds) - 1) . '?';
     $stmt = $conn->prepare("
-        SELECT oh.*, c.name as customer_name, c.phone as customer_phone, c.address_line1 as customer_address1, c.address_line2 as customer_address2, ct.city_name
+        SELECT oh.*, 
+               c.name as customer_name, 
+               c.phone as customer_phone, 
+               c.address_line1 as customer_address1, 
+               c.address_line2 as customer_address2, 
+               ct.city_name
         FROM order_header oh 
         LEFT JOIN customers c ON oh.customer_id = c.customer_id 
         LEFT JOIN city_table ct ON c.city_id = ct.city_id
@@ -175,11 +194,15 @@ $stmt = $conn->prepare("SELECT tracking_id FROM tracking WHERE courier_id = ? AN
     $stmt->bind_param(str_repeat('i', count($orderIds)), ...$orderIds);
     $stmt->execute();
     $orders = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $stmt->close();
     
-    if (empty($orders)) throw new Exception('No valid pending orders found');
+    if (empty($orders)) {
+        throw new Exception('No valid pending orders found');
+    }
     
     // Process orders
-    $conn->autocommit(false);
+    $conn->begin_transaction();
+    
     $successCount = 0;
     $failedOrders = [];
     $processedOrders = [];
@@ -192,11 +215,12 @@ $stmt = $conn->prepare("SELECT tracking_id FROM tracking WHERE courier_id = ? AN
             $parcelData = getParcelData($orderId, $conn);
             $location = getKoombiyoLocation($order['city_name'] ?? '');
             
-            // Determine COD amount based on pay_status
+            // Determine COD amount
             $codAmount = ($order['pay_status'] === 'paid') ? '0' : (string)$order['total_amount'];
             
             // Prepare full address
-            $fullAddress = trim(($order['address_line1'] ?? $order['customer_address1'] ?? '') . ' ' . ($order['address_line2'] ?? $order['customer_address2'] ?? ''));
+            $fullAddress = trim(($order['address_line1'] ?? $order['customer_address1'] ?? '') . ' ' . 
+                               ($order['address_line2'] ?? $order['customer_address2'] ?? ''));
             
             $orderData = [
                 'orderWaybillid' => $trackingNumber,
@@ -211,27 +235,46 @@ $stmt = $conn->prepare("SELECT tracking_id FROM tracking WHERE courier_id = ? AN
                 'getCod' => $codAmount
             ];
             
+            // Submit to Koombiyo API
             $result = addKoombiyoOrder($orderData, $courier['api_key']);
             
             if ($result['success']) {
-                // Update database
-                $stmt = $conn->prepare("UPDATE order_header SET status='dispatch', courier_id=?, tracking_number=?, dispatch_note=?, updated_at=NOW() WHERE order_id=?");
-                $stmt->bind_param("issi", $carrierId, $trackingNumber, $dispatchNotes, $orderId);
+                // FIXED: Update order_header with co_id
+                $stmt = $conn->prepare("
+                    UPDATE order_header 
+                    SET status = 'dispatch', 
+                        courier_id = ?, 
+                        co_id = ?,
+                        tracking_number = ?, 
+                        dispatch_note = ?, 
+                        updated_at = NOW() 
+                    WHERE order_id = ?
+                ");
+                $stmt->bind_param("isssi", $carrierId, $courierCoId, $trackingNumber, $dispatchNotes, $orderId);
                 $stmt->execute();
+                $stmt->close();
                 
-                $stmt = $conn->prepare("UPDATE tracking SET status='used', updated_at=NOW() WHERE tracking_id=? AND courier_id=?");
+                // Update tracking status
+                $stmt = $conn->prepare("UPDATE tracking SET status = 'used', updated_at = NOW() WHERE tracking_id = ? AND courier_id = ?");
                 $stmt->bind_param("si", $trackingNumber, $carrierId);
                 $stmt->execute();
+                $stmt->close();
                 
-                $stmt = $conn->prepare("UPDATE order_items SET status='dispatch' WHERE order_id=?");
+                // Update order items
+                $stmt = $conn->prepare("UPDATE order_items SET status = 'dispatch' WHERE order_id = ?");
                 $stmt->bind_param("i", $orderId);
                 $stmt->execute();
+                $stmt->close();
                 
                 logAction($conn, $userId, 'api_existing_dispatch', $orderId, 
-                    "Order $orderId dispatched via Koombiyo - Tracking: $trackingNumber, Status: {$result['message']}");
+                    "Order $orderId dispatched via Koombiyo (co_id: $courierCoId) - Tracking: $trackingNumber, Status: {$result['message']}");
                 
                 $successCount++;
-                $processedOrders[] = ['order_id' => $orderId, 'tracking_number' => $trackingNumber];
+                $processedOrders[] = [
+                    'order_id' => $orderId, 
+                    'tracking_number' => $trackingNumber,
+                    'co_id' => $courierCoId
+                ];
                 
             } else {
                 $failedOrders[] = [
@@ -259,8 +302,9 @@ $stmt = $conn->prepare("SELECT tracking_id FROM tracking WHERE courier_id = ? AN
     // Commit or rollback
     if ($successCount > 0) {
         $conn->commit();
+        
         $trackingList = implode(', ', array_column($processedOrders, 'tracking_number'));
-        $details = "Koombiyo bulk dispatch: $successCount/" . count($orderIds) . " orders dispatched, Tracking: $trackingList";
+        $details = "Koombiyo bulk dispatch (co_id: $courierCoId): $successCount/" . count($orderIds) . " orders dispatched, Tracking: $trackingList";
         
         if (!empty($failedOrders)) {
             $errorList = array_map(fn($f) => "Order {$f['order_id']}: {$f['error']}", $failedOrders);
@@ -270,6 +314,7 @@ $stmt = $conn->prepare("SELECT tracking_id FROM tracking WHERE courier_id = ? AN
         logAction($conn, $userId, 'bulk_api_existing_dispatch', 0, $details);
     } else {
         $conn->rollback();
+        
         $errorList = array_map(fn($f) => "Order {$f['order_id']}: {$f['error']}", $failedOrders);
         logAction($conn, $userId, 'bulk_api_existing_dispatch_failed', 0, 
             "Koombiyo bulk dispatch failed: All " . count($orderIds) . " orders failed. Errors: " . implode('; ', $errorList));
@@ -281,21 +326,24 @@ $stmt = $conn->prepare("SELECT tracking_id FROM tracking WHERE courier_id = ? AN
         'processed_count' => $successCount,
         'total_count' => count($orderIds),
         'failed_count' => count($failedOrders),
-        'processed_orders' => $processedOrders
+        'processed_orders' => $processedOrders,
+        'courier_co_id' => $courierCoId
     ];
     
     if (!empty($failedOrders)) {
         $response['failed_orders'] = $failedOrders;
         $response['message'] = "Processed $successCount orders successfully, " . count($failedOrders) . " failed";
     } else {
-        $response['message'] = "All $successCount orders processed successfully via Koombiyo";
+        $response['message'] = "All $successCount orders processed successfully via Koombiyo (co_id: $courierCoId)";
     }
     
     ob_clean();
     echo json_encode($response);
     
 } catch (Exception $e) {
-    if (isset($conn)) $conn->rollback();
+    if (isset($conn)) {
+        $conn->rollback();
+    }
     
     ob_clean();
     echo json_encode([
@@ -303,7 +351,9 @@ $stmt = $conn->prepare("SELECT tracking_id FROM tracking WHERE courier_id = ? AN
         'message' => $e->getMessage()
     ]);
 } finally {
-    if (isset($conn)) $conn->autocommit(true);
+    if (isset($conn)) {
+        $conn->autocommit(true);
+    }
     ob_end_flush();
 }
 ?>
