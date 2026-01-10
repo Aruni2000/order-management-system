@@ -1369,7 +1369,6 @@ $updateOrderStmt->bind_param("iisi", $co_id, $default_courier_id, $tracking_numb
                         $courier_warning = "No unused tracking numbers available for {$courier_name}";
                     }
                     
-// FIXED TransExpress New Parcel API Integration Section
 // FIXED TransExpress New Parcel API Integration (Type 2)
 } elseif ($courier_type == 2) {
     include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/api/transexpress_new_parcel_api.php');

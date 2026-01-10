@@ -396,6 +396,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                         <tbody id="ordersTableBody">
                             <?php if ($result && $result->num_rows > 0): ?>
                             <?php while ($row = $result->fetch_assoc()): ?>
+                                <tr data-tenant-id="<?php echo isset($row['tenant_id']) ? (int)$row['tenant_id'] : 0; ?>">
                             <tr>
                                 <!-- Bulk Selection Checkbox -->
                               <?php if ($show_checkboxes): ?>
@@ -2812,218 +2813,242 @@ function fetchApiTrackingNumbers(courierId) {
         });
     }
 
-    // Handle API dispatch form submission - ENHANCED VERSION
-    if (apiDispatchForm) {
-        apiDispatchForm.addEventListener('submit', function(e) {
-            e.preventDefault();
+  // Handle API dispatch form submission - ENHANCED VERSION WITH CO_ID
+if (apiDispatchForm) {
+    apiDispatchForm.addEventListener('submit', function(e) {
+        e.preventDefault();
 
-            const carrier = apiCarrierSelect ? apiCarrierSelect.value : null;
-            const dispatchTypeElement = document.querySelector('input[name="api_dispatch_type"]:checked');
-            const dispatchType = dispatchTypeElement ? dispatchTypeElement.value : null;
-            const dispatchNotesField = document.getElementById('api_dispatch_notes');
-            const dispatchNotes = dispatchNotesField ? dispatchNotesField.value : '';
-            const submitBtn = document.getElementById('api-dispatch-submit-btn');
-            const selectedOrders = Array.from(document.querySelectorAll('.order-checkbox:checked'))
-                .map(cb => cb.value);
+        const carrier = apiCarrierSelect ? apiCarrierSelect.value : null;
+        const dispatchTypeElement = document.querySelector('input[name="api_dispatch_type"]:checked');
+        const dispatchType = dispatchTypeElement ? dispatchTypeElement.value : null;
+        const dispatchNotesField = document.getElementById('api_dispatch_notes');
+        const dispatchNotes = dispatchNotesField ? dispatchNotesField.value : '';
+        const submitBtn = document.getElementById('api-dispatch-submit-btn');
+        const selectedOrders = Array.from(document.querySelectorAll('.order-checkbox:checked'))
+            .map(cb => cb.value);
 
-            // Validation
-            if (!carrier) {
-                alert('Please select an API courier service');
+        // Validation
+        if (!carrier) {
+            alert('Please select an API courier service');
+            return;
+        }
+
+        if (!dispatchType) {
+            alert('Please select a dispatch type');
+            return;
+        }
+
+        if (selectedOrders.length === 0) {
+            alert('No orders selected for dispatch');
+            return;
+        }
+
+        // Additional validation for existing parcels
+        if (dispatchType === 'existing') {
+            const trackingDisplay = document.getElementById('api_tracking_numbers_display');
+            if (trackingDisplay && (
+                trackingDisplay.textContent.includes('No tracking numbers available') ||
+                trackingDisplay.textContent.includes('Select a courier') ||
+                trackingDisplay.textContent.includes('Insufficient')
+            )) {
+                alert('Please ensure you have enough tracking numbers available');
                 return;
             }
+        }
 
-            if (!dispatchType) {
-                alert('Please select a dispatch type');
-                return;
+        // Confirm action
+        const actionText = dispatchType === 'new' ? 'create new API parcels' : 'assign existing tracking numbers';
+        if (!confirm(`Are you sure you want to ${actionText} for ${selectedOrders.length} orders?`)) {
+            return;
+        }
+
+        // Show loading state
+        if (submitBtn) {
+            submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Processing...';
+            submitBtn.disabled = true;
+        }
+
+        // ============================================
+        // CRITICAL: Extract co_id from selected courier option text
+        // ============================================
+        const selectedOption = apiCarrierSelect.options[apiCarrierSelect.selectedIndex];
+        const coId = selectedOption.textContent.match(/\(ID:\s*(\d+)\)/)?.[1];
+        
+        console.log('=== CO_ID EXTRACTION DEBUG ===');
+        console.log('Selected option text:', selectedOption.textContent);
+        console.log('Extracted co_id:', coId);
+
+        // Create FormData object
+        const formData = new FormData();
+        formData.append('order_ids', JSON.stringify(selectedOrders));
+        formData.append('carrier_id', carrier);
+        
+        // ============================================
+        // ADD CO_ID TO FORM DATA
+        // ============================================
+        if (coId) {
+            formData.append('co_id', coId);
+            console.log('✅ Added co_id to form data:', coId);
+        } else {
+            console.error('❌ Could not extract co_id from courier selection!');
+            console.error('Option text was:', selectedOption.textContent);
+        }
+        
+        formData.append('dispatch_type', dispatchType);
+        formData.append('dispatch_notes', dispatchNotes);
+        formData.append('action', 'api_dispatch_orders');
+
+        // ENHANCED: Determine which endpoint to use with better logic
+        let endpoint = '';
+        const carrierIdInt = parseInt(carrier);
+        
+        // Courier ID to endpoint mapping
+        const courierEndpoints = {
+            12: { // Koombiyo - EXISTING ONLY
+                new: null,
+                existing: 'koombiyo_bulk_existing_parcel_api.php'
+            },
+            11: { // FDE/Fardar - BOTH
+                new: 'fde_bulk_new_parcel_api.php',
+                existing: 'fde_bulk_existing_parcel_api.php'
+            },
+            13: { // TransExpress - BOTH
+                new: 'transexpress_bulk_new_parcel_api.php',
+                existing: 'transexpress_bulk_existing_parcel_api.php'
+            },
+            14: { // Royal Express - EXISTING ONLY
+                new: null,
+                existing: 'royalexpress_bulk_existing_parcel_api.php'
             }
+        };
 
-            if (selectedOrders.length === 0) {
-                alert('No orders selected for dispatch');
-                return;
-            }
-
-            // Additional validation for existing parcels
-            if (dispatchType === 'existing') {
-                const trackingDisplay = document.getElementById('api_tracking_numbers_display');
-                if (trackingDisplay && (
-                    trackingDisplay.textContent.includes('No tracking numbers available') ||
-                    trackingDisplay.textContent.includes('Select a courier') ||
-                    trackingDisplay.textContent.includes('Insufficient')
-                )) {
-                    alert('Please ensure you have enough tracking numbers available');
-                    return;
-                }
-            }
-
-            // Confirm action
-            const actionText = dispatchType === 'new' ? 'create new API parcels' : 'assign existing tracking numbers';
-            if (!confirm(`Are you sure you want to ${actionText} for ${selectedOrders.length} orders?`)) {
-                return;
-            }
-
-            // Show loading state
-            if (submitBtn) {
-                submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Processing...';
-                submitBtn.disabled = true;
-            }
-
-            // Create FormData object
-            const formData = new FormData();
-            formData.append('order_ids', JSON.stringify(selectedOrders));
-            formData.append('carrier_id', carrier);
-            formData.append('dispatch_type', dispatchType);
-            formData.append('dispatch_notes', dispatchNotes);
-            formData.append('action', 'api_dispatch_orders');
-
-            // ENHANCED: Determine which endpoint to use with better logic
-            let endpoint = '';
-            const carrierIdInt = parseInt(carrier);
+        // Get endpoint based on courier and dispatch type
+        if (courierEndpoints[carrierIdInt]) {
+            endpoint = courierEndpoints[carrierIdInt][dispatchType];
             
-            // Courier ID to endpoint mapping
-            const courierEndpoints = {
-                12: { // Koombiyo - EXISTING ONLY
-                    new: null,
-                    existing: 'koombiyo_bulk_existing_parcel_api.php'
-                },
-                11: { // FDE/Fardar - BOTH
-                    new: 'fde_bulk_new_parcel_api.php',
-                    existing: 'fde_bulk_existing_parcel_api.php'
-                },
-                13: { // TransExpress - BOTH
-                    new: 'transexpress_bulk_new_parcel_api.php',
-                    existing: 'transexpress_bulk_existing_parcel_api.php'
-                },
-                14: { // Royal Express - EXISTING ONLY
-                    new: null,
-                    existing: 'royalexpress_bulk_existing_parcel_api.php'
-                }
-            };
-
-            // Get endpoint based on courier and dispatch type
-            if (courierEndpoints[carrierIdInt]) {
-                endpoint = courierEndpoints[carrierIdInt][dispatchType];
-                
-                if (!endpoint) {
-                    alert(`${dispatchType === 'new' ? 'New parcel creation' : 'Existing parcel'} is not supported for this courier`);
-                    if (submitBtn) {
-                        submitBtn.innerHTML = '<i class="fas fa-cloud-upload-alt me-1"></i>Confirm API Dispatch';
-                        submitBtn.disabled = false;
-                    }
-                    return;
-                }
-            } else {
-                alert('Unknown courier selected. Please contact system administrator.');
+            if (!endpoint) {
+                alert(`${dispatchType === 'new' ? 'New parcel creation' : 'Existing parcel'} is not supported for this courier`);
                 if (submitBtn) {
                     submitBtn.innerHTML = '<i class="fas fa-cloud-upload-alt me-1"></i>Confirm API Dispatch';
                     submitBtn.disabled = false;
                 }
                 return;
             }
+        } else {
+            alert('Unknown courier selected. Please contact system administrator.');
+            if (submitBtn) {
+                submitBtn.innerHTML = '<i class="fas fa-cloud-upload-alt me-1"></i>Confirm API Dispatch';
+                submitBtn.disabled = false;
+            }
+            return;
+        }
 
-            console.log('=== API DISPATCH DEBUG ===');
-            console.log('Courier ID:', carrierIdInt);
-            console.log('Dispatch Type:', dispatchType);
-            console.log('Endpoint:', endpoint);
-            console.log('Selected Orders:', selectedOrders);
-            console.log('Form Data:', {
-                order_ids: selectedOrders,
-                carrier_id: carrier,
-                dispatch_type: dispatchType,
-                dispatch_notes: dispatchNotes,
-                action: 'api_dispatch_orders'
-            });
+        console.log('=== API DISPATCH DEBUG ===');
+        console.log('Courier ID:', carrierIdInt);
+        console.log('CO_ID:', coId);
+        console.log('Dispatch Type:', dispatchType);
+        console.log('Endpoint:', endpoint);
+        console.log('Selected Orders:', selectedOrders);
+        console.log('Form Data:', {
+            order_ids: selectedOrders,
+            carrier_id: carrier,
+            co_id: coId,
+            dispatch_type: dispatchType,
+            dispatch_notes: dispatchNotes,
+            action: 'api_dispatch_orders'
+        });
 
-            // Send the request
-            fetch(endpoint, {
-                    method: 'POST',
-                    body: formData
-                })
-                .then(response => {
-                    console.log('Response status:', response.status);
-                    console.log('Response headers:', response.headers);
+        // Send the request
+        fetch(endpoint, {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => {
+                console.log('Response status:', response.status);
+                console.log('Response headers:', response.headers);
+                
+                if (!response.ok) {
+                    return response.text().then(text => {
+                        console.error('HTTP error! status:', response.status);
+                        console.error('Response text:', text.substring(0, 500));
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    });
+                }
+                
+                return response.text().then(text => {
+                    console.log('Raw response text:', text);
+                    try {
+                        return JSON.parse(text);
+                    } catch (e) {
+                        console.error('JSON parse error:', e);
+                        console.error('Response was not valid JSON:', text.substring(0, 500));
+                        throw new Error('Invalid JSON response from server');
+                    }
+                });
+            })
+            .then(data => {
+                console.log('Parsed response data:', data);
+                
+                if (data.success) {
+                    let message = `Successfully processed ${data.processed_count || selectedOrders.length} orders via API!`;
                     
-                    if (!response.ok) {
-                        return response.text().then(text => {
-                            console.error('HTTP error! status:', response.status);
-                            console.error('Response text:', text.substring(0, 500));
-                            throw new Error(`HTTP error! status: ${response.status}`);
+                    // Add co_id info if available
+                    if (data.co_id) {
+                        message += `\nCourier CO_ID: ${data.co_id}`;
+                    }
+                    
+                    // Add tracking info if available
+                    if (data.processed_orders && data.processed_orders.length > 0) {
+                        const trackingNumbers = data.processed_orders.map(o => o.tracking_number).join(', ');
+                        message += `\nTracking Numbers: ${trackingNumbers}`;
+                    }
+                    
+                    // Add failed orders info if any
+                    if (data.failed_count > 0) {
+                        message += `\n\n⚠️ ${data.failed_count} orders failed.`;
+                        if (data.failed_orders && data.failed_orders.length > 0) {
+                            message += '\n\nFailed Orders:';
+                            data.failed_orders.forEach(f => {
+                                message += `\n- Order ${f.order_id}: ${f.error}`;
+                            });
+                        }
+                    }
+                    
+                    alert(message);
+                    closeApiDispatchModal();
+                    clearBulkSelection();
+                    window.location.reload();
+                } else {
+                    console.error('Server returned error:', data);
+                    let errorMsg = 'Error: ' + (data.message || 'Failed to process orders via API');
+                    
+                    // Add detailed error info if available
+                    if (data.failed_orders && data.failed_orders.length > 0) {
+                        errorMsg += '\n\nDetails:';
+                        data.failed_orders.forEach(f => {
+                            errorMsg += `\n- Order ${f.order_id}: ${f.error}`;
                         });
                     }
                     
-                    return response.text().then(text => {
-                        console.log('Raw response text:', text);
-                        try {
-                            return JSON.parse(text);
-                        } catch (e) {
-                            console.error('JSON parse error:', e);
-                            console.error('Response was not valid JSON:', text.substring(0, 500));
-                            throw new Error('Invalid JSON response from server');
-                        }
-                    });
-                })
-                .then(data => {
-                    console.log('Parsed response data:', data);
-                    
-                    if (data.success) {
-                        let message = `Successfully processed ${data.processed_count || selectedOrders.length} orders via API!`;
-                        
-                        // Add co_id info if available
-                        if (data.courier_co_id) {
-                            message += `\nCourier ID: ${data.courier_co_id}`;
-                        }
-                        
-                        // Add tracking info if available
-                        if (data.processed_orders && data.processed_orders.length > 0) {
-                            const trackingNumbers = data.processed_orders.map(o => o.tracking_number).join(', ');
-                            message += `\nTracking Numbers: ${trackingNumbers}`;
-                        }
-                        
-                        // Add failed orders info if any
-                        if (data.failed_count > 0) {
-                            message += `\n\n⚠️ ${data.failed_count} orders failed.`;
-                            if (data.failed_orders && data.failed_orders.length > 0) {
-                                message += '\n\nFailed Orders:';
-                                data.failed_orders.forEach(f => {
-                                    message += `\n- Order ${f.order_id}: ${f.error}`;
-                                });
-                            }
-                        }
-                        
-                        alert(message);
-                        closeApiDispatchModal();
-                        clearBulkSelection();
-                        window.location.reload();
-                    } else {
-                        console.error('Server returned error:', data);
-                        let errorMsg = 'Error: ' + (data.message || 'Failed to process orders via API');
-                        
-                        // Add detailed error info if available
-                        if (data.failed_orders && data.failed_orders.length > 0) {
-                            errorMsg += '\n\nDetails:';
-                            data.failed_orders.forEach(f => {
-                                errorMsg += `\n- Order ${f.order_id}: ${f.error}`;
-                            });
-                        }
-                        
-                        alert(errorMsg);
-                    }
-                })
-                .catch(error => {
-                    console.error('=== FETCH ERROR ===');
-                    console.error('Error type:', error.name);
-                    console.error('Error message:', error.message);
-                    console.error('Error stack:', error.stack);
-                    alert('An error occurred while processing orders via API.\n\nError: ' + error.message + '\n\nCheck browser console for details.');
-                })
-                .finally(() => {
-                    // Reset button state
-                    if (submitBtn) {
-                        submitBtn.innerHTML = '<i class="fas fa-cloud-upload-alt me-1"></i>Confirm API Dispatch';
-                        submitBtn.disabled = false;
-                    }
-                });
-        });
-    }
+                    alert(errorMsg);
+                }
+            })
+            .catch(error => {
+                console.error('=== FETCH ERROR ===');
+                console.error('Error type:', error.name);
+                console.error('Error message:', error.message);
+                console.error('Error stack:', error.stack);
+                alert('An error occurred while processing orders via API.\n\nError: ' + error.message + '\n\nCheck browser console for details.');
+            })
+            .finally(() => {
+                // Reset button state
+                if (submitBtn) {
+                    submitBtn.innerHTML = '<i class="fas fa-cloud-upload-alt me-1"></i>Confirm API Dispatch';
+                    submitBtn.disabled = false;
+                }
+            });
+    });
+}
 
     // Close modal when clicking outside
     if (apiModal) {
