@@ -145,13 +145,19 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         // Begin transaction
         $conn->begin_transaction();
         
-        // ==========================================
-        // FIXED: Get tenant_id and user_id from session
+      // ==========================================
+        // CRITICAL FIX: Get tenant_id from POST (not session)
+        // This ensures we use the selected tenant from the form
         // ==========================================
         $user_id = $_SESSION['user_id'] ?? 1;
-        $tenant_id = $_SESSION['tenant_id'] ?? 1;
-        
-        error_log("DEBUG - Session tenant_id: $tenant_id, user_id: $user_id");
+
+        // Get tenant_id from POST data (this is what user selected in the form)
+        $tenant_id = isset($_POST['tenant_id']) ? intval($_POST['tenant_id']) : ($_SESSION['tenant_id'] ?? 1);
+
+        error_log("DEBUG - POST tenant_id: " . ($_POST['tenant_id'] ?? 'NOT_SET'));
+        error_log("DEBUG - Session tenant_id: " . ($_SESSION['tenant_id'] ?? 'NOT_SET'));
+        error_log("DEBUG - Final tenant_id being used: $tenant_id");
+        error_log("DEBUG - User ID: $user_id");
         
         // Handle address fields according to actual database schema
         $address_line1 = trim($_POST['address_line1'] ?? '');
@@ -694,7 +700,10 @@ foreach ($order_items as $item) {
                         WHERE order_id = ?";
                     $updateOrderStmt = $conn->prepare($updateOrderHeaderSql);
                     $updateOrderStmt->bind_param("iisi", $co_id, $default_courier_id, $tracking_number, $order_id);
-                        $updateOrderStmt->execute();
+
+
+                         $updateOrderStmt->execute();
+                        $updateOrderStmt->close();
                         
                         // Update all order_items status to 'dispatch'
                         $updateOrderItemsSql = "UPDATE order_items SET status = 'dispatch' WHERE order_id = ?";
@@ -1369,7 +1378,6 @@ $updateOrderStmt->bind_param("iisi", $co_id, $default_courier_id, $tracking_numb
                         $courier_warning = "No unused tracking numbers available for {$courier_name}";
                     }
                     
-// FIXED TransExpress New Parcel API Integration Section
 // FIXED TransExpress New Parcel API Integration (Type 2)
 } elseif ($courier_type == 2) {
     include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/api/transexpress_new_parcel_api.php');
@@ -1440,7 +1448,7 @@ $updateOrderStmt->bind_param("iisi", $co_id, $default_courier_id, $tracking_numb
 
             $updateStmt->execute();
             $updateStmt->close();
-            
+    
             $updateItemsSql = "UPDATE order_items SET status = 'dispatch' WHERE order_id = ?";
             $itemsStmt = $conn->prepare($updateItemsSql);
             $itemsStmt->bind_param("i", $order_id);

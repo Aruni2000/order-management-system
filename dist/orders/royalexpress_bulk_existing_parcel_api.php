@@ -1,206 +1,144 @@
 <?php
 /**
- * Royal Express Bulk Existing Parcel API Handler - FIXED VERSION with co_id Support
- * @version 1.5
- * @date 2025-01-08
- * API Endpoint: https://v1.api.curfox.com/api/public/merchant/order/bulk
+ * FDE Bulk Existing Parcel API Handler - COMPLETE FIXED VERSION
+ * @version 3.1
+ * @date 2025
  * 
- * CHANGES:
- * - Added co_id field retrieval from couriers table
- * - Added co_id update in order_header
- * - Added co_id to response payload
- * - Added co_id to logging messages
- * - Added tenant validation
+ * FEATURES:
+ * - CO_ID support with fallback to courier table
+ * - Tenant-based tracking number filtering
+ * - Phone_2 field support
+ * - Custom description format: "Order #XXX - Y items"
+ * - Multi-tenant validation
+ * - Enhanced error logging
+ * - Fixed CO_ID handling (matches fde_bulk_existing pattern)
  */
 
-// Start output buffering first
-ob_start();
-
-// Start session
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
-
-// Set headers
+session_start();
 header('Content-Type: application/json');
-
-// Error handling
-ini_set('display_errors', 0);
-ini_set('display_startup_errors', 0);
-error_reporting(E_ALL);
-ini_set('log_errors', 1);
-ini_set('error_log', $_SERVER['DOCUMENT_ROOT'] . '/order_management/logs/royal_express_errors.log');
+ob_start();
 
 // Logging function
 function logAction($conn, $user_id, $action, $order_id, $details) {
-    try {
-        $stmt = $conn->prepare("INSERT INTO user_logs (user_id, action_type, inquiry_id, details, created_at) VALUES (?, ?, ?, ?, NOW())");
-        if ($stmt) {
-            $stmt->bind_param("isis", $user_id, $action, $order_id, $details);
-            $stmt->execute();
-            $stmt->close();
-        }
-    } catch (Exception $e) {
-        error_log("Logging failed: " . $e->getMessage());
+    $stmt = $conn->prepare("INSERT INTO user_logs (user_id, action_type, inquiry_id, details, created_at) VALUES (?, ?, ?, ?, NOW())");
+    if ($stmt) {
+        $stmt->bind_param("isis", $user_id, $action, $order_id, $details);
+        $stmt->execute();
+        $stmt->close();
     }
 }
 
-/**
- * Call Royal Express Bulk Order API
- */
-function callRoyalExpressBulkOrderApi($data, $apiKey) {
-    $url = "https://v1.api.curfox.com/api/public/merchant/order/bulk";
-
-    $headers = [
-        "Accept: application/json",
-        "Authorization: Bearer $apiKey",
-        "Content-Type: application/json",
-        "X-tenant: royalexpress"
-    ];
-
-    $ch = curl_init($url);
-    curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-    curl_setopt($ch, CURLOPT_POST, true);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data, JSON_UNESCAPED_UNICODE));
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 30);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
-
+// API submission function
+function callFdeApi($apiData) {
+    $ch = curl_init();
+    curl_setopt_array($ch, [
+        CURLOPT_URL => "https://www.fdedomestic.com/api/parcel/existing_waybill_api_v1.php",
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_POST => true,
+        CURLOPT_POSTFIELDS => $apiData,
+        CURLOPT_TIMEOUT => 30,
+        CURLOPT_SSL_VERIFYPEER => false
+    ]);
+    
     $response = curl_exec($ch);
-    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     $error = curl_error($ch);
     curl_close($ch);
-
-    if ($error) {
-        error_log("RoyalExpress cURL Error: $error");
-        return ['success' => false, 'message' => "Connection error: $error"];
-    }
-
-    if ($http_code === 401) {
-        return ['success' => false, 'message' => "Authentication failed: Invalid API key or tenant"];
-    }
-
-    if ($http_code !== 200) {
-        $errorDetail = $response ? " - " . substr($response, 0, 200) : "";
-        error_log("RoyalExpress HTTP Error $http_code: $errorDetail");
-        return ['success' => false, 'message' => "Server error: HTTP $http_code$errorDetail"];
-    }
-
-    // Parse response
+    
+    if ($error) return ['success' => false, 'message' => "Connection error: $error"];
+    if ($httpCode !== 200) return ['success' => false, 'message' => "Server error: $httpCode"];
+    
     $data = json_decode($response, true);
-    if (json_last_error() !== JSON_ERROR_NONE) {
-        error_log("RoyalExpress JSON Error: " . json_last_error_msg());
-        return ['success' => false, 'message' => "Invalid JSON response"];
-    }
-
-    if (isset($data['data']) && is_array($data['data']) && !empty($data['data'][0])) {
-        return [
-            'success' => true,
-            'tracking_number' => $data['data'][0],
-            'message' => $data['message'] ?? 'Order created successfully'
-        ];
-    }
-
-    if (isset($data['errors']) && is_array($data['errors'])) {
-        $errors = flattenRoyalExpressErrors($data['errors']);
-        return ['success' => false, 'message' => "Validation error: $errors"];
-    }
-
-    if (isset($data['message'])) {
-        return ['success' => false, 'message' => $data['message']];
-    }
-
-    error_log("RoyalExpress Unknown Response: " . json_encode($data));
-    return ['success' => false, 'message' => 'Unknown API response format'];
+    if (!$data) return ['success' => false, 'message' => 'Invalid response from API'];
+    
+    $messages = [
+        200 => 'Successfully insert the parcel', 
+        201 => 'Incorrect waybill type. Only allow CRE or CCP',
+        202 => 'The waybill is used', 
+        203 => 'The waybill is not yet assigned', 
+        204 => 'Inactive Client',
+        205 => 'Invalid order id', 
+        206 => 'Invalid weight', 
+        207 => 'Empty or invalid parcel description',
+        208 => 'Empty or invalid name', 
+        209 => 'Invalid contact number 1', 
+        210 => 'Invalid contact number 2',
+        211 => 'Empty or invalid address', 
+        212 => 'Empty or invalid amount', 
+        213 => 'Invalid city',
+        214 => 'Parcel insert unsuccessfully', 
+        215 => 'Invalid or inactive client', 
+        216 => 'Invalid API key',
+        217 => 'Invalid exchange value', 
+        218 => 'System maintain mode is activated'
+    ];
+    
+    $status = $data['status'] ?? 999;
+    return [
+        'success' => $status == 200,
+        'message' => $messages[$status] ?? "Unknown error (Code: $status)",
+        'status_code' => $status,
+        'data' => $data
+    ];
 }
 
-/**
- * Flatten nested validation errors
- */
-function flattenRoyalExpressErrors($errors) {
-    $flat = [];
-    $iterator = new RecursiveIteratorIterator(new RecursiveArrayIterator($errors));
-    foreach ($iterator as $error) {
-        $flat[] = trim($error);
-    }
-    return implode(' | ', $flat);
-}
-
-/**
- * Get parcel description
- */
+// Get parcel description and weight
 function getParcelData($orderId, $conn) {
-    try {
-        $stmt = $conn->prepare("SELECT GROUP_CONCAT(description SEPARATOR ', ') as description_text, SUM(quantity) as total_qty FROM order_items WHERE order_id = ?");
-        if (!$stmt) {
-            return "Order #$orderId items";
-        }
-        $stmt->bind_param("i", $orderId);
-        $stmt->execute();
-        $result = $stmt->get_result()->fetch_assoc();
-        $stmt->close();
+    $stmt = $conn->prepare("SELECT SUM(quantity) as total_qty FROM order_items WHERE order_id = ?");
+    $stmt->bind_param("i", $orderId);
+    $stmt->execute();
+    $result = $stmt->get_result()->fetch_assoc();
 
-        $desc = $result['description_text'] ?? 'General Items';
-        $qty = $result['total_qty'] ?? 1;
-        $desc = "Order Items ($qty) - " . $desc;
-        $desc = strlen($desc) > 500 ? substr($desc, 0, 497) . '...' : $desc;
+    // Create custom description
+    $totalItems = $result['total_qty'] ?? 0;
+    $desc = "Order #$orderId - $totalItems items";
 
-        return $desc;
-    } catch (Exception $e) {
-        return "Order #$orderId items";
-    }
+    // Always use 1 kg as default weight
+    $weight = 1.0;
+
+    return [
+        'description' => $desc,
+        'weight' => number_format($weight, 1)
+    ];
 }
 
-// Main execution
 try {
     include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/connection/db_connection.php');
-    if (!isset($conn) || $conn->connect_error) {
-        throw new Exception('Database connection failed');
-    }
-
+    
+    // ============================================
+    // AUTHENTICATION & VALIDATION
+    // ============================================
     if (!isset($_SESSION['logged_in']) || !$_SESSION['logged_in']) {
         throw new Exception('Authentication required');
     }
-
+    
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         throw new Exception('Only POST method allowed');
     }
-
-    if (!isset($_POST['order_ids'])) {
-        throw new Exception('Missing order_ids parameter');
+    
+    if (!isset($_POST['order_ids']) || !isset($_POST['carrier_id'])) {
+        throw new Exception('Missing required parameters');
     }
-
-    if (!isset($_POST['carrier_id'])) {
-        throw new Exception('Missing carrier_id parameter');
-    }
-
+    
     $orderIds = json_decode($_POST['order_ids'], true);
-    if (json_last_error() !== JSON_ERROR_NONE) {
-        throw new Exception('Invalid order_ids JSON: ' . json_last_error_msg());
-    }
-
     $carrierId = (int)$_POST['carrier_id'];
     $dispatchNotes = $_POST['dispatch_notes'] ?? '';
     $userId = $_SESSION['user_id'] ?? 0;
-
+    
+    // Debug logging
+    error_log("=== FDE EXISTING API DEBUG ===");
+    error_log("Carrier ID: $carrierId");
+    error_log("Order IDs: " . json_encode($orderIds));
+    
     if (!is_array($orderIds) || empty($orderIds)) {
-        throw new Exception('order_ids must be a non-empty array');
+        throw new Exception('Invalid order IDs');
     }
-
-    // ==========================================
-    // ✅ FIX 1: Get courier details INCLUDING co_id
-    // ==========================================
+    
+    // ============================================
+    // GET COURIER DETAILS (INCLUDING CO_ID FROM COURIER TABLE)
+    // ============================================
     $stmt = $conn->prepare("
-        SELECT 
-            courier_id, 
-            courier_name, 
-            co_id, 
-            api_key, 
-            client_id, 
-            origin_city_name, 
-            origin_state_name,
-            tenant_id 
+        SELECT courier_name, co_id, api_key, client_id 
         FROM couriers 
         WHERE courier_id = ? 
         AND status = 'active' 
@@ -210,257 +148,294 @@ try {
     $stmt->execute();
     $courier = $stmt->get_result()->fetch_assoc();
     $stmt->close();
-
-    if (!$courier) {
-        throw new Exception('Invalid or inactive courier (ID: ' . $carrierId . ')');
+    
+    if (!$courier || empty($courier['api_key']) || empty($courier['client_id'])) {
+        throw new Exception('Invalid courier or missing API credentials');
     }
-
-    // ==========================================
-    // ✅ FIX 2: Store co_id for later use
-    // ==========================================
-    $courierCoId = $courier['co_id'];
-    $courierTenantId = $courier['tenant_id'];
-    $apiKey = $courier['api_key'];
-    $merchantBusinessId = $courier['client_id']; // client_id used as merchant_business_id
-    $originCity = $courier['origin_city_name'];
-    $originState = $courier['origin_state_name'];
-
-    // Fetch tracking numbers
+    
+    // ============================================
+    // GET CO_ID FROM COURIER TABLE (PRIMARY SOURCE)
+    // ============================================
+    $coId = !empty($courier['co_id']) ? trim($courier['co_id']) : null;
+    
+    // Check if co_id was provided in POST (optional override)
+    if (isset($_POST['co_id']) && !empty(trim($_POST['co_id']))) {
+        $coIdFromPost = trim($_POST['co_id']);
+        error_log("CO_ID override from POST: $coIdFromPost (courier table has: " . ($coId ?? 'NULL') . ")");
+        $coId = $coIdFromPost;
+    }
+    
+    error_log("Final CO_ID to use: " . ($coId ?? 'NULL'));
+    
+    // Validate co_id exists
+    if (empty($coId)) {
+        throw new Exception('CO_ID is required but not found in courier configuration. Please configure CO_ID in courier settings.');
+    }
+    
+    // ============================================
+    // STEP 1: GET TENANT_ID FROM FIRST ORDER
+    // ============================================
+    $firstOrderId = $orderIds[0];
+    $stmt = $conn->prepare("SELECT tenant_id FROM order_header WHERE order_id = ?");
+    $stmt->bind_param("i", $firstOrderId);
+    $stmt->execute();
+    $tenantResult = $stmt->get_result();
+    
+    if ($tenantResult->num_rows === 0) {
+        throw new Exception("Order not found: $firstOrderId");
+    }
+    
+    $tenantData = $tenantResult->fetch_assoc();
+    $tenantId = (int)$tenantData['tenant_id'];
+    $stmt->close();
+    
+    error_log("Tenant ID from order: $tenantId");
+    
+    // ============================================
+    // STEP 2: GET TRACKING NUMBERS FOR THIS TENANT ONLY
+    // ============================================
     $orderCount = count($orderIds);
-    $stmt = $conn->prepare("SELECT id, tracking_id FROM tracking WHERE courier_id = ? AND status = 'unused' ORDER BY id ASC LIMIT ?");
-    $stmt->bind_param("ii", $carrierId, $orderCount);
+    $stmt = $conn->prepare("
+        SELECT tracking_id 
+        FROM tracking 
+        WHERE courier_id = ? 
+        AND tenant_id = ? 
+        AND status = 'unused' 
+        ORDER BY created_at ASC 
+        LIMIT ?
+    ");
+    $stmt->bind_param("iii", $carrierId, $tenantId, $orderCount);
     $stmt->execute();
     $tracking = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
     $stmt->close();
-
+    
+    error_log("Found " . count($tracking) . " tracking numbers for tenant $tenantId, courier $carrierId");
+    
     if (count($tracking) < $orderCount) {
-        throw new Exception("Insufficient tracking numbers: need $orderCount, only " . count($tracking) . " available");
+        throw new Exception("Need $orderCount tracking numbers for tenant $tenantId, only " . count($tracking) . " available");
     }
-
-    // Fetch orders with city/state
+    
+    // ============================================
+    // STEP 3: GET ORDERS WITH PHONE_2 FIELD
+    // ============================================
     $placeholders = str_repeat('?,', count($orderIds) - 1) . '?';
-    $sql = "
+    $stmt = $conn->prepare("
         SELECT 
             oh.*, 
             c.name as customer_name, 
-            c.phone as customer_phone,
-            c.address_line1, 
-            c.address_line2,
-            ct.city_name, 
-            st.name as state_name
-        FROM order_header oh
-        LEFT JOIN customers c ON oh.customer_id = c.customer_id
+            c.phone as customer_phone, 
+            c.phone_2 as customer_phone_2,
+            c.address_line1 as customer_address1, 
+            c.address_line2 as customer_address2, 
+            ct.city_name
+        FROM order_header oh 
+        LEFT JOIN customers c ON oh.customer_id = c.customer_id 
         LEFT JOIN city_table ct ON c.city_id = ct.city_id
-        LEFT JOIN state_table st ON ct.state_id = st.id
         WHERE oh.order_id IN ($placeholders) 
-        AND oh.status = 'pending' 
-        AND ct.is_active = 1 
-        AND ct.city_name IS NOT NULL 
-        AND st.name IS NOT NULL
-    ";
-    $stmt = $conn->prepare($sql);
-    $types = str_repeat('i', count($orderIds));
-    $stmt->bind_param($types, ...$orderIds);
+        AND oh.status = 'pending'
+    ");
+    $stmt->bind_param(str_repeat('i', count($orderIds)), ...$orderIds);
     $stmt->execute();
     $orders = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
     $stmt->close();
-
+    
     if (empty($orders)) {
-        throw new Exception('No valid pending orders found with city/state data.');
+        throw new Exception('No valid pending orders found');
     }
-
-    // Verify all orders belong to the same tenant as the courier
+    
+    // ============================================
+    // STEP 4: VERIFY ALL ORDERS BELONG TO SAME TENANT
+    // ============================================
     foreach ($orders as $order) {
-        if ($order['tenant_id'] != $courierTenantId) {
-            throw new Exception("Order {$order['order_id']} belongs to tenant {$order['tenant_id']}, but courier belongs to tenant {$courierTenantId}");
+        if ((int)$order['tenant_id'] !== $tenantId) {
+            throw new Exception("Order {$order['order_id']} belongs to different tenant ({$order['tenant_id']} vs $tenantId). Cannot process orders from multiple tenants.");
         }
     }
-
-    // Process orders
-    $conn->begin_transaction();
     
+    error_log("All orders verified for tenant $tenantId");
+    
+    // ============================================
+    // PROCESS ORDERS
+    // ============================================
+    $conn->autocommit(false);
     $successCount = 0;
     $failedOrders = [];
     $processedOrders = [];
-
+    
     foreach ($orders as $index => $order) {
-        $waybillNumber = 'N/A';
+        $orderId = $order['order_id'];
+        $trackingNumber = $tracking[$index]['tracking_id'];
+        
         try {
-            if (empty($order['city_name']) || empty($order['state_name'])) {
-                throw new Exception("Missing city or state");
-            }
-
-            $waybillNumber = trim($tracking[$index]['tracking_id']);
-            $trackingRecordId = $tracking[$index]['id'];
-
-            $description = getParcelData($order['order_id'], $conn);
-            $codAmount = (strtolower($order['pay_status']) === 'paid') ? 0 : floatval($order['total_amount']);
-
-            $cleanPhone = preg_replace('/[^0-9]/', '', $order['mobile'] ?: $order['customer_phone'] ?: '');
-            $cleanPhone2 = '';
-
-            $fullAddress = trim(($order['address_line1'] ?? '') . ' ' . ($order['address_line2'] ?? ''));
-            if (empty($fullAddress)) {
-                throw new Exception("Missing customer address");
-            }
-            if (empty($cleanPhone)) {
-                throw new Exception("Missing customer phone");
-            }
-
-            $royal_data = [
-                "general_data" => [
-                    "merchant_business_id" => $merchantBusinessId,
-                    "origin_city_name" => $originCity,
-                    "origin_state_name" => $originState
-                ],
-                "order_data" => [
-                    [
-                        "waybill_number" => $waybillNumber,
-                        "order_no" => (string)$order['order_id'],
-                        "customer_name" => $order['full_name'] ?: $order['customer_name'] ?: 'Customer',
-                        "customer_address" => $fullAddress,
-                        "customer_phone" => $cleanPhone,
-                        "customer_secondary_phone" => $cleanPhone2,
-                        "destination_city_name" => $order['city_name'],
-                        "destination_state_name" => $order['state_name'],
-                        "cod" => $codAmount,
-                        "description" => $description,
-                        "weight" => floatval($order['weight'] ?? 1),
-                        "remark" => $dispatchNotes ?: ($order['notes'] ?? '')
-                    ]
-                ]
+            $parcelData = getParcelData($orderId, $conn);
+            
+            // Determine amount based on pay_status
+            $apiAmount = ($order['pay_status'] === 'paid') ? 0 : $order['total_amount'];
+            
+            // Prepare phone numbers with proper fallback
+            $recipientPhone1 = $order['mobile'] ?: $order['customer_phone'];
+            $recipientPhone2 = !empty($order['customer_phone_2']) ? $order['customer_phone_2'] : '';
+            
+            // Prepare API data
+            $apiData = [
+                'api_key' => $courier['api_key'],
+                'client_id' => $courier['client_id'],
+                'waybill_id' => $trackingNumber,
+                'order_id' => $orderId,
+                'parcel_weight' => $parcelData['weight'],
+                'parcel_description' => $parcelData['description'],
+                'recipient_name' => $order['full_name'] ?: $order['customer_name'],
+                'recipient_contact_1' => $recipientPhone1,
+                'recipient_contact_2' => $recipientPhone2,
+                'recipient_address' => trim(($order['address_line1'] ?? $order['customer_address1'] ?? '') . ' ' . ($order['address_line2'] ?? $order['customer_address2'] ?? '')),
+                'recipient_city' => $order['city_name'] ?: '',
+                'amount' => $apiAmount,
+                'exchange' => '0'
             ];
-
-            $apiResult = callRoyalExpressBulkOrderApi($royal_data, $apiKey);
-
-            if (!$apiResult['success']) {
-                throw new Exception($apiResult['message']);
-            }
-
-            $trackingNumber = $apiResult['tracking_number'] ?? $waybillNumber;
-
-            // Update tracking status
-            $stmt = $conn->prepare("UPDATE tracking SET status = 'used', updated_at = NOW() WHERE id = ?");
-            $stmt->bind_param("i", $trackingRecordId);
             
-            if (!$stmt->execute()) {
-                throw new Exception("Tracking update failed: " . $stmt->error);
-            }
-            $stmt->close();
-
-            // ==========================================
-            // ✅ FIX 3: Update order_header with co_id
-            // ==========================================
-            $stmt = $conn->prepare("
-                UPDATE order_header 
-                SET courier_id = ?, 
-                    co_id = ?,
-                    tracking_number = ?, 
-                    status = 'dispatch', 
-                    dispatch_note = ?, 
-                    updated_at = NOW() 
-                WHERE order_id = ?
-            ");
-            $stmt->bind_param("iissi", $carrierId, $courierCoId, $trackingNumber, $dispatchNotes, $order['order_id']);
+            error_log("DEBUG - Order $orderId: Phone1={$recipientPhone1}, Phone2={$recipientPhone2}, Desc={$parcelData['description']}");
             
-            if (!$stmt->execute()) {
-                throw new Exception("Database update failed: " . $stmt->error);
-            }
-            $stmt->close();
-
-            // Update order items
-            $stmt = $conn->prepare("UPDATE order_items SET status = 'dispatch' WHERE order_id = ?");
-            $stmt->bind_param("i", $order['order_id']);
+            // Call FDE API
+            $result = callFdeApi($apiData);
             
-            if (!$stmt->execute()) {
-                throw new Exception("Order items update failed: " . $stmt->error);
+            if ($result['success']) {
+                // ============================================
+                // UPDATE ORDER_HEADER WITH CO_ID
+                // ============================================
+                $stmt = $conn->prepare("
+                    UPDATE order_header 
+                    SET status = 'dispatch', 
+                        courier_id = ?, 
+                        co_id = ?,
+                        tracking_number = ?, 
+                        dispatch_note = ?, 
+                        updated_at = NOW() 
+                    WHERE order_id = ?
+                ");
+                
+                $stmt->bind_param("isssi", $carrierId, $coId, $trackingNumber, $dispatchNotes, $orderId);
+                
+                if (!$stmt->execute()) {
+                    throw new Exception("Database update failed: " . $stmt->error);
+                }
+                
+                $stmt->close();
+                error_log("Order $orderId updated - CO_ID: $coId, Tracking: $trackingNumber");
+                
+                // Update tracking status
+                $stmt = $conn->prepare("
+                    UPDATE tracking 
+                    SET status = 'used', 
+                        updated_at = NOW() 
+                    WHERE tracking_id = ? 
+                    AND courier_id = ?
+                ");
+                $stmt->bind_param("si", $trackingNumber, $carrierId);
+                $stmt->execute();
+                $stmt->close();
+                
+                // Update order items
+                $stmt = $conn->prepare("UPDATE order_items SET status = 'dispatch' WHERE order_id = ?");
+                $stmt->bind_param("i", $orderId);
+                $stmt->execute();
+                $stmt->close();
+                
+                // Log success
+                logAction($conn, $userId, 'api_existing_dispatch', $orderId, 
+                    "Order $orderId dispatched - Tenant: $tenantId, CO_ID: $coId, Tracking: $trackingNumber, Desc: {$parcelData['description']}, Phone1: $recipientPhone1, Phone2: " . ($recipientPhone2 ?: 'N/A') . ", Status: {$result['message']}");
+                
+                $successCount++;
+                $processedOrders[] = [
+                    'order_id' => $orderId, 
+                    'tracking_number' => $trackingNumber,
+                    'co_id' => $coId,
+                    'tenant_id' => $tenantId,
+                    'description' => $parcelData['description'],
+                    'weight' => $parcelData['weight'],
+                    'phone_1' => $recipientPhone1,
+                    'phone_2' => $recipientPhone2
+                ];
+                
+            } else {
+                $failedOrders[] = [
+                    'order_id' => $orderId,
+                    'tracking_number' => $trackingNumber,
+                    'error' => $result['message'],
+                    'status_code' => $result['status_code'] ?? null
+                ];
+                
+                logAction($conn, $userId, 'api_existing_dispatch_failed', $orderId,
+                    "Order $orderId failed - Error: {$result['message']}, Code: " . ($result['status_code'] ?? 'N/A'));
             }
-            $stmt->close();
-
-            // ==========================================
-            // ✅ FIX 4: Enhanced logging with co_id
-            // ==========================================
-            logAction($conn, $userId, 'royalexpress_existing_dispatch', $order['order_id'], 
-                      "Order {$order['order_id']} dispatched via Royal Express (co_id: $courierCoId) - Tracking: $trackingNumber");
-
-            $successCount++;
-            $processedOrders[] = [
-                'order_id' => $order['order_id'],
-                'tracking_number' => $trackingNumber,
-                'co_id' => $courierCoId,
-                'customer_name' => $order['full_name'] ?: $order['customer_name']
-            ];
-
+            
         } catch (Exception $e) {
             $failedOrders[] = [
-                'order_id' => $order['order_id'],
-                'tracking_number' => $waybillNumber,
+                'order_id' => $orderId,
+                'tracking_number' => $trackingNumber,
                 'error' => $e->getMessage()
             ];
-            logAction($conn, $userId, 'royalexpress_existing_dispatch_failed', $order['order_id'], 
-                      "Order {$order['order_id']} failed - Error: {$e->getMessage()}");
+            
+            logAction($conn, $userId, 'api_existing_dispatch_failed', $orderId,
+                "Order $orderId exception - Error: {$e->getMessage()}");
         }
     }
-
-    // Commit or rollback
+    
+    // ============================================
+    // COMMIT OR ROLLBACK
+    // ============================================
     if ($successCount > 0) {
         $conn->commit();
-        
-        // ==========================================
-        // ✅ FIX 5: Include co_id in bulk log details
-        // ==========================================
         $trackingList = implode(', ', array_column($processedOrders, 'tracking_number'));
-        $details = "Royal Express bulk existing dispatch (co_id: $courierCoId): $successCount/" . count($orderIds) . 
-                   " orders dispatched, Tracking: $trackingList";
+        $details = "Bulk dispatch: $successCount/" . count($orderIds) . " orders dispatched, Tenant: $tenantId, CO_ID: $coId, Tracking: $trackingList";
         
         if (!empty($failedOrders)) {
             $errorList = array_map(fn($f) => "Order {$f['order_id']}: {$f['error']}", $failedOrders);
             $details .= ". Failed: " . implode('; ', $errorList);
         }
         
-        logAction($conn, $userId, 'bulk_royalexpress_existing_dispatch', 0, $details);
+        logAction($conn, $userId, 'bulk_api_existing_dispatch', 0, $details);
     } else {
         $conn->rollback();
-        
         $errorList = array_map(fn($f) => "Order {$f['order_id']}: {$f['error']}", $failedOrders);
-        logAction($conn, $userId, 'bulk_royalexpress_existing_dispatch_failed', 0, 
-            "Royal Express bulk dispatch failed: All " . count($orderIds) . " orders failed. Errors: " . implode('; ', $errorList));
+        logAction($conn, $userId, 'bulk_api_existing_dispatch_failed', 0, 
+            "Bulk dispatch failed: All " . count($orderIds) . " orders failed. Errors: " . implode('; ', $errorList));
     }
-
-    // ==========================================
-    // ✅ FIX 6: Include co_id in response
-    // ==========================================
+    
+    // ============================================
+    // BUILD RESPONSE
+    // ============================================
     $response = [
         'success' => $successCount > 0,
         'processed_count' => $successCount,
         'total_count' => count($orderIds),
         'failed_count' => count($failedOrders),
         'processed_orders' => $processedOrders,
-        'courier_co_id' => $courierCoId,
-        'tenant_id' => $courierTenantId
+        'tenant_id' => $tenantId,
+        'co_id' => $coId
     ];
     
     if (!empty($failedOrders)) {
         $response['failed_orders'] = $failedOrders;
         $response['message'] = "Processed $successCount orders successfully, " . count($failedOrders) . " failed";
     } else {
-        $response['message'] = "All $successCount orders processed successfully via Royal Express (co_id: $courierCoId)";
+        $response['message'] = "All $successCount orders processed successfully via FDE API";
     }
-
+    
     ob_clean();
-    echo json_encode($response, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-
+    echo json_encode($response);
+    
 } catch (Exception $e) {
     if (isset($conn)) {
         $conn->rollback();
     }
-    error_log("Royal Express Error: " . $e->getMessage());
+    
+    error_log("FDE Existing API Error: " . $e->getMessage());
+    
     ob_clean();
     echo json_encode([
         'success' => false,
-        'message' => $e->getMessage(),
-        'error_type' => 'system_error'
-    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        'message' => $e->getMessage()
+    ]);
 } finally {
     if (isset($conn)) {
         $conn->autocommit(true);

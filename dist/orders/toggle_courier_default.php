@@ -23,13 +23,13 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 // Get JSON input
 $input = json_decode(file_get_contents('php://input'), true);
 
-// Validate input
-if (!isset($input['courier_id']) || !isset($input['is_default'])) {
+// Validate input - now accepting co_id
+if (!isset($input['co_id']) || !isset($input['is_default'])) {
     echo json_encode(['success' => false, 'message' => 'Missing required parameters']);
     exit();
 }
 
-$courier_id = (int)$input['courier_id'];
+$co_id = (int)$input['co_id'];
 $is_default = (int)$input['is_default']; // Convert to integer (0, 1, 2, or 3)
 
 // Validate is_default value - now accepts 0, 1, 2, and 3
@@ -46,9 +46,9 @@ $conn->begin_transaction();
 
 try {
     // First, verify the courier exists and get all relevant data including API flags
-    $checkCourierSql = "SELECT courier_id, courier_name, is_default, has_api_new, has_api_existing FROM couriers WHERE courier_id = ?";
+    $checkCourierSql = "SELECT co_id, courier_id, courier_name, is_default, has_api_new, has_api_existing FROM couriers WHERE co_id = ?";
     $checkStmt = $conn->prepare($checkCourierSql);
-    $checkStmt->bind_param("i", $courier_id);
+    $checkStmt->bind_param("i", $co_id);
     $checkStmt->execute();
     $checkResult = $checkStmt->get_result();
     
@@ -59,6 +59,7 @@ try {
     $courierData = $checkResult->fetch_assoc();
     $current_default = $courierData['is_default'];
     $courier_name = $courierData['courier_name'];
+    $courier_id = $courierData['courier_id'];
     $has_api_new = (int)$courierData['has_api_new'];
     $has_api_existing = (int)$courierData['has_api_existing'];
     $checkStmt->close();
@@ -83,9 +84,9 @@ try {
     
     // Check if trying to set an active status (1, 2, or 3) when another courier already has one
     if (in_array($is_default, [1, 2, 3])) {
-        $checkActiveCourierSql = "SELECT courier_id, courier_name, is_default FROM couriers WHERE courier_id != ? AND is_default IN (1, 2, 3)";
+        $checkActiveCourierSql = "SELECT co_id, courier_name, is_default FROM couriers WHERE co_id != ? AND is_default IN (1, 2, 3)";
         $checkActiveStmt = $conn->prepare($checkActiveCourierSql);
-        $checkActiveStmt->bind_param("i", $courier_id);
+        $checkActiveStmt->bind_param("i", $co_id);
         $checkActiveStmt->execute();
         $activeResult = $checkActiveStmt->get_result();
         
@@ -107,9 +108,9 @@ try {
         // If setting as New API (2) or Existing API (3), check for API credentials
         if ($is_default === 2 || $is_default === 3) {
             // Check if courier has API credentials - only checking api_key now
-            $checkApiSql = "SELECT api_key FROM couriers WHERE courier_id = ?";
+            $checkApiSql = "SELECT api_key FROM couriers WHERE co_id = ?";
             $checkApiStmt = $conn->prepare($checkApiSql);
-            $checkApiStmt->bind_param("i", $courier_id);
+            $checkApiStmt->bind_param("i", $co_id);
             $checkApiStmt->execute();
             $apiResult = $checkApiStmt->get_result();
             $apiData = $apiResult->fetch_assoc();
@@ -140,9 +141,9 @@ try {
     }
     
     // Update the target courier's default status
-    $updateCourierSql = "UPDATE couriers SET is_default = ?, updated_at = CURRENT_TIMESTAMP WHERE courier_id = ?";
+    $updateCourierSql = "UPDATE couriers SET is_default = ?, updated_at = CURRENT_TIMESTAMP WHERE co_id = ?";
     $updateStmt = $conn->prepare($updateCourierSql);
-    $updateStmt->bind_param("ii", $is_default, $courier_id);
+    $updateStmt->bind_param("ii", $is_default, $co_id);
     
     if (!$updateStmt->execute()) {
         throw new Exception('Failed to update courier status: ' . $updateStmt->error);
@@ -183,9 +184,9 @@ try {
     }
     
     // Get updated courier data
-    $getUpdatedSql = "SELECT courier_id, courier_name, is_default FROM couriers WHERE courier_id = ?";
+    $getUpdatedSql = "SELECT co_id, courier_id, courier_name, is_default FROM couriers WHERE co_id = ?";
     $getUpdatedStmt = $conn->prepare($getUpdatedSql);
-    $getUpdatedStmt->bind_param("i", $courier_id);
+    $getUpdatedStmt->bind_param("i", $co_id);
     $getUpdatedStmt->execute();
     $updatedResult = $getUpdatedStmt->get_result();
     $updatedCourierData = $updatedResult->fetch_assoc();
@@ -236,6 +237,7 @@ try {
         'success' => true,
         'message' => $message,
         'data' => [
+            'co_id' => $co_id,
             'courier_id' => $courier_id,
             'courier_name' => $updatedCourierData['courier_name'],
             'is_default' => (int)$updatedCourierData['is_default'],

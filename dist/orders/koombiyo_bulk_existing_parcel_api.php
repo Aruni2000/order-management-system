@@ -1,13 +1,15 @@
 <?php
 /**
- * Koombiyo Bulk Existing Parcel API Handler - FIXED VERSION
- * @version 2.3
- * @date 2025-01-07
+ * Koombiyo Bulk Existing Parcel API Handler - COMPLETE FIXED VERSION
+ * @version 3.0
+ * @date 2025
  * 
- * FIXES:
- * - Added co_id update in order_header
- * - Enhanced error handling and logging
- * - Improved database transaction handling
+ * FEATURES:
+ * - ✅ CO_ID support with fallback to courier table
+ * - ✅ Tenant-based tracking number filtering
+ * - ✅ Multi-tenant validation
+ * - ✅ Enhanced error handling and logging
+ * - ✅ Proper transaction management
  */
 
 session_start();
@@ -132,13 +134,17 @@ function getKoombiyoLocation($cityName) {
 try {
     include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/connection/db_connection.php');
     
-    // Validations
+    // ============================================
+    // AUTHENTICATION & VALIDATION
+    // ============================================
     if (!isset($_SESSION['logged_in']) || !$_SESSION['logged_in']) {
         throw new Exception('Authentication required');
     }
+    
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         throw new Exception('Only POST method allowed');
     }
+    
     if (!isset($_POST['order_ids']) || !isset($_POST['carrier_id'])) {
         throw new Exception('Missing required parameters');
     }
@@ -148,12 +154,31 @@ try {
     $dispatchNotes = $_POST['dispatch_notes'] ?? '';
     $userId = $_SESSION['user_id'] ?? 0;
     
+    // ============================================
+    // GET CO_ID FROM POST DATA
+    // ============================================
+    $coId = isset($_POST['co_id']) ? trim($_POST['co_id']) : null;
+    
+    // Debug logging
+    error_log("=== KOOMBIYO API DEBUG ===");
+    error_log("Carrier ID: $carrierId");
+    error_log("CO_ID received: " . ($coId ?? 'NULL'));
+    error_log("Order IDs: " . json_encode($orderIds));
+    
     if (!is_array($orderIds) || empty($orderIds)) {
         throw new Exception('Invalid order IDs');
     }
     
-    // Get courier details INCLUDING co_id
-    $stmt = $conn->prepare("SELECT courier_id, courier_name, co_id, api_key, client_id FROM couriers WHERE courier_id = ? AND status = 'active' AND has_api_existing = 1");
+    // ============================================
+    // GET COURIER DETAILS (INCLUDING CO_ID)
+    // ============================================
+    $stmt = $conn->prepare("
+        SELECT courier_id, courier_name, co_id, api_key, client_id 
+        FROM couriers 
+        WHERE courier_id = ? 
+        AND status = 'active' 
+        AND has_api_existing = 1
+    ");
     $stmt->bind_param("i", $carrierId);
     $stmt->execute();
     $courier = $stmt->get_result()->fetch_assoc();
@@ -163,21 +188,65 @@ try {
         throw new Exception('Invalid courier or missing API credentials');
     }
     
-    $courierCoId = $courier['co_id']; // Store co_id for later use
+    // ============================================
+    // FALLBACK: Use co_id from courier table if not provided
+    // ============================================
+    if (empty($coId)) {
+        $coId = $courier['co_id'];
+        error_log("CO_ID fallback from courier table: " . ($coId ?? 'NULL'));
+    }
     
-    // Get tracking numbers
+    // Validate co_id exists
+    if (empty($coId)) {
+        throw new Exception('CO_ID is required but not found in request or courier configuration');
+    }
+    
+    // ============================================
+    // STEP 1: GET TENANT_ID FROM FIRST ORDER
+    // ============================================
+    $firstOrderId = $orderIds[0];
+    $stmt = $conn->prepare("SELECT tenant_id FROM order_header WHERE order_id = ?");
+    $stmt->bind_param("i", $firstOrderId);
+    $stmt->execute();
+    $tenantResult = $stmt->get_result();
+    
+    if ($tenantResult->num_rows === 0) {
+        throw new Exception("Order not found: $firstOrderId");
+    }
+    
+    $tenantData = $tenantResult->fetch_assoc();
+    $tenantId = (int)$tenantData['tenant_id'];
+    $stmt->close();
+    
+    error_log("Tenant ID from order: $tenantId");
+    
+    // ============================================
+    // STEP 2: GET TRACKING NUMBERS FOR THIS TENANT ONLY
+    // ============================================
     $orderCount = count($orderIds);
-    $stmt = $conn->prepare("SELECT tracking_id FROM tracking WHERE courier_id = ? AND status = 'unused' ORDER BY id ASC LIMIT ?");
-    $stmt->bind_param("ii", $carrierId, $orderCount);
+    $stmt = $conn->prepare("
+        SELECT tracking_id 
+        FROM tracking 
+        WHERE courier_id = ? 
+        AND tenant_id = ? 
+        AND status = 'unused' 
+        ORDER BY id ASC 
+        LIMIT ?
+    ");
+    $stmt->bind_param("iii", $carrierId, $tenantId, $orderCount);
     $stmt->execute();
     $tracking = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
     $stmt->close();
     
+    error_log("Found " . count($tracking) . " tracking numbers for tenant $tenantId, courier $carrierId");
+    
     if (count($tracking) < $orderCount) {
-        throw new Exception("Need $orderCount tracking numbers, only " . count($tracking) . " available");
+        throw new Exception("Need $orderCount tracking numbers for tenant $tenantId, only " . count($tracking) . " available");
     }
     
-    // Get orders
+    // ============================================
+    // STEP 3: GET ORDERS
+    // ============================================
     $placeholders = str_repeat('?,', count($orderIds) - 1) . '?';
     $stmt = $conn->prepare("
         SELECT oh.*, 
@@ -189,7 +258,8 @@ try {
         FROM order_header oh 
         LEFT JOIN customers c ON oh.customer_id = c.customer_id 
         LEFT JOIN city_table ct ON c.city_id = ct.city_id
-        WHERE oh.order_id IN ($placeholders) AND oh.status = 'pending'
+        WHERE oh.order_id IN ($placeholders) 
+        AND oh.status = 'pending'
     ");
     $stmt->bind_param(str_repeat('i', count($orderIds)), ...$orderIds);
     $stmt->execute();
@@ -200,7 +270,20 @@ try {
         throw new Exception('No valid pending orders found');
     }
     
-    // Process orders
+    // ============================================
+    // STEP 4: VERIFY ALL ORDERS BELONG TO SAME TENANT
+    // ============================================
+    foreach ($orders as $order) {
+        if ((int)$order['tenant_id'] !== $tenantId) {
+            throw new Exception("Order {$order['order_id']} belongs to different tenant ({$order['tenant_id']} vs $tenantId). Cannot process orders from multiple tenants.");
+        }
+    }
+    
+    error_log("All orders verified for tenant $tenantId");
+    
+    // ============================================
+    // PROCESS ORDERS
+    // ============================================
     $conn->begin_transaction();
     
     $successCount = 0;
@@ -235,11 +318,15 @@ try {
                 'getCod' => $codAmount
             ];
             
+            error_log("DEBUG - Order $orderId: Tracking=$trackingNumber, COD=$codAmount, City={$location['city']}");
+            
             // Submit to Koombiyo API
             $result = addKoombiyoOrder($orderData, $courier['api_key']);
             
             if ($result['success']) {
-                // FIXED: Update order_header with co_id
+                // ============================================
+                // UPDATE ORDER_HEADER WITH CO_ID
+                // ============================================
                 $stmt = $conn->prepare("
                     UPDATE order_header 
                     SET status = 'dispatch', 
@@ -250,12 +337,20 @@ try {
                         updated_at = NOW() 
                     WHERE order_id = ?
                 ");
-                $stmt->bind_param("isssi", $carrierId, $courierCoId, $trackingNumber, $dispatchNotes, $orderId);
+                $stmt->bind_param("isssi", $carrierId, $coId, $trackingNumber, $dispatchNotes, $orderId);
                 $stmt->execute();
                 $stmt->close();
                 
+                error_log("Order $orderId updated - CO_ID: $coId, Tracking: $trackingNumber");
+                
                 // Update tracking status
-                $stmt = $conn->prepare("UPDATE tracking SET status = 'used', updated_at = NOW() WHERE tracking_id = ? AND courier_id = ?");
+                $stmt = $conn->prepare("
+                    UPDATE tracking 
+                    SET status = 'used', 
+                        updated_at = NOW() 
+                    WHERE tracking_id = ? 
+                    AND courier_id = ?
+                ");
                 $stmt->bind_param("si", $trackingNumber, $carrierId);
                 $stmt->execute();
                 $stmt->close();
@@ -267,13 +362,14 @@ try {
                 $stmt->close();
                 
                 logAction($conn, $userId, 'api_existing_dispatch', $orderId, 
-                    "Order $orderId dispatched via Koombiyo (co_id: $courierCoId) - Tracking: $trackingNumber, Status: {$result['message']}");
+                    "Order $orderId dispatched via Koombiyo - Tenant: $tenantId, CO_ID: $coId, Tracking: $trackingNumber, Status: {$result['message']}");
                 
                 $successCount++;
                 $processedOrders[] = [
                     'order_id' => $orderId, 
                     'tracking_number' => $trackingNumber,
-                    'co_id' => $courierCoId
+                    'co_id' => $coId,
+                    'tenant_id' => $tenantId
                 ];
                 
             } else {
@@ -299,12 +395,14 @@ try {
         }
     }
     
-    // Commit or rollback
+    // ============================================
+    // COMMIT OR ROLLBACK
+    // ============================================
     if ($successCount > 0) {
         $conn->commit();
         
         $trackingList = implode(', ', array_column($processedOrders, 'tracking_number'));
-        $details = "Koombiyo bulk dispatch (co_id: $courierCoId): $successCount/" . count($orderIds) . " orders dispatched, Tracking: $trackingList";
+        $details = "Koombiyo bulk dispatch: $successCount/" . count($orderIds) . " orders dispatched, Tenant: $tenantId, CO_ID: $coId, Tracking: $trackingList";
         
         if (!empty($failedOrders)) {
             $errorList = array_map(fn($f) => "Order {$f['order_id']}: {$f['error']}", $failedOrders);
@@ -320,21 +418,24 @@ try {
             "Koombiyo bulk dispatch failed: All " . count($orderIds) . " orders failed. Errors: " . implode('; ', $errorList));
     }
     
-    // Response
+    // ============================================
+    // BUILD RESPONSE
+    // ============================================
     $response = [
         'success' => $successCount > 0,
         'processed_count' => $successCount,
         'total_count' => count($orderIds),
         'failed_count' => count($failedOrders),
         'processed_orders' => $processedOrders,
-        'courier_co_id' => $courierCoId
+        'tenant_id' => $tenantId,
+        'co_id' => $coId
     ];
     
     if (!empty($failedOrders)) {
         $response['failed_orders'] = $failedOrders;
         $response['message'] = "Processed $successCount orders successfully, " . count($failedOrders) . " failed";
     } else {
-        $response['message'] = "All $successCount orders processed successfully via Koombiyo (co_id: $courierCoId)";
+        $response['message'] = "All $successCount orders processed successfully via Koombiyo API";
     }
     
     ob_clean();
@@ -344,6 +445,8 @@ try {
     if (isset($conn)) {
         $conn->rollback();
     }
+    
+    error_log("Koombiyo API Error: " . $e->getMessage());
     
     ob_clean();
     echo json_encode([
