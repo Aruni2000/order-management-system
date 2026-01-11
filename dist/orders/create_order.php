@@ -387,6 +387,7 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
         transform: translateX(0);
     }
 }
+
 </style>
 <body>
     <!-- LOADER -->
@@ -405,133 +406,118 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                 </div>
             </div>
           <!-- Tenant Selector Card -->
-            <?php if ($is_main_admin === 1 && $role_id === 1): ?>
-            <div class="tenant-selector-card">
-                <div class="tenant-selector-content">
-                    <label class="tenant-selector-label">
-                       <i class="feather icon-briefcase"></i>
-                        Tenant:
-                    </label>
-                    <div class="tenant-selector-dropdown">
-                        <select id="tenant_selector" onchange="window.location.href='create_order.php?tenant_id=' + this.value">
-                            <?php foreach ($tenants as $tenant): ?>
-                                <option value="<?php echo $tenant['tenant_id']; ?>" 
-                                        <?php echo ($tenant['tenant_id'] == $selected_tenant_id) ? 'selected' : ''; ?>>
-                                    <?php echo htmlspecialchars($tenant['company_name']); ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
+<?php if ($is_main_admin === 1 && $role_id === 1): ?>
+<div class="tenant-selector-card">
+    <div class="tenant-selector-content">
+        <label class="tenant-selector-label">
+           <i class="feather icon-briefcase"></i>
+            Tenant:
+        </label>
+        <div class="tenant-selector-dropdown">
+            <select id="tenant_selector" onchange="window.location.href='create_order.php?tenant_id=' + this.value">
+                <?php foreach ($tenants as $tenant): ?>
+                    <option value="<?php echo $tenant['tenant_id']; ?>" 
+                            <?php echo ($tenant['tenant_id'] == $selected_tenant_id) ? 'selected' : ''; ?>>
+                        <?php echo htmlspecialchars($tenant['company_name']); ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
+<!-- REMOVED THE ELSE BLOCK COMPLETELY -->
+
+      <!-- Alert Messages and Courier Status -->
+<div class="alert-container" style="position: absolute; top: 20px; right: 20px; z-index: 9999; max-width: 400px;">
+    <?php
+    // Display session messages
+    if (isset($_SESSION['order_success'])) {
+        echo '<div class="alert alert-success" id="success-alert">
+                <div><span class="alert-icon">✅</span><span>' . htmlspecialchars($_SESSION['order_success']) . '</span></div>
+                <button class="alert-close" onclick="this.parentElement.remove()">&times;</button>
+              </div>';
+        unset($_SESSION['order_success']);
+    }
+
+    if (isset($_SESSION['order_error'])) {
+        echo '<div class="alert alert-error" id="error-alert">
+                <div><span class="alert-icon">❌</span><span>' . htmlspecialchars($_SESSION['order_error']) . '</span></div>
+                <button class="alert-close" onclick="this.parentElement.remove()">&times;</button>
+              </div>';
+        unset($_SESSION['order_error']);
+    }
+
+    if (isset($_SESSION['order_warning'])) {
+        echo '<div class="alert alert-warning" id="warning-alert">
+                <div><span class="alert-icon">⚠️</span><span>' . htmlspecialchars($_SESSION['order_warning']) . '</span></div>
+                <button class="alert-close" onclick="this.parentElement.remove()">&times;</button>
+              </div>';
+        unset($_SESSION['order_warning']);
+    }
+
+    // Display courier status messages
+    if (!empty($courierStatus['error_message'])) {
+        echo '<div class="alert alert-error">
+                <div><span class="alert-icon">❌</span><span>' . htmlspecialchars($courierStatus['error_message']) . '</span></div>
+                <button class="alert-close" onclick="this.parentElement.remove()">&times;</button>
+              </div>';
+    }
+
+    if (!empty($courierStatus['warning_message'])) {
+        echo '<div class="alert alert-warning">
+                <div><span class="alert-icon">⚠️</span><span>' . htmlspecialchars($courierStatus['warning_message']) . '</span></div>
+                <button class="alert-close" onclick="this.parentElement.remove()">&times;</button>
+              </div>';
+    }
+
+    if (!empty($courierStatus['info_message'])) {
+        echo '<div class="alert alert-info">
+                <div><span class="alert-icon">ℹ️</span><span>' . htmlspecialchars($courierStatus['info_message']) . '</span></div>
+                <button class="alert-close" onclick="this.parentElement.remove()">&times;</button>
+              </div>';
+    }
+    ?>
+
+    <!-- Courier Status Card -->
+    <?php if ($courierStatus['has_courier']): ?>
+    <div class="courier-status-card">
+        <h6 style="margin-bottom: 10px; color: #495057;"></h6>
+        <div style="font-size: 11px;">
+            <?php if ($courierStatus['courier_type'] == 1): ?>
+                <div>
+                    <span class="status-indicator <?php echo $courierStatus['has_tracking'] ? 'status-active' : 'status-warning'; ?>"></span>
+                    <strong>Courier:</strong> <?php echo htmlspecialchars($courierStatus['courier_name']); ?> (Internal Tracking)
                 </div>
-            </div>
-            <?php else: ?>
-            <div class="tenant-selector-card">
-                <div class="tenant-selector-content">
-                    <label class="tenant-selector-label">
-                        <i class="fas fa-building"></i>
-                        Tenant:
-                    </label>
-                    <div class="tenant-info-display">
-                        <?php echo htmlspecialchars($selectedTenantName); ?>
-                    </div>
-                </div>
-            </div>
-            <?php endif; ?>
-
-             <!-- Alert Messages and Courier Status -->
-<div class="alert-container" style="position: fixed; top: 80px; right: 20px; z-index: 9999; max-width: 400px;">
-                <div class="alert-container">
-                    <?php
-                    // Display session messages
-                    if (isset($_SESSION['order_success'])) {
-                        echo '<div class="alert alert-success" id="success-alert">
-                                <div><span class="alert-icon">✅</span><span>' . htmlspecialchars($_SESSION['order_success']) . '</span></div>
-                                <button class="alert-close" onclick="this.parentElement.remove()">&times;</button>
-                              </div>';
-                        unset($_SESSION['order_success']);
-                    }
-
-                    if (isset($_SESSION['order_error'])) {
-                        echo '<div class="alert alert-error" id="error-alert">
-                                <div><span class="alert-icon">❌</span><span>' . htmlspecialchars($_SESSION['order_error']) . '</span></div>
-                                <button class="alert-close" onclick="this.parentElement.remove()">&times;</button>
-                              </div>';
-                        unset($_SESSION['order_error']);
-                    }
-
-                    if (isset($_SESSION['order_warning'])) {
-                        echo '<div class="alert alert-warning" id="warning-alert">
-                                <div><span class="alert-icon">⚠️</span><span>' . htmlspecialchars($_SESSION['order_warning']) . '</span></div>
-                                <button class="alert-close" onclick="this.parentElement.remove()">&times;</button>
-                              </div>';
-                        unset($_SESSION['order_warning']);
-                    }
-
-                    // Display courier status messages
-                    if (!empty($courierStatus['error_message'])) {
-                        echo '<div class="alert alert-error">
-                                <div><span class="alert-icon">❌</span><span>' . htmlspecialchars($courierStatus['error_message']) . '</span></div>
-                                <button class="alert-close" onclick="this.parentElement.remove()">&times;</button>
-                              </div>';
-                    }
-
-                    if (!empty($courierStatus['warning_message'])) {
-                        echo '<div class="alert alert-warning">
-                                <div><span class="alert-icon">⚠️</span><span>' . htmlspecialchars($courierStatus['warning_message']) . '</span></div>
-                                <button class="alert-close" onclick="this.parentElement.remove()">&times;</button>
-                              </div>';
-                    }
-
-                    if (!empty($courierStatus['info_message'])) {
-                        echo '<div class="alert alert-info">
-                                <div><span class="alert-icon">ℹ️</span><span>' . htmlspecialchars($courierStatus['info_message']) . '</span></div>
-                                <button class="alert-close" onclick="this.parentElement.remove()">&times;</button>
-                              </div>';
-                    }
-                    ?>
-
-                       <!-- Courier Status Card -->
-                    <?php if ($courierStatus['has_courier']): ?>
-                    <div class="courier-status-card">
-                        <h6 style="margin-bottom: 10px; color: #495057;">
-                            
-                        </h6>
-                        <div style="font-size: 11px;">
-                            <?php if ($courierStatus['courier_type'] == 1): ?>
-                                <div>
-                                    <span class="status-indicator <?php echo $courierStatus['has_tracking'] ? 'status-active' : 'status-warning'; ?>"></span>
-                                    <strong>Courier:</strong> <?php echo htmlspecialchars($courierStatus['courier_name']); ?> (Internal Tracking)
-                                </div>
-                                <div style="margin-top: 5px;">
-                                    <strong>Available Tracking Numbers:</strong> 
-                                    <?php if ($courierStatus['has_tracking']): ?>
-                                        <span style="color: #28a745;"><?php echo $courierStatus['tracking_count']; ?> unused numbers</span>
-                                    <?php else: ?>
-                                        <span style="color: #dc3545;">0 unused numbers</span>
-                                    <?php endif; ?>
-                                </div>
-                            <?php elseif ($courierStatus['courier_type'] == 2): ?>
-                                <div>
-                                    <span class="status-indicator status-active"></span>
-                                    <strong>Courier:</strong> <?php echo htmlspecialchars($courierStatus['courier_name']); ?> (New API Courier)
-                                </div>
-                                <div style="margin-top: 5px;">
-                                    <strong>Info:</strong> <span style="color: #28a745;">Automatic tracking generation</span>
-                                </div>
-                            <?php elseif ($courierStatus['courier_type'] == 3): ?>
-                                <div>
-                                    <span class="status-indicator status-api"></span>
-                                    <strong>Courier:</strong> <?php echo htmlspecialchars($courierStatus['courier_name']); ?> (Existing API Parcel)
-                                </div>
-                                <div style="margin-top: 5px;">
-                                    <strong>Info:</strong> <span style="color: #17a2b8;">Integrated API system</span>
-                                </div>
-                            <?php endif; ?>
-                        </div>
-                    </div>
+                <div style="margin-top: 5px;">
+                    <strong>Available Tracking Numbers:</strong> 
+                    <?php if ($courierStatus['has_tracking']): ?>
+                        <span style="color: #28a745;"><?php echo $courierStatus['tracking_count']; ?> unused numbers</span>
+                    <?php else: ?>
+                        <span style="color: #dc3545;">0 unused numbers</span>
                     <?php endif; ?>
                 </div>
-            </div>
+            <?php elseif ($courierStatus['courier_type'] == 2): ?>
+                <div>
+                    <span class="status-indicator status-active"></span>
+                    <strong>Courier:</strong> <?php echo htmlspecialchars($courierStatus['courier_name']); ?> (New API Courier)
+                </div>
+                <div style="margin-top: 5px;">
+                    <strong>Info:</strong> <span style="color: #28a745;">Automatic tracking generation</span>
+                </div>
+            <?php elseif ($courierStatus['courier_type'] == 3): ?>
+                <div>
+                    <span class="status-indicator status-api"></span>
+                    <strong>Courier:</strong> <?php echo htmlspecialchars($courierStatus['courier_name']); ?> (Existing API Parcel)
+                </div>
+                <div style="margin-top: 5px;">
+                    <strong>Info:</strong> <span style="color: #17a2b8;">Integrated API system</span>
+                </div>
+            <?php endif; ?>
+        </div>
+    </div>
+    <?php endif; ?>
+</div>
 <!-- [ breadcrumb ] end -->
 
             <!-- [ Main Content ] start -->
