@@ -19,27 +19,27 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 try {
-    // Get courier_id from JSON or POST
+    // Get co_id from JSON or POST
     $input = json_decode(file_get_contents('php://input'), true);
-    $courier_id = 0;
+    $co_id = 0;
 
-    if (isset($input['courier_id'])) {
-        $courier_id = intval($input['courier_id']);
-    } elseif (isset($_POST['courier_id'])) {
-        $courier_id = intval($_POST['courier_id']);
+    if (isset($input['co_id'])) {
+        $co_id = intval($input['co_id']);
+    } elseif (isset($_POST['co_id'])) {
+        $co_id = intval($_POST['co_id']);
     }
 
-    if ($courier_id <= 0) {
+    if ($co_id <= 0) {
         echo json_encode(['success' => false, 'message' => 'Invalid courier ID']);
         exit();
     }
 
-    // Fetch courier API data
-    $sql = "SELECT courier_id, courier_name, client_id, api_key, origin_city_name, origin_state_name
+    // Fetch courier API data using co_id
+    $sql = "SELECT co_id, courier_id, courier_name, client_id, api_key, origin_city_name, origin_state_name
             FROM couriers 
-            WHERE courier_id = ?";
+            WHERE co_id = ?";
     $stmt = $conn->prepare($sql);
-    $stmt->bind_param("i", $courier_id);
+    $stmt->bind_param("i", $co_id);
     $stmt->execute();
     $result = $stmt->get_result();
 
@@ -50,11 +50,12 @@ try {
 
     $courier = $result->fetch_assoc();
 
-    // Return JSON
+    // Return JSON with both co_id and courier_id
     echo json_encode([
         'success' => true,
         'message' => 'API data retrieved successfully',
         'data' => [
+            'co_id' => $courier['co_id'],
             'courier_id' => $courier['courier_id'],
             'courier_name' => $courier['courier_name'],
             'client_id' => $courier['client_id'] ?? '',

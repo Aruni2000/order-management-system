@@ -23,15 +23,15 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 try {
-    // Get form data
-    $courier_id = isset($_POST['courier_id']) ? intval($_POST['courier_id']) : 0;
+    // Get form data - now using co_id
+    $co_id = isset($_POST['co_id']) ? intval($_POST['co_id']) : 0;
     $client_id = isset($_POST['client_id']) ? trim($_POST['client_id']) : '';
     $api_key = isset($_POST['api_key']) ? trim($_POST['api_key']) : '';
     $origin_city_name = isset($_POST['origin_city_name']) ? trim($_POST['origin_city_name']) : null;
     $origin_state_name = isset($_POST['origin_state_name']) ? trim($_POST['origin_state_name']) : null;
 
     // Validate input
-    if ($courier_id <= 0) {
+    if ($co_id <= 0) {
         echo json_encode(['success' => false, 'message' => 'Invalid courier ID']);
         exit();
     }
@@ -41,10 +41,10 @@ try {
         exit();
     }
 
-    // Check if courier exists
-    $checkSql = "SELECT * FROM couriers WHERE courier_id = ?";
+    // Check if courier exists using co_id
+    $checkSql = "SELECT co_id, courier_id, courier_name, client_id, api_key, origin_city_name, origin_state_name FROM couriers WHERE co_id = ?";
     $checkStmt = $conn->prepare($checkSql);
-    $checkStmt->bind_param("i", $courier_id);
+    $checkStmt->bind_param("i", $co_id);
     $checkStmt->execute();
     $checkResult = $checkStmt->get_result();
 
@@ -54,6 +54,7 @@ try {
     }
 
     $courier = $checkResult->fetch_assoc();
+    $courier_id = $courier['courier_id']; // Get the actual courier_id for logging
 
     // Track changes
     $changes = [];
@@ -66,7 +67,7 @@ try {
         $changes[] = "API Key changed from '" . ($courier['api_key'] ?: 'empty') . "' to '" . $api_key . "'";
     }
 
-    // Only update origin fields for courier_id = 14
+    // Only update origin fields for courier_id = 14 (check the actual courier_id, not co_id)
     if ($courier_id === 14 || $courier_id == '14') {
         if ($courier['origin_city_name'] !== $origin_city_name) {
             $changes[] = "Origin City changed from '" . ($courier['origin_city_name'] ?: 'empty') . "' to '" . $origin_city_name . "'";
@@ -85,14 +86,14 @@ try {
         exit();
     }
 
-    // Update courier settings
-    $updateSql = "UPDATE couriers SET client_id = ?, api_key = ?, origin_city_name = ?, origin_state_name = ?, updated_at = CURRENT_TIMESTAMP WHERE courier_id = ?";
+    // Update courier settings using co_id
+    $updateSql = "UPDATE couriers SET client_id = ?, api_key = ?, origin_city_name = ?, origin_state_name = ?, updated_at = CURRENT_TIMESTAMP WHERE co_id = ?";
     $updateStmt = $conn->prepare($updateSql);
-    $updateStmt->bind_param("ssssi", $client_id, $api_key, $origin_city_name, $origin_state_name, $courier_id);
+    $updateStmt->bind_param("ssssi", $client_id, $api_key, $origin_city_name, $origin_state_name, $co_id);
 
     if ($updateStmt->execute()) {
-        // Logging
-        $log_details = "API settings updated: " . $courier['courier_name'] . " (ID: " . $courier_id . "). Changes: " . implode(' | ', $changes);
+        // Logging - using courier_id for reference
+        $log_details = "API settings updated: " . $courier['courier_name'] . " (ID: " . $courier_id . ", co_id: " . $co_id . "). Changes: " . implode(' | ', $changes);
         $user_id = isset($_SESSION['user_id']) ? $_SESSION['user_id'] : 0;
         $action_type = 'API_UPDATE';
 
@@ -102,7 +103,16 @@ try {
         $logStmt->execute();
         $logStmt->close();
 
-        echo json_encode(['success' => true, 'message' => 'API settings updated successfully for ' . $courier['courier_name'], 'changes' => $changes]);
+        echo json_encode([
+            'success' => true, 
+            'message' => 'API settings updated successfully for ' . $courier['courier_name'], 
+            'changes' => $changes,
+            'data' => [
+                'co_id' => $co_id,
+                'courier_id' => $courier_id,
+                'courier_name' => $courier['courier_name']
+            ]
+        ]);
     } else {
         echo json_encode(['success' => false, 'message' => 'Failed to update API settings: ' . $conn->error]);
     }

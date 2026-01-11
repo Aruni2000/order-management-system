@@ -4,7 +4,6 @@ session_start();
 
 // Check if user is logged in, if not redirect to login page
 if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
-    // Clear any existing output buffers
     if (ob_get_level()) {
         ob_end_clean();
     }
@@ -14,6 +13,20 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
 
 // Include the database connection file
 include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/connection/db_connection.php');
+
+// Get user permissions
+$is_main_admin = isset($_SESSION['is_main_admin']) ? (int)$_SESSION['is_main_admin'] : 0;
+$role_id = isset($_SESSION['role_id']) ? (int)$_SESSION['role_id'] : 0;
+$session_tenant_id = isset($_SESSION['tenant_id']) ? intval($_SESSION['tenant_id']) : 0;
+
+// Determine selected tenant - either from GET parameter or session
+$selected_tenant_id = isset($_GET['tenant_id']) ? intval($_GET['tenant_id']) : $session_tenant_id;
+
+// If not main admin, force to use their own tenant
+if (!($is_main_admin === 1 && $role_id === 1)) {
+    $selected_tenant_id = $session_tenant_id;
+}
+
 // Function to log user actions
 function logUserAction($conn, $user_id, $action_type, $inquiry_id, $details = null) {
     $stmt = $conn->prepare("INSERT INTO user_logs (user_id, action_type, inquiry_id, details) VALUES (?, ?, ?, ?)");
@@ -21,12 +34,13 @@ function logUserAction($conn, $user_id, $action_type, $inquiry_id, $details = nu
     return $stmt->execute();
 }
 
-// Function to check courier and tracking status
-function checkCourierStatus($conn) {
+// Function to check courier and tracking status FOR SELECTED TENANT
+function checkCourierStatus($conn, $tenant_id) {
     $status = [
         'has_courier' => false,
         'courier_type' => null,
         'courier_name' => '',
+        'courier_id' => 0,
         'has_tracking' => false,
         'tracking_count' => 0,
         'warning_message' => '',
@@ -34,19 +48,23 @@ function checkCourierStatus($conn) {
         'info_message' => ''
     ];
   
-    // Get default courier - Updated to include status 3 (Existing API Parcel)
-    $courierSql = "SELECT courier_id, courier_name, api_key, client_id, is_default, status 
+    // Get default courier for selected tenant - Updated to use co_id and include status 3
+    $courierSql = "SELECT co_id, courier_id, courier_name, api_key, client_id, is_default, status 
                    FROM couriers 
-                   WHERE is_default IN (1, 2, 3) AND status = 'active' 
+                   WHERE tenant_id = ? AND is_default IN (1, 2, 3) AND status = 'active' 
                    ORDER BY is_default ASC 
                    LIMIT 1";
-    $courierResult = $conn->query($courierSql);
+    $courierStmt = $conn->prepare($courierSql);
+    $courierStmt->bind_param("i", $tenant_id);
+    $courierStmt->execute();
+    $courierResult = $courierStmt->get_result();
     
     if ($courierResult && $courierResult->num_rows > 0) {
         $courier = $courierResult->fetch_assoc();
         $status['has_courier'] = true;
         $status['courier_type'] = $courier['is_default'];
         $status['courier_name'] = $courier['courier_name'];
+        $status['courier_id'] = $courier['courier_id'];
         
         if ($courier['is_default'] == 1) {
             // Internal tracking system - check for unused tracking numbers
@@ -64,43 +82,36 @@ function checkCourierStatus($conn) {
                 
                 if ($status['tracking_count'] > 0) {
                     $status['has_tracking'] = true;
-                } else {
-                    // $status['warning_message'] = "Warning: No unused tracking numbers available. Orders will be created as 'pending' status until tracking numbers are added.";
                 }
             }
-                    } else if ($courier['is_default'] == 2) {
-                    // FDE API system
-                    $status['has_tracking'] = true; // API generates tracking numbers
-                    if (empty($courier['api_key'])) {
-                        $status['warning_message'] = "Warning: {$courier['courier_name']} API key is missing. Orders may not get tracking numbers automatically.";
-                    }
-                } else if ($courier['is_default'] == 3) {
-                    // Existing API Parcel system
-                    $status['has_tracking'] = true; // API integration available
-                    if (empty($courier['api_key'])) {
-                        $status['warning_message'] = "Warning: {$courier['courier_name']} API key is missing. Existing API integration may not function properly.";
-                    } else {
-                        // $status['info_message'] = "Using existing API parcel integration for {$courier['courier_name']}.";
-                    }
-                }
+        } else if ($courier['is_default'] == 2) {
+            // New API system
+            $status['has_tracking'] = true;
+            if (empty($courier['api_key'])) {
+                $status['warning_message'] = "Warning: {$courier['courier_name']} API key is missing.";
+            }
+        } else if ($courier['is_default'] == 3) {
+            // Existing API Parcel system
+            $status['has_tracking'] = true;
+            if (empty($courier['api_key'])) {
+                $status['warning_message'] = "Warning: {$courier['courier_name']} API key is missing.";
+            }
+        }
     } else {
-        $status['info_message'] = "No default courier selected. ";
+        $status['info_message'] = "No default courier selected for this tenant.";
     }
     
     return $status;
 }
 
-// Check courier status
-$courierStatus = checkCourierStatus($conn);
+// Check courier status for selected tenant
+$courierStatus = checkCourierStatus($conn, $selected_tenant_id);
 
 // Fetch necessary data for the form
 $sql = "SELECT id, name, description, lkr_price FROM products WHERE status = 'active' ORDER BY name ASC";
 $result = $conn->query($sql);
 
-// Get tenant_id from session
-$session_tenant_id = $_SESSION['tenant_id'] ?? 1;
-
-// Updated customer query with tenant_id filter
+// Updated customer query with selected tenant filter
 $customerSql = "SELECT c.*, ct.city_name 
                 FROM customers c 
                 LEFT JOIN city_table ct ON c.city_id = ct.city_id 
@@ -109,7 +120,7 @@ $customerSql = "SELECT c.*, ct.city_name
                 ORDER BY c.name ASC";
 
 $customerStmt = $conn->prepare($customerSql);
-$customerStmt->bind_param("i", $session_tenant_id);
+$customerStmt->bind_param("i", $selected_tenant_id);
 $customerStmt->execute();
 $customerResult = $customerStmt->get_result();
 
@@ -126,10 +137,42 @@ if ($deliveryFeeResult && $deliveryFeeResult->num_rows > 0) {
     $deliveryFee = floatval($row['delivery_fee']);
 }
 
+// Fetch tenants for dropdown if main admin
+$tenants = [];
+if ($is_main_admin === 1 && $role_id === 1) {
+    $tenantsQuery = "SELECT tenant_id, company_name FROM tenants WHERE status = 'active' ORDER BY company_name ASC";
+    $tenantsResult = $conn->query($tenantsQuery);
+    if ($tenantsResult && $tenantsResult->num_rows > 0) {
+        while ($t = $tenantsResult->fetch_assoc()) {
+            $tenants[] = $t;
+        }
+    }
+}
+
+// Get selected tenant name
+$selectedTenantName = '';
+if ($is_main_admin === 1 && $role_id === 1) {
+    foreach ($tenants as $tenant) {
+        if ($tenant['tenant_id'] == $selected_tenant_id) {
+            $selectedTenantName = $tenant['company_name'];
+            break;
+        }
+    }
+} else {
+    $tenantNameSql = "SELECT company_name FROM tenants WHERE tenant_id = ?";
+    $tenantNameStmt = $conn->prepare($tenantNameSql);
+    $tenantNameStmt->bind_param("i", $selected_tenant_id);
+    $tenantNameStmt->execute();
+    $tenantNameResult = $tenantNameStmt->get_result();
+    if ($tenantNameResult && $tenantNameResult->num_rows > 0) {
+        $tenantNameData = $tenantNameResult->fetch_assoc();
+        $selectedTenantName = $tenantNameData['company_name'];
+    }
+}
+
 include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/navbar.php');
 include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php');
 ?>
-
 <!doctype html>
 <html lang="en" data-pc-preset="preset-1" data-pc-sidebar-caption="true" data-pc-direction="ltr" dir="ltr" data-pc-theme="light">
 
@@ -145,6 +188,86 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
 
 </head>
 <style>
+.tenant-selector-card {
+    background: #f8f9fa;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 15px 20px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+     width: fit-content;
+     display: flex;
+     align-items: center;
+   
+}
+
+.tenant-selector-content {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.tenant-selector-label {
+    color: #495057;
+    font-weight: 600;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+    white-space: nowrap;
+}
+
+.tenant-selector-label i {
+    font-size: 16px;
+    color: #667eea;
+}
+
+.tenant-selector-dropdown {
+    flex: 1;
+    max-width: 350px;
+}
+
+.tenant-selector-dropdown select {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid #ced4da;
+    border-radius: 6px;
+    background: #fff;
+    color: #495057;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.tenant-selector-dropdown select:hover {
+    border-color: #ccd1e8;
+}
+
+.tenant-selector-dropdown select:focus {
+    outline: none;
+    border-color: #ccd1e8;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.tenant-info-display {
+    color: #495057;
+    font-size: 14px;
+    font-weight: 500;
+    padding: 8px 16px;
+    background: #f8f9fa;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.tenant-info-display i {
+    color: #6473b5;
+    font-size: 16px;
+}
+
 .autocomplete-suggestions {
     position: absolute;
     background: white;
@@ -163,11 +286,13 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
     cursor: pointer;
     border-bottom: 1px solid #f0f0f0;
 }
+
 .autocomplete-suggestions {
     width: max-content;
     max-width: 100%;
     white-space: nowrap;
 }
+
 .autocomplete-suggestion:hover {
     background-color: #f5f5f5;
 }
@@ -186,7 +311,6 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
     text-align: center;
 }
 
-/* NEW: Quantity column styling */
 .quantity-col {
     width: 100px;
     min-width: 80px;
@@ -196,6 +320,7 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
     text-align: center;
     font-weight: 600;
 }
+
 .duplicate-product-alert {
     background-color: #fff3cd;
     border: 1px solid #ffc107;
@@ -241,113 +366,135 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
         transform: translateY(0);
     }
 }
-</style>
+.alert-container {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
 
+.alert-container .alert {
+    animation: slideInRight 0.3s ease-out;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+}
+
+@keyframes slideInRight {
+    from {
+        opacity: 0;
+        transform: translateX(100px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+</style>
 <body>
     <!-- LOADER -->
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/loader.php'); ?>
     <!-- END LOADER -->
 
-    <!-- [ Main Content ] start -->
-    <div class="pc-container">
-        <div class="pc-content">
+   
         <!-- [ breadcrumb ] start -->
-<div class="page-header">
-    <div class="page-block">
-        <div class="page-header-title" style="display: flex; justify-content: space-between; align-items: flex-start;">
-            <!-- Left side: Create Order title -->
-            <h5 class="mb-0 font-medium">Create Order</h5>
-            
-            <!-- Right side: Alert messages and courier status -->
-            <div style="max-width: 400px;">
+ <div class="pc-container">
+        <div class="pc-content">
+            <div class="page-header">
+                <div class="page-block">
+                    <div class="page-header-title">
+                        <h5 class="mb-0 font-medium">Create Order</h5>
+                    </div>
+                </div>
+            </div>
+          <!-- Tenant Selector Card -->
+            <?php if ($is_main_admin === 1 && $role_id === 1): ?>
+            <div class="tenant-selector-card">
+                <div class="tenant-selector-content">
+                    <label class="tenant-selector-label">
+                       <i class="feather icon-briefcase"></i>
+                        Tenant:
+                    </label>
+                    <div class="tenant-selector-dropdown">
+                        <select id="tenant_selector" onchange="window.location.href='create_order.php?tenant_id=' + this.value">
+                            <?php foreach ($tenants as $tenant): ?>
+                                <option value="<?php echo $tenant['tenant_id']; ?>" 
+                                        <?php echo ($tenant['tenant_id'] == $selected_tenant_id) ? 'selected' : ''; ?>>
+                                    <?php echo htmlspecialchars($tenant['company_name']); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <?php else: ?>
+            <div class="tenant-selector-card">
+                <div class="tenant-selector-content">
+                    <label class="tenant-selector-label">
+                        <i class="fas fa-building"></i>
+                        Tenant:
+                    </label>
+                    <div class="tenant-info-display">
+                        <?php echo htmlspecialchars($selectedTenantName); ?>
+                    </div>
+                </div>
+            </div>
+            <?php endif; ?>
+
+             <!-- Alert Messages and Courier Status -->
+<div class="alert-container" style="position: fixed; top: 80px; right: 20px; z-index: 9999; max-width: 400px;">
                 <div class="alert-container">
                     <?php
-                    // Display success messages
+                    // Display session messages
                     if (isset($_SESSION['order_success'])) {
                         echo '<div class="alert alert-success" id="success-alert">
-                                <div>
-                                    <span class="alert-icon">✅</span>
-                                    <span>' . htmlspecialchars($_SESSION['order_success']) . '</span>
-                                </div>
+                                <div><span class="alert-icon">✅</span><span>' . htmlspecialchars($_SESSION['order_success']) . '</span></div>
                                 <button class="alert-close" onclick="this.parentElement.remove()">&times;</button>
                               </div>';
                         unset($_SESSION['order_success']);
                     }
 
-                    // Display error messages
                     if (isset($_SESSION['order_error'])) {
                         echo '<div class="alert alert-error" id="error-alert">
-                                <div>
-                                    <span class="alert-icon">❌</span>
-                                    <span>' . htmlspecialchars($_SESSION['order_error']) . '</span>
-                                </div>
+                                <div><span class="alert-icon">❌</span><span>' . htmlspecialchars($_SESSION['order_error']) . '</span></div>
                                 <button class="alert-close" onclick="this.parentElement.remove()">&times;</button>
                               </div>';
                         unset($_SESSION['order_error']);
                     }
 
-                    // Display warning messages
                     if (isset($_SESSION['order_warning'])) {
                         echo '<div class="alert alert-warning" id="warning-alert">
-                                <div>
-                                    <span class="alert-icon">⚠️</span>
-                                    <span>' . htmlspecialchars($_SESSION['order_warning']) . '</span>
-                                </div>
+                                <div><span class="alert-icon">⚠️</span><span>' . htmlspecialchars($_SESSION['order_warning']) . '</span></div>
                                 <button class="alert-close" onclick="this.parentElement.remove()">&times;</button>
                               </div>';
                         unset($_SESSION['order_warning']);
                     }
 
-                    // Display info messages
-                    if (isset($_SESSION['order_info'])) {
-                        echo '<div class="alert alert-info" id="info-alert">
-                                <div>
-                                    <span class="alert-icon">ℹ️</span>
-                                    <span>' . htmlspecialchars($_SESSION['order_info']) . '</span>
-                                </div>
-                                <button class="alert-close" onclick="this.parentElement.remove()">&times;</button>
-                              </div>';
-                        unset($_SESSION['order_info']);
-                    }
-
                     // Display courier status messages
                     if (!empty($courierStatus['error_message'])) {
                         echo '<div class="alert alert-error">
-                                <div>
-                                    <span class="alert-icon">❌</span>
-                                    <span>' . htmlspecialchars($courierStatus['error_message']) . '</span>
-                                </div>
+                                <div><span class="alert-icon">❌</span><span>' . htmlspecialchars($courierStatus['error_message']) . '</span></div>
                                 <button class="alert-close" onclick="this.parentElement.remove()">&times;</button>
                               </div>';
                     }
 
                     if (!empty($courierStatus['warning_message'])) {
                         echo '<div class="alert alert-warning">
-                                <div>
-                                    <span class="alert-icon">⚠️</span>
-                                    <span>' . htmlspecialchars($courierStatus['warning_message']) . '</span>
-                                </div>
+                                <div><span class="alert-icon">⚠️</span><span>' . htmlspecialchars($courierStatus['warning_message']) . '</span></div>
                                 <button class="alert-close" onclick="this.parentElement.remove()">&times;</button>
                               </div>';
                     }
 
-                    // Display info messages for courier status
                     if (!empty($courierStatus['info_message'])) {
                         echo '<div class="alert alert-info">
-                                <div>
-                                    <span class="alert-icon">ℹ️</span>
-                                    <span>' . htmlspecialchars($courierStatus['info_message']) . '</span>
-                                </div>
+                                <div><span class="alert-icon">ℹ️</span><span>' . htmlspecialchars($courierStatus['info_message']) . '</span></div>
                                 <button class="alert-close" onclick="this.parentElement.remove()">&times;</button>
                               </div>';
                     }
                     ?>
 
-                    <!-- Courier Status Information Card -->
+                       <!-- Courier Status Card -->
                     <?php if ($courierStatus['has_courier']): ?>
                     <div class="courier-status-card">
                         <h6 style="margin-bottom: 10px; color: #495057;">
-                            <!-- <i class="feather icon-truck"></i> Delivery Status -->
+                            
                         </h6>
                         <div style="font-size: 11px;">
                             <?php if ($courierStatus['courier_type'] == 1): ?>
@@ -360,16 +507,16 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                                     <?php if ($courierStatus['has_tracking']): ?>
                                         <span style="color: #28a745;"><?php echo $courierStatus['tracking_count']; ?> unused numbers</span>
                                     <?php else: ?>
-                                        <span style="color: #dc3545;">0 unused numbers - Orders will be pending</span>
+                                        <span style="color: #dc3545;">0 unused numbers</span>
                                     <?php endif; ?>
                                 </div>
                             <?php elseif ($courierStatus['courier_type'] == 2): ?>
                                 <div>
                                     <span class="status-indicator status-active"></span>
-                                    <strong>Courier:</strong> <?php echo htmlspecialchars($courierStatus['courier_name']); ?> (API Parcel Courier)
+                                    <strong>Courier:</strong> <?php echo htmlspecialchars($courierStatus['courier_name']); ?> (New API Courier)
                                 </div>
                                 <div style="margin-top: 5px;">
-                                    <strong>Info:</strong> <span style="color: #28a745;">Automatic tracking number generation</span>
+                                    <strong>Info:</strong> <span style="color: #28a745;">Automatic tracking generation</span>
                                 </div>
                             <?php elseif ($courierStatus['courier_type'] == 3): ?>
                                 <div>
@@ -377,7 +524,7 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                                     <strong>Courier:</strong> <?php echo htmlspecialchars($courierStatus['courier_name']); ?> (Existing API Parcel)
                                 </div>
                                 <div style="margin-top: 5px;">
-                                    <strong>Info:</strong> <span style="color: #17a2b8;">Integrated with existing API parcel system</span>
+                                    <strong>Info:</strong> <span style="color: #17a2b8;">Integrated API system</span>
                                 </div>
                             <?php endif; ?>
                         </div>
@@ -385,14 +532,13 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                     <?php endif; ?>
                 </div>
             </div>
-        </div>
-    </div>
-</div>
 <!-- [ breadcrumb ] end -->
 
             <!-- [ Main Content ] start -->
-            <div class="order-container">
-                <form method="post" action="process_order.php" id="orderForm" >
+             <div class="order-container">
+                <form method="post" action="process_order.php" id="orderForm">
+                    <!-- Hidden tenant field -->
+                    <input type="hidden" name="tenant_id" value="<?php echo $selected_tenant_id; ?>">
                     <!-- Order Details Section -->
                     <div class="order-details-section">
                         <div class="order-details-grid">
@@ -659,85 +805,71 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
     </div>
     <!-- [ Main Content ] end -->
 
-
-  <!-- Customer Selection Modal -->
-<div id="customerModal" class="customer-modal">
-    <div class="customer-modal-content">
-        <div class="modal-header">
-            <h5 class="modal-title">
-                <i class="feather icon-users"></i>
-                Select Customer
-            </h5>
-            <button type="button" class="close-modal">&times;</button>
-        </div>
-        <div class="modal-body">
-            <div class="input-group" style="margin-bottom: 20px;">
-                <span class="input-group-text"><i class="feather icon-search"></i></span>
-                <input type="text" id="customerSearch" class="form-control" placeholder="Search : Customer id | Customer Name | Email | Phone Number | city ">
+ <!-- Customer Modal - Will show only selected tenant's customers -->
+    <div id="customerModal" class="customer-modal">
+        <div class="customer-modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="feather icon-users"></i>
+                    Select Customer (<?php echo htmlspecialchars($selectedTenantName); ?>)
+                </h5>
+                <button type="button" class="close-modal">&times;</button>
             </div>
-            <div class="table-responsive">
-                <table class="table table-hover">
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>CUSTOMER NAME</th>
-                            <th>PHONE & EMAIL</th>
-                            <th>ADDRESS</th>
-                            <th>ACTIONS</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php
-                        // Reset the pointer for $customerResult
-                        $customerResult->data_seek(0);
-                        while ($customer = $customerResult->fetch_assoc()): ?>
-                            <tr class="customer-row" 
-                                data-customer-id="<?= $customer['customer_id'] ?? '' ?>"
-                                data-name="<?= htmlspecialchars($customer['name'] ?? '') ?>"
-                                data-email="<?= htmlspecialchars($customer['email'] ?? '') ?>"
-                                data-phone="<?= htmlspecialchars($customer['phone'] ?? '') ?>"
-                                data-phone-2="<?= htmlspecialchars($customer['phone_2'] ?? '') ?>"
-                                data-address-line1="<?= htmlspecialchars($customer['address_line1'] ?? '') ?>"
-                                data-address-line2="<?= htmlspecialchars($customer['address_line2'] ?? '') ?>"
-                                data-city-name="<?= htmlspecialchars($customer['city_name'] ?? '') ?>"
-                                data-city-id="<?= $customer['city_id'] ?? '' ?>">
-                                
-                                <td><?= $customer['customer_id'] ?? '' ?></td>
-                                
-                                <td>
-                                    <div class="customer-name"><?= htmlspecialchars($customer['name'] ?? '') ?></div>
-                                </td>
-                                
-                                <td>
-                                    <div class="contact-info">
-                                        <div class="phone-number"><?= htmlspecialchars($customer['phone'] ?? '') ?></div>
-                                        <?php if (!empty($customer['phone_2'])): ?>
-                                            <div class="phone-number-2" style="color: #6c757d; font-size: 0.9em;">
-                                                <?= htmlspecialchars($customer['phone_2']) ?>
-                                            </div>
-                                        <?php endif; ?>
-                                        <div class="email-address"><?= htmlspecialchars($customer['email'] ?? '') ?></div>
-                                    </div>
-                                </td>
-                                
-                                <td>
-                                    <div class="address-info">
-                                        <div class="address-line"><?= htmlspecialchars($customer['address_line1'] ?? '') ?></div>
-                                        <div class="city-name"><?= htmlspecialchars($customer['city_name'] ?? '') ?></div>
-                                    </div>
-                                </td>
-                                
-                                <td>
-                                    <button type="button" class="btn btn-primary select-customer-btn">Select</button>
-                                </td>
+            <div class="modal-body">
+                <div class="input-group" style="margin-bottom: 20px;">
+                    <span class="input-group-text"><i class="feather icon-search"></i></span>
+                    <input type="text" id="customerSearch" class="form-control" placeholder="Search customers...">
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>NAME</th>
+                                <th>CONTACT</th>
+                                <th>ADDRESS</th>
+                                <th>ACTIONS</th>
                             </tr>
-                        <?php endwhile; ?>
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody>
+                            <?php
+                            $customerResult->data_seek(0);
+                            while ($customer = $customerResult->fetch_assoc()): ?>
+                                <tr class="customer-row" 
+                                    data-customer-id="<?= $customer['customer_id'] ?? '' ?>"
+                                    data-name="<?= htmlspecialchars($customer['name'] ?? '') ?>"
+                                    data-email="<?= htmlspecialchars($customer['email'] ?? '') ?>"
+                                    data-phone="<?= htmlspecialchars($customer['phone'] ?? '') ?>"
+                                    data-phone-2="<?= htmlspecialchars($customer['phone_2'] ?? '') ?>"
+                                    data-address-line1="<?= htmlspecialchars($customer['address_line1'] ?? '') ?>"
+                                    data-address-line2="<?= htmlspecialchars($customer['address_line2'] ?? '') ?>"
+                                    data-city-name="<?= htmlspecialchars($customer['city_name'] ?? '') ?>"
+                                    data-city-id="<?= $customer['city_id'] ?? '' ?>">
+                                    <td><?= $customer['customer_id'] ?? '' ?></td>
+                                    <td><?= htmlspecialchars($customer['name'] ?? '') ?></td>
+                                    <td>
+                                        <div><?= htmlspecialchars($customer['phone'] ?? '') ?></div>
+                                        <?php if (!empty($customer['email'])): ?>
+                                            <small><?= htmlspecialchars($customer['email']) ?></small>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td>
+                                        <div><?= htmlspecialchars($customer['address_line1'] ?? '') ?></div>
+                                        <small><?= htmlspecialchars($customer['city_name'] ?? '') ?></small>
+                                    </td>
+                                    <td>
+                                        <button type="button" class="btn btn-primary select-customer-btn">Select</button>
+                                    </td>
+                                </tr>
+                            <?php endwhile; ?>
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </div>
-</div>
+
+
     <!-- FOOTER -->
     <?php
     include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/footer.php');
@@ -750,6 +882,11 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
     ?>
     <!-- END SCRIPTS -->
 <script>
+       // Tenant change function
+    function changeTenant(tenantId) {
+        window.location.href = '?tenant_id=' + tenantId;
+    }
+
 document.addEventListener('DOMContentLoaded', function() {
     // ========== GLOBAL VARIABLES ==========
     let deliveryFee = <?php echo $deliveryFee; ?>;

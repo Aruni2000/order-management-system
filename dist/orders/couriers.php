@@ -339,12 +339,12 @@ function getStatusInfo($is_default) {
                                         </td>
 
                                         <td>
-                                            <button class="btn btn-sm return-fee-btn"
-                                                onclick="openReturnFeeModal(
-                                                    <?= $row['courier_id'] ?>,
-                                                    '<?= htmlspecialchars($row['courier_name']) ?>',
-                                                    <?= $row['return_fee_value'] ?? 0 ?>
-                                                ); return false;"
+                                           <button class="btn btn-sm return-fee-btn"
+                                            onclick="openReturnFeeModal(
+                                                <?= $row['co_id'] ?>,
+                                                '<?= htmlspecialchars($row['courier_name']) ?>',
+                                                <?= $row['return_fee_value'] ?? 0 ?>
+                                            ); return false;"
                                                 title="Set Return Fee"
                                                 style="background-color: #f88a47ff; color: white; border: 1px solid #f88a47ff; margin-left:5px; 
                                                     padding: 2px 6px; font-size: 11px; line-height: 1.2;">
@@ -356,6 +356,7 @@ function getStatusInfo($is_default) {
                                         <td class="actions">
                                             <div class="action-dropdown-container">
                                                 <select class="courier-status-dropdown" 
+                                                        data-co-id="<?= $row['co_id'] ?>" 
                                                         data-courier-id="<?= $row['courier_id'] ?>"
                                                         data-courier-name="<?= htmlspecialchars($row['courier_name']) ?>"
                                                         data-current-status="<?= $row['is_default'] ?>">
@@ -365,8 +366,8 @@ function getStatusInfo($is_default) {
                                                     <option value="3" <?= $row['is_default'] == 3 ? 'selected' : '' ?>>Existing API Parcel</option>
                                                 </select>
                                                 <?php if ($row['has_api_new'] == 1 || $row['has_api_existing'] == 1): ?>
-                                                    <button class="add-api-btn" 
-                                                            onclick="handleApiButtonClick(<?= $row['courier_id'] ?>, '<?= htmlspecialchars($row['courier_name']) ?>', <?= $row['has_api_new'] ?>, <?= $row['has_api_existing'] ?>); return false;"
+                                                   <button class="add-api-btn" 
+        onclick="handleApiButtonClick(<?= $row['co_id'] ?>, <?= $row['courier_id'] ?>, '<?= htmlspecialchars($row['courier_name']) ?>', <?= $row['has_api_new'] ?>, <?= $row['has_api_existing'] ?>); return false;"
                                                             title="Configure API Settings">
                                                             <i class="fas fa-cog"></i>
                                                             <span>API</span>
@@ -419,7 +420,7 @@ function getStatusInfo($is_default) {
                             <div class="api-modal-body">
 
                                 <!-- Hidden Fields -->
-                                <input type="hidden" id="courier_id" name="courier_id" value="">
+                           <input type="hidden" id="courier_id" name="co_id" value="">
                                 <input type="hidden" name="csrf_token" value="demo_token">
 
                                 <!-- Flex container for API credentials -->
@@ -599,7 +600,7 @@ function getStatusInfo($is_default) {
                         <form id="returnFeeForm" method="POST" action="update_return_fee.php">
                             <div class="api-modal-body">
                                 <!-- Hidden courier ID -->
-                                <input type="hidden" id="returnFeeCourierId" name="courier_id" value="">
+                               <input type="hidden" id="returnFeeCourierId" name="co_id" value="">
                                 <input type="hidden" name="csrf_token" value="demo_token">
 
                                 <!-- Return Fee Input -->
@@ -915,109 +916,91 @@ function getStatusInfo($is_default) {
             document.getElementById('statusChangeModal').style.display = 'block';
         }
 
-        // Enhanced API Function to change courier status with proper error handling
-        function changeCourierStatus(courierId, newStatus) {
-            showLoading('Updating courier status...');
+        // ✅ UPDATE: changeCourierStatus function
+// 1. ✅ FIXED: changeCourierStatus function
+function changeCourierStatus(coId, newStatus) {
+    showLoading('Updating courier status...');
+    
+    fetch('toggle_courier_default.php', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            co_id: coId,  // ✅ Changed from courier_id to co_id
+            is_default: parseInt(newStatus)
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        hideLoading();
+        closeModal('statusChangeModal');
+        
+        if (data.success) {
+            toastManager.success(data.message);
             
-            fetch('toggle_courier_default.php', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    courier_id: courierId,
-                    is_default: parseInt(newStatus)
-                })
-            })
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                return response.json();
-            })
-            .then(data => {
-                hideLoading();
-                closeModal('statusChangeModal');
-                
-                if (data.success) {
-                    // Show success message with details
-                    let successMessage = data.message;
-                    if (data.data && data.data.unused_tracking_count !== undefined) {
-                        successMessage += ` (${data.data.unused_tracking_count} tracking numbers available)`;
-                    }
-                    toastManager.success(successMessage);
-                    
-                    // Update the dropdown to reflect current status
-                    const dropdown = document.querySelector(`[data-courier-id="${courierId}"]`);
-                    if (dropdown) {
-                        dropdown.setAttribute('data-current-status', newStatus);
-                        dropdown.value = newStatus;
-                    }
-                    
-                    // Reload page after a short delay to reflect all changes
-                    setTimeout(() => {
-                        location.reload();
-                    }, 2000);
-                } else {
-                    // Show error message
-                    toastManager.error(data.message || 'Failed to update courier status');
-                    
-                    // Reset dropdown to original value
-                    const dropdown = document.querySelector(`[data-courier-id="${courierId}"]`);
-                    if (dropdown) {
-                        const originalStatus = dropdown.getAttribute('data-current-status');
-                        dropdown.value = originalStatus;
-                    }
-                }
-            })
-            .catch(error => {
-                hideLoading();
-                closeModal('statusChangeModal');
-                
-                console.error('Error:', error);
-                
-                // Show generic error message
-                toastManager.error('An unexpected error occurred while updating the courier status. Please try again.');
-                
-                // Reset dropdown to original value
-                const dropdown = document.querySelector(`[data-courier-id="${courierId}"]`);
-                if (dropdown) {
-                    const originalStatus = dropdown.getAttribute('data-current-status');
-                    dropdown.value = originalStatus;
-                }
-            });
-        }
-
-        // Handle API button click - Check has_api_new OR has_api_existing status first
-        function handleApiButtonClick(courierId, courierName, hasApiNew, hasApiExisting) {
-            // Allow access if either has_api_new OR has_api_existing is set to 1
-            if (hasApiNew == 1 || hasApiExisting == 1) {
-                // Proceed with opening API modal
-                openApiModal(courierId, courierName);
-            } else {
-                // Show access denied modal
-                document.getElementById('denied-courier-name').textContent = courierName;
-                document.getElementById('apiAccessDeniedModal').style.display = 'block';
+            const dropdown = document.querySelector(`[data-co-id="${coId}"]`);
+            if (dropdown) {
+                dropdown.setAttribute('data-current-status', newStatus);
+                dropdown.value = newStatus;
+            }
+            
+            setTimeout(() => location.reload(), 2000);
+        } else {
+            toastManager.error(data.message || 'Failed to update courier status');
+            
+            const dropdown = document.querySelector(`[data-co-id="${coId}"]`);
+            if (dropdown) {
+                const originalStatus = dropdown.getAttribute('data-current-status');
+                dropdown.value = originalStatus;
             }
         }
+    })
+   .catch(error => {
+        hideLoading();
+        closeModal('statusChangeModal');
+        console.error('Error:', error);
+        toastManager.error('An unexpected error occurred');
+        
+        const dropdown = document.querySelector(`[data-co-id="${coId}"]`);
+        if (dropdown) {
+            const originalStatus = dropdown.getAttribute('data-current-status');
+            dropdown.value = originalStatus;
+        }
+    });
+}
 
-        // Event Listeners
-        document.addEventListener('DOMContentLoaded', function() {
-            // Status dropdown change event listeners
-            const statusDropdowns = document.querySelectorAll('.courier-status-dropdown');
-            statusDropdowns.forEach(dropdown => {
-                dropdown.addEventListener('change', function() {
-                    const courierId = this.getAttribute('data-courier-id');
-                    const courierName = this.getAttribute('data-courier-name');
-                    const currentStatus = this.getAttribute('data-current-status');
-                    const newStatus = this.value;
-                    
-                    // Only show modal if status actually changed
-                    if (currentStatus !== newStatus) {
-                        openStatusChangeModal(courierId, courierName, currentStatus, newStatus);
-                    }
-                });
-            });
+        // Handle API button click - Check has_api_new OR has_api_existing status first
+    // Handle API button click - Check has_api_new OR has_api_existing status first
+function handleApiButtonClick(coId, courierId, courierName, hasApiNew, hasApiExisting) {  // ✅ Added coId parameter
+    // Allow access if either has_api_new OR has_api_existing is set to 1
+    if (hasApiNew == 1 || hasApiExisting == 1) {
+        // Proceed with opening API modal - pass coId
+        openApiModal(coId, courierId, courierName);  // ✅ Pass both coId and courierId
+    } else {
+        // Show access denied modal
+        document.getElementById('denied-courier-name').textContent = courierName;
+        document.getElementById('apiAccessDeniedModal').style.display = 'block';
+    }
+}
+
+      // Event Listeners
+document.addEventListener('DOMContentLoaded', function() {
+    // Status dropdown change event listeners
+    const statusDropdowns = document.querySelectorAll('.courier-status-dropdown');
+    statusDropdowns.forEach(dropdown => {
+        dropdown.addEventListener('change', function() {
+            const coId = this.getAttribute('data-co-id');  // ✅ This is the primary key
+            const courierName = this.getAttribute('data-courier-name');
+            const currentStatus = this.getAttribute('data-current-status');
+            const newStatus = this.value;
+            
+            // Only show modal if status actually changed
+            if (currentStatus !== newStatus) {
+                openStatusChangeModal(coId, courierName, currentStatus, newStatus);  // ✅ Pass co_id
+            }
+        });
+    });
             
             // Close modals when clicking outside
             window.onclick = function(event) {
@@ -1062,65 +1045,64 @@ function getStatusInfo($is_default) {
             });
         });
 
-        function openApiModal(courierId, courierName) {
-            const modal = document.getElementById('apiModal');
-            const modalTitle = document.getElementById('modalTitle');
-            const form = document.getElementById('apiSettingsForm');
+     // 2. ✅ FIXED: openApiModal function
+function openApiModal(coId, courierId, courierName) {
+    const modal = document.getElementById('apiModal');
+    const modalTitle = document.getElementById('modalTitle');
+    const form = document.getElementById('apiSettingsForm');
 
-            // Fields
-            const courierIdInput = document.getElementById('courier_id');
-            const clientIdInput = document.getElementById('client_id');
-            const apiKeyInput = document.getElementById('api_key');
-            const originFields = document.getElementById('originFields');
-            const originCityInput = document.getElementById('origin_city_name');
-            const originStateInput = document.getElementById('origin_state_name');
-            const saveBtn = document.getElementById('saveApiBtn');
+    const courierIdInput = document.getElementById('courier_id');
+    const clientIdInput = document.getElementById('client_id');
+    const apiKeyInput = document.getElementById('api_key');
+    const originFields = document.getElementById('originFields');
+    const originCityInput = document.getElementById('origin_city_name');
+    const originStateInput = document.getElementById('origin_state_name');
+    const saveBtn = document.getElementById('saveApiBtn');
 
-            // Set courier info
-            courierIdInput.value = courierId;
-            modalTitle.textContent = `Configure API Settings - ${courierName}`;
+    // ✅ Set co_id (primary key) in the form
+    courierIdInput.value = coId;
+    courierIdInput.name = 'co_id';  // ✅ Change the name attribute
+    modalTitle.textContent = `Configure API Settings - ${courierName}`;
 
-            // Show modal
-            modal.classList.add('show');
-            document.body.style.overflow = 'hidden';
+    modal.classList.add('show');
+    document.body.style.overflow = 'hidden';
 
-            // Reset form
-            form.reset();
+    form.reset();
+    courierIdInput.value = coId;  // Reset clears it, so set again
 
-            // Show/hide origin fields for courier 14
-            originFields.style.display = (courierId == 14) ? 'flex' : 'none';
+    // Use courierId (service type) to determine if origin fields needed
+    originFields.style.display = (courierId == 14) ? 'flex' : 'none';
 
-            // Disable inputs while loading
-            [clientIdInput, apiKeyInput, originCityInput, originStateInput, saveBtn].forEach(el => el.disabled = true);
+    [clientIdInput, apiKeyInput, originCityInput, originStateInput, saveBtn].forEach(el => el.disabled = true);
 
-            // Fetch existing API data
-            fetch('get_courier_api.php', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ courier_id: courierId })
-            })
-            .then(res => res.json())
-            .then(data => {
-                if (data.success) {
-                    clientIdInput.value = data.data.client_id || '';
-                    apiKeyInput.value = data.data.api_key || '';
+    // ✅ Fetch existing API data using co_id
+    fetch('get_courier_api.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ co_id: coId })  // ✅ Changed from courier_id to co_id
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            clientIdInput.value = data.data.client_id || '';
+            apiKeyInput.value = data.data.api_key || '';
 
-                    if (courierId == 14) {
-                        originCityInput.value = data.data.origin_city_name || '';
-                        originStateInput.value = data.data.origin_state_name || '';
-                    }
-                } else {
-                    console.warn('No API data:', data.message);
-                }
-            })
-            .catch(err => {
-                console.error('Error loading API data:', err);
-            })
-            .finally(() => {
-                // Enable inputs after loading
-                [clientIdInput, apiKeyInput, originCityInput, originStateInput, saveBtn].forEach(el => el.disabled = false);
-            });
+            if (courierId == 14) {
+                originCityInput.value = data.data.origin_city_name || '';
+                originStateInput.value = data.data.origin_state_name || '';
+            }
+        } else {
+            console.warn('No API data:', data.message);
         }
+    })
+    .catch(err => {
+        console.error('Error loading API data:', err);
+    })
+    .finally(() => {
+        [clientIdInput, apiKeyInput, originCityInput, originStateInput, saveBtn].forEach(el => el.disabled = false);
+    });
+}
+
 
         // Close API Modal
         function closeApiModal() {
@@ -1307,16 +1289,16 @@ function getStatusInfo($is_default) {
             });
         });
 
-        // Open the modal and populate fields
-        function openReturnFeeModal(courierId, courierName, currentValue) {
-            document.getElementById("returnFeeCourierId").value = courierId;
-            document.getElementById("returnFeeValue").value = currentValue ?? 0;
-            document.getElementById("returnFeeModalTitle").innerText = "Set Return Fee - " + courierName;
-            document.getElementById("returnFeeModal").style.display = "flex";
-            
-            // Clear any previous error messages
-            clearValidationError();
-        }
+      // Open the modal and populate fields
+function openReturnFeeModal(coId, courierName, currentValue) {
+    document.getElementById("returnFeeCourierId").value = coId;  // ✅ Store co_id
+    document.getElementById("returnFeeCourierId").name = 'co_id';  // ✅ Change name attribute
+    document.getElementById("returnFeeValue").value = currentValue ?? 0;
+    document.getElementById("returnFeeModalTitle").innerText = "Set Return Fee - " + courierName;
+    document.getElementById("returnFeeModal").style.display = "flex";
+    
+    clearValidationError();
+}
 
         // Close the modal
         function closeReturnFeeModal() {
@@ -1402,67 +1384,54 @@ function getStatusInfo($is_default) {
         });
 
         // Handle form submission via AJAX
-        document.getElementById("returnFeeForm").addEventListener("submit", function(e) {
-            e.preventDefault(); // prevent default form submission
+     document.getElementById("returnFeeForm").addEventListener("submit", function(e) {
+    e.preventDefault();
 
-            const feeValue = document.getElementById("returnFeeValue").value.trim();
-            
-            // Validate before submission
-            if (feeValue === "") {
-                showValidationError("Please enter a return fee value.");
-                return;
-            }
-            
-            const errorMessage = validateReturnFee(feeValue);
-            if (errorMessage) {
-                showValidationError(errorMessage);
-                return;
-            }
-            
-            // Clear any validation errors
-            clearValidationError();
-            
-        // Disable submit button to prevent double submission
-            const submitBtn = document.getElementById("saveReturnFeeBtn");
-            const originalText = submitBtn.innerHTML;
-            submitBtn.disabled = true;
-            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+    const feeValue = document.getElementById("returnFeeValue").value.trim();
+    
+    if (feeValue === "") {
+        showValidationError("Please enter a return fee value.");
+        return;
+    }
+    
+    const errorMessage = validateReturnFee(feeValue);
+    if (errorMessage) {
+        showValidationError(errorMessage);
+        return;
+    }
+    
+    clearValidationError();
+    
+    const submitBtn = document.getElementById("saveReturnFeeBtn");
+    const originalText = submitBtn.innerHTML;
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
 
-            const formData = new FormData(this);
+    const formData = new FormData(this);
 
-            fetch(this.action, {
-                method: "POST",
-                body: formData
-            })
-            .then(res => res.text())
-            .then(data => {
-                alert(data); // display success/error message from PHP
-                closeReturnFeeModal();
-
-                // Update the table value dynamically (optional, no reload)
-                const courierId = document.getElementById("returnFeeCourierId").value;
-                const feeValue = document.getElementById("returnFeeValue").value;
-
-                const row = document.querySelector(`button[onclick*='${courierId}']`).closest("tr");
-                if (row) {
-                    const feeCell = row.querySelector("td:nth-child(3)");
-                    if (feeCell) {
-                        feeCell.querySelector('.return-fee-btn').setAttribute('onclick', 
-                            `openReturnFeeModal(${courierId}, '${row.querySelector('.customer-info h6').textContent}', ${feeValue}); return false;`
-                        );
-                    }
-                }
-            })
-            .catch(err => {
-                alert("Error: " + err);
-                console.error("Error updating return fee:", err);
-            })
-            .finally(() => {
-                // Re-enable submit button
-                submitBtn.disabled = false;
-                submitBtn.innerHTML = originalText;
-            });
-        });
+    fetch(this.action, {
+        method: "POST",
+        body: formData
+    })
+    .then(res => res.json())  // ✅ Changed from .text() to .json()
+    .then(data => {
+        if (data.success) {
+            toastManager.success(data.message);
+            closeReturnFeeModal();
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            toastManager.error(data.message || 'Failed to update return fee');
+        }
+    })
+    .catch(err => {
+        toastManager.error("Error: " + err);
+        console.error("Error updating return fee:", err);
+    })
+    .finally(() => {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = originalText;
+    });
+});
     </script>
 
 </body>
