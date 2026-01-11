@@ -96,7 +96,38 @@ try {
     }
 
     // ==========================================
-    // ✅ FIX 1: Get courier details INCLUDING co_id
+    // STEP 1: VALIDATE TENANT CONSISTENCY
+    // ==========================================
+    $placeholders = str_repeat('?,', count($orderIds) - 1) . '?';
+    $tenantCheckStmt = $conn->prepare("
+        SELECT DISTINCT tenant_id 
+        FROM order_header 
+        WHERE order_id IN ($placeholders)
+    ");
+    $tenantCheckStmt->bind_param(str_repeat('i', count($orderIds)), ...$orderIds);
+    $tenantCheckStmt->execute();
+    $tenantResult = $tenantCheckStmt->get_result();
+    
+    $tenantIds = [];
+    while ($row = $tenantResult->fetch_assoc()) {
+        $tenantIds[] = (int)$row['tenant_id'];
+    }
+    $tenantCheckStmt->close();
+    
+    if (empty($tenantIds)) {
+        throw new Exception('No valid orders found for the selected IDs');
+    }
+    
+    if (count($tenantIds) > 1) {
+        error_log("ERROR: Multiple tenants detected: " . implode(', ', $tenantIds));
+        throw new Exception('Selected orders belong to different tenants (IDs: ' . implode(', ', $tenantIds) . '). Please select orders from the same tenant.');
+    }
+    
+    $tenantId = $tenantIds[0];
+    error_log("Validated Tenant ID: $tenantId");
+
+    // ==========================================
+    // STEP 2: GET COURIER DETAILS WITH TENANT VALIDATION
     // ==========================================
     $stmt = $conn->prepare("
         SELECT courier_id, courier_name, co_id, api_key, tenant_id 
@@ -114,14 +145,19 @@ try {
         throw new Exception('Invalid courier or missing API credentials');
     }
 
-    // ==========================================
-    // ✅ FIX 2: Store co_id for later use
-    // ==========================================
-    $courierCoId = $courier['co_id'];
-    $courierTenantId = $courier['tenant_id'];
+    // Validate courier belongs to the same tenant
+    if ((int)$courier['tenant_id'] !== $tenantId) {
+        error_log("ERROR: Courier tenant mismatch - Courier Tenant: {$courier['tenant_id']}, Order Tenant: $tenantId");
+        throw new Exception("Selected courier does not belong to the same tenant as the orders. Courier Tenant: {$courier['tenant_id']}, Order Tenant: $tenantId");
+    }
 
+    $courierCoId = $courier['co_id'];
+    $courierTenantId = $tenantId; // Use validated tenant ID
+
+    // ==========================================
+    // STEP 3: FETCH ORDER DETAILS
+    // ==========================================
     // Get pending orders with district information
-    $placeholders = str_repeat('?,', count($orderIds) - 1) . '?';
     $stmt = $conn->prepare("
         SELECT 
             oh.order_id, 
@@ -140,8 +176,11 @@ try {
         LEFT JOIN district_table dt ON ct.district_id = dt.district_id
         WHERE oh.order_id IN ($placeholders) 
         AND oh.status = 'pending'
+        AND oh.tenant_id = ?
     ");
-    $stmt->bind_param(str_repeat('i', count($orderIds)), ...$orderIds);
+    
+    $bindParams = array_merge($orderIds, [$tenantId]);
+    $stmt->bind_param(str_repeat('i', count($orderIds)) . 'i', ...$bindParams);
     $stmt->execute();
     $orders = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
     $stmt->close();
@@ -150,12 +189,7 @@ try {
         throw new Exception('No valid pending orders found');
     }
 
-    // Verify all orders belong to the same tenant as the courier
-    foreach ($orders as $order) {
-        if ($order['tenant_id'] != $courierTenantId) {
-            throw new Exception("Order {$order['order_id']} belongs to tenant {$order['tenant_id']}, but courier belongs to tenant {$courierTenantId}");
-        }
-    }
+
 
     // Prepare API payload with correct field names
     $payload = [];
@@ -190,10 +224,12 @@ try {
     
     if (!$apiResult['success']) {
         error_log("Transexpress API Error: " . $apiResult['message']);
+        $errorMsg = $apiResult['message'];
         if (isset($apiResult['raw_response'])) {
             error_log("Raw Response: " . $apiResult['raw_response']);
+            $errorMsg .= " | Details: " . $apiResult['raw_response'];
         }
-        throw new Exception($apiResult['message']);
+        throw new Exception($errorMsg);
     }
 
     // Extract tracking numbers from response

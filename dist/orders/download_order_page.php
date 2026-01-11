@@ -22,6 +22,12 @@ if (!isset($_GET['id']) || empty($_GET['id'])) {
 $order_id = $_GET['id'];
 $show_payment_details = isset($_GET['show_payment']) && $_GET['show_payment'] === 'true';
 
+// Access Control Variables
+$is_main_admin = isset($_SESSION['is_main_admin']) ? (int)$_SESSION['is_main_admin'] : 0;
+$role_id = isset($_SESSION['role_id']) ? (int)$_SESSION['role_id'] : 0;
+$session_tenant_id = isset($_SESSION['tenant_id']) ? (int)$_SESSION['tenant_id'] : 0;
+$logged_user_id = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
+
 // ==========================================
 // ✅ FIXED QUERY: Get data from order_header FIRST, fallback to customers table
 // Priority: order_header fields > customers table fields
@@ -74,6 +80,25 @@ $order_query = "SELECT
             LEFT JOIN users u ON oh.user_id = u.id
             WHERE oh.order_id = ?";
             
+// Add Access Control Clauses
+$params = [$order_id];
+$types = "i";
+
+if ($is_main_admin === 1 && $role_id === 1) {
+    // Main Admin: No extra restrictions
+} elseif ($role_id === 1 && $is_main_admin === 0) {
+    // Tenant Admin: Restrict to tenant
+    $order_query .= " AND oh.tenant_id = ?";
+    $params[] = $session_tenant_id;
+    $types .= "i";
+} else {
+    // Regular User: Restrict to tenant AND assigned user
+    $order_query .= " AND oh.tenant_id = ? AND oh.user_id = ?";
+    $params[] = $session_tenant_id;
+    $params[] = $logged_user_id;
+    $types .= "ii";
+}
+
 $stmt = $conn->prepare($order_query);
 
 // Add error checking for prepare statement
@@ -81,12 +106,12 @@ if (!$stmt) {
     die("Prepare failed: " . $conn->error);
 }
 
-$stmt->bind_param("i", $order_id);
+$stmt->bind_param($types, ...$params);
 $stmt->execute();
 $result = $stmt->get_result();
 
 if ($result->num_rows === 0) {
-    die("Order not found");
+    die("Order not found or access denied.");
 }
 
 $order = $result->fetch_assoc();
@@ -162,8 +187,17 @@ if (isset($order['order_pay_status']) && !empty($order['order_pay_status'])) {
 
 // Fetch company information from branding table (UPDATED TO INCLUDE LOGO)
 // Fetch company information from branding table (UPDATED TO ALWAYS USE DB LOGO)
-$branding_query = "SELECT company_name, address, hotline, email, logo_url FROM branding WHERE active = 1 LIMIT 1";
+// Fetch company information from branding table (UPDATED TO ALWAYS USE DB LOGO)
+// Try to get tenant-specific branding first
+$order_tenant_id = isset($order['tenant_id']) ? (int)$order['tenant_id'] : 0;
+$branding_query = "SELECT company_name, address, hotline, email, logo_url FROM branding WHERE tenant_id = $order_tenant_id AND active = 1 LIMIT 1";
 $branding_result = $conn->query($branding_query);
+
+// Fallback to general branding if no specific tenant branding found
+if (!$branding_result || $branding_result->num_rows === 0) {
+    $branding_query = "SELECT company_name, address, hotline, email, logo_url FROM branding WHERE active = 1 LIMIT 1";
+    $branding_result = $conn->query($branding_query);
+}
 
 if ($branding_result && $branding_result->num_rows > 0) {
     $company = $branding_result->fetch_assoc();
@@ -603,25 +637,25 @@ error_log("  - Data Source: " . (empty($order['full_name']) ? 'customers table (
             </div>
         </div>
 
-       <table class="product-table">
-    <thead>
-        <tr>
-            <th width="5%">#</th>
+        <table class="product-table">
+            <thead>
+                <tr>
+                    <th width="5%">#</th>
             <th width="<?php echo $has_any_discount ? '25%' : '30%'; ?>">PRODUCT</th>
             <th width="<?php echo $has_any_discount ? '25%' : '30%'; ?>">DESCRIPTION</th>
             <th width="8%" style="text-align: center;">QTY</th>
             <th width="12%" style="text-align: right;">UNIT PRICE</th>
-            <?php if ($has_any_discount): ?>
+                    <?php if ($has_any_discount): ?>
                 <th width="12%" style="text-align: right;">DISCOUNT</th>
-            <?php endif; ?>
+                    <?php endif; ?>
             <th width="13%" style="text-align: right;">TOTAL</th>
-        </tr>
-    </thead>
-    <tbody>
-        <?php 
-        $i = 1;
-        if (count($items) > 0):
-            foreach ($items as $item):
+                </tr>
+            </thead>
+            <tbody>
+                <?php 
+                $i = 1;
+                if (count($items) > 0):
+                    foreach ($items as $item):
                 // Get quantity from database
                 $quantity = isset($item['quantity']) ? intval($item['quantity']) : 1;
                 $unit_price = isset($item['unit_price']) ? floatval($item['unit_price']) : 0;
@@ -630,32 +664,32 @@ error_log("  - Data Source: " . (empty($order['full_name']) ? 'customers table (
                 
                 // Calculate total before discount for display
                 $total_before_discount = $unit_price * $quantity;
-        ?>
-                <tr>
-                    <td><?php echo $i++; ?></td>
-                    <td><?php echo htmlspecialchars($item['product_name']); ?></td>
-                    <td><?php echo htmlspecialchars($item['product_description']); ?></td>
+                ?>
+                        <tr>
+                            <td><?php echo $i++; ?></td>
+                            <td><?php echo htmlspecialchars($item['product_name']); ?></td>
+                            <td><?php echo htmlspecialchars($item['product_description']); ?></td>
                     <td style="text-align: center; font-weight: 600;">
                         <?php echo $quantity; ?>
                     </td>
                     <td style="text-align: right;">
                         <?php echo $currencySymbol . ' ' . number_format($unit_price, 2); ?>
                     </td>
-                    <?php if ($has_any_discount): ?>
-                        <td style="text-align: right;">
-                            <?php 
-                            if ($item_discount > 0) {
+                            <?php if ($has_any_discount): ?>
+                            <td style="text-align: right;">
+                                <?php 
+                                if ($item_discount > 0) {
                                 echo $currencySymbol . ' ' . number_format($item_discount, 2);
-                            } else {
+                                } else {
                                 echo '-';
-                            }
-                            ?>
+                                }
+                                ?>
                         </td>
                     <?php endif; ?>
                     <td style="text-align: right; font-weight: 600;">
                         <?php echo $currencySymbol . ' ' . number_format($total_price, 2); ?>
-                    </td>
-                </tr>
+                            </td>
+                        </tr>
                     <?php endforeach;
                 else: ?>
                     <tr>
@@ -663,43 +697,43 @@ error_log("  - Data Source: " . (empty($order['full_name']) ? 'customers table (
                     </tr>
                 <?php endif; ?>
 
-               <tr class="total-row">
+                <tr class="total-row">
             <td colspan="<?php echo $has_any_discount ? '6' : '5'; ?>" style="text-align: right; border-right: none;">Sub Total :</td>
-            <td class="total-value">
-                <?php echo $currencySymbol . ' ' . number_format($subtotal_before_discounts, 2); ?>
-            </td>
-        </tr>
+                    <td class="total-value">
+                        <?php echo $currencySymbol . ' ' . number_format($subtotal_before_discounts, 2); ?>
+                    </td>
+                </tr>
 
-        <?php if ($has_any_discount): ?>
-            <tr class="total-row">
+                <?php if ($has_any_discount): ?>
+                    <tr class="total-row">
                 <td colspan="6" style="text-align: right; border-right: none;">Total Discounts :</td>
-                <td class="total-value">
-                    <?php echo $currencySymbol . ' ' . number_format($total_item_discounts, 2); ?>
-                </td>
-            </tr>
-        <?php endif; ?>
+                        <td class="total-value">
+                            <?php echo $currencySymbol . ' ' . number_format($total_item_discounts, 2); ?>
+                        </td>
+                    </tr>
+                <?php endif; ?>
 
-        <?php if ($delivery_fee > 0): ?>
-            <tr class="total-row delivery-fee-row">
+                <?php if ($delivery_fee > 0): ?>
+                    <tr class="total-row delivery-fee-row">
                 <td colspan="<?php echo $has_any_discount ? '6' : '5'; ?>" style="text-align: right; border-right: none;">Delivery Fee :</td>
-                <td class="total-value">
-                    <?php echo $currencySymbol . ' ' . number_format($delivery_fee, 2); ?>
-                </td>
-            </tr>
-        <?php endif; ?>
+                        <td class="total-value">
+                            <?php echo $currencySymbol . ' ' . number_format($delivery_fee, 2); ?>
+                        </td>
+                    </tr>
+                <?php endif; ?>
 
-        <tr class="total-row">
+                <tr class="total-row">
             <td colspan="<?php echo $has_any_discount ? '6' : '5'; ?>" style="text-align: right; border-right: none;"><strong> Total :</strong></td>
-            <td class="total-value">
+                    <td class="total-value">
                 <strong>
-                <?php 
-                // Calculate final total ensuring delivery fee is included
-                $final_total = $subtotal_before_discounts - $total_item_discounts + $delivery_fee;
-                echo $currencySymbol . ' ' . number_format($final_total, 2); 
-                ?>
+                        <?php 
+                        // Calculate final total ensuring delivery fee is included
+                        $final_total = $subtotal_before_discounts - $total_item_discounts + $delivery_fee;
+                        echo $currencySymbol . ' ' . number_format($final_total, 2); 
+                        ?>
                 </strong>
-            </td>
-        </tr>
+                    </td>
+                </tr>
             </tbody>
         </table>
 
