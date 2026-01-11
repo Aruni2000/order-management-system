@@ -14,38 +14,22 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
 // Include the database connection file
 include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/connection/db_connection.php');
 
-// =============================================================
-//  BRANDING DATA - GET FROM DB (INCLUDING LOGO FROM DATABASE)
-// =============================================================
-$branding_sql = "SELECT * FROM branding WHERE active = 1 LIMIT 1";
-$branding_result = $conn->query($branding_sql);
-$branding = $branding_result->fetch_assoc();
 
-// Branding variables with safe fallbacks
-$company_name = !empty($branding['company_name']) ? $branding['company_name'] : "";
-$company_address = !empty($branding['address']) ? $branding['address'] : "";
-$company_email = !empty($branding['email']) ? $branding['email'] : "";
-$company_hotline = !empty($branding['hotline']) ? $branding['hotline'] : "";
+// Access Control Variables
+$is_main_admin = isset($_SESSION['is_main_admin']) ? (int)$_SESSION['is_main_admin'] : 0;
+$role_id = isset($_SESSION['role_id']) ? (int)$_SESSION['role_id'] : 0;
+$session_tenant_id = isset($_SESSION['tenant_id']) ? (int)$_SESSION['tenant_id'] : 0;
+$logged_user_id = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
 
-//  GET LOGO FROM DATABASE (NOT HARDCODED)
-if (!empty($branding['logo_url'])) {
-    // Check if it's a full URL (starts with http/https)
-    if (strpos($branding['logo_url'], 'http') === 0) {
-        $company_logo = $branding['logo_url'];
-    } 
-    // Check if it already has the full path
-    else if (strpos($branding['logo_url'], '/order_management/') === 0) {
-        $company_logo = $branding['logo_url'];
-    }
-    // Otherwise, it's a relative path from dist folder
-    else {
-        $company_logo = '/order_management/dist/' . ltrim($branding['logo_url'], '/');
-    }
-} else {
-    // Fallback if no logo in database
-    $company_logo = '';
-    error_log("WARNING: No logo_url found in branding table");
-}
+// =============================================================
+//  BRANDING DATA - MOVED BELOW TO USE ORDER TENANT ID
+// =============================================================
+// Placeholder: Branding logic is now executed after fetching the order to support multi-tenancy.
+$company_name = "";
+$company_address = "";
+$company_email = "";
+$company_hotline = "";
+$company_logo = "";
 
 
 // =============================================================
@@ -101,16 +85,80 @@ $order_query = "
         
     WHERE o.order_id = ?";
 
+// Add Access Control Clauses
+$params = [$order_id];
+$types = "i";
+
+if ($is_main_admin === 1 && $role_id === 1) {
+    // Main Admin: No extra restrictions
+} elseif ($role_id === 1 && $is_main_admin === 0) {
+    // Tenant Admin: Restrict to tenant
+    $order_query .= " AND o.tenant_id = ?";
+    $params[] = $session_tenant_id;
+    $types .= "i";
+} else {
+    // Regular User: Restrict to tenant AND assigned user
+    $order_query .= " AND o.tenant_id = ? AND o.user_id = ?";
+    $params[] = $session_tenant_id;
+    $params[] = $logged_user_id;
+    $types .= "ii";
+}
+
 $stmt = $conn->prepare($order_query);
-$stmt->bind_param("i", $order_id);
+
+if (!$stmt) {
+    die("Prepare failed: " . $conn->error);
+}
+
+$stmt->bind_param($types, ...$params);
 $stmt->execute();
 $result = $stmt->get_result();
 
 if ($result->num_rows === 0) {
-    die("Order not found");
+    die("Order not found or access denied.");
 }
 
 $order = $result->fetch_assoc();
+
+// =============================================================
+//  BRANDING DATA - FETCH BASED ON TENANT ID
+// =============================================================
+$order_tenant_id = isset($order['tenant_id']) ? (int)$order['tenant_id'] : 0;
+$branding_sql = "SELECT * FROM branding WHERE tenant_id = $order_tenant_id AND active = 1 LIMIT 1";
+$branding_result = $conn->query($branding_sql);
+
+// Fallback to global active branding if tenant specific not found
+if (!$branding_result || $branding_result->num_rows === 0) {
+    $branding_sql = "SELECT * FROM branding WHERE active = 1 LIMIT 1";
+    $branding_result = $conn->query($branding_sql);
+}
+
+$branding = $branding_result->fetch_assoc();
+
+// Branding variables with safe fallbacks
+$company_name = !empty($branding['company_name']) ? $branding['company_name'] : "";
+$company_address = !empty($branding['address']) ? $branding['address'] : "";
+$company_email = !empty($branding['email']) ? $branding['email'] : "";
+$company_hotline = !empty($branding['hotline']) ? $branding['hotline'] : "";
+
+//  GET LOGO FROM DATABASE (NOT HARDCODED)
+if (!empty($branding['logo_url'])) {
+    // Check if it's a full URL (starts with http/https)
+    if (strpos($branding['logo_url'], 'http') === 0) {
+        $company_logo = $branding['logo_url'];
+    } 
+    // Check if it already has the full path
+    else if (strpos($branding['logo_url'], '/order_management/') === 0) {
+        $company_logo = $branding['logo_url'];
+    }
+    // Otherwise, it's a relative path from dist folder
+    else {
+        $company_logo = '/order_management/dist/' . ltrim($branding['logo_url'], '/');
+    }
+} else {
+    // Fallback if no logo in database
+    $company_logo = '';
+}
 
 
 // =============================================================

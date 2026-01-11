@@ -164,10 +164,18 @@ function validateRowData($rowData, $rowNumber, $courierId, $tenantId, $conn) {
     return ['errors' => $errors, 'clean_data' => $cleanData];
 }
 
-// Function to get all tenants
-function getTenants($conn) {
+// Function to get tenants based on permission
+function getTenants($conn, $is_main_admin, $role_id, $session_tenant_id) {
     $tenants = [];
-    $sql = "SELECT tenant_id, company_name FROM tenants WHERE status = 'active' ORDER BY company_name";
+    
+    if ($is_main_admin === 1 && $role_id === 1) {
+        // Main Admin gets all active tenants
+        $sql = "SELECT tenant_id, company_name FROM tenants WHERE status = 'active' ORDER BY company_name";
+    } else {
+        // Others get only their assigned tenant
+        $sql = "SELECT tenant_id, company_name FROM tenants WHERE tenant_id = $session_tenant_id AND status = 'active' LIMIT 1";
+    }
+    
     $result = $conn->query($sql);
     
     if ($result && $result->num_rows > 0) {
@@ -187,14 +195,32 @@ $errors = [];
 $warnings = [];
 $rowNumber = 2;
 
-// Get all tenants for dropdown
-$tenants = getTenants($conn);
+// Access Control Variables
+$is_main_admin = isset($_SESSION['is_main_admin']) ? (int)$_SESSION['is_main_admin'] : 0;
+$role_id = isset($_SESSION['role_id']) ? (int)$_SESSION['role_id'] : 0;
+$session_tenant_id = isset($_SESSION['tenant_id']) ? (int)$_SESSION['tenant_id'] : 0;
+
+// Get tenants based on permissions
+$tenants = getTenants($conn, $is_main_admin, $role_id, $session_tenant_id);
+
+// If user is restricted to one tenant, pre-select it
+$restricted_tenant_id = 0;
+if (!($is_main_admin === 1 && $role_id === 1) && !empty($tenants)) {
+    $restricted_tenant_id = $tenants[0]['tenant_id'];
+}
 
 // Process CSV file if form is submitted
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file']) && isset($_POST['tenant_id']) && isset($_POST['courier_id'])) {
     
     // Validate tenant selection
     $selectedTenantId = intval($_POST['tenant_id']);
+    
+    // Security: Enforce tenant restriction on backend
+    if ($restricted_tenant_id > 0 && $selectedTenantId !== $restricted_tenant_id) {
+        // Force the restricted tenant ID if they try to bypass
+        $selectedTenantId = $restricted_tenant_id;
+    }
+
     if ($selectedTenantId <= 0) {
         $_SESSION['import_error'] = 'Please select a valid tenant.';
         ob_end_clean();
@@ -578,14 +604,26 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                         <div class="form-container">
                             <div class="tenant-section">
                                 <label for="tenant_id" class="form-label">Select Tenant <span class="required">*</span></label>
-                                <select id="tenant_id" name="tenant_id" class="form-select" required>
-                                    <option value="">Select Tenant</option>
-                                    <?php foreach ($tenants as $tenant): ?>
-                                        <option value="<?php echo $tenant['tenant_id']; ?>">
-                                            <?php echo htmlspecialchars($tenant['company_name']); ?>
-                                        </option>
-                                    <?php endforeach; ?>
-                                </select>
+                                <?php if ($restricted_tenant_id > 0): ?>
+                                    <!-- Restricted View: Read-only dropdown or hidden input -->
+                                    <select id="tenant_id" name="tenant_id" class="form-select" readonly style="pointer-events: none; background-color: #e9ecef;">
+                                        <?php foreach ($tenants as $tenant): ?>
+                                            <option value="<?php echo $tenant['tenant_id']; ?>" selected>
+                                                <?php echo htmlspecialchars($tenant['company_name']); ?>
+                                            </option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                <?php else: ?>
+                                    <!-- Main Admin View: Full Selection -->
+                                    <select id="tenant_id" name="tenant_id" class="form-select" required>
+                                        <option value="">Select Tenant</option>
+                                        <?php foreach ($tenants as $tenant): ?>
+                                            <option value="<?php echo $tenant['tenant_id']; ?>">
+                                                <?php echo htmlspecialchars($tenant['company_name']); ?>
+                                            </option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                <?php endif; ?>
                             </div>
                             
                             <div class="courier-section">
@@ -658,6 +696,15 @@ document.getElementById('tenant_id').addEventListener('change', function() {
             });
     } else {
         courierSelect.innerHTML = '<option value="">Select Tenant First</option>';
+    }
+});
+
+// Auto-load couriers if tenant is pre-selected (Restricted User)
+document.addEventListener('DOMContentLoaded', function() {
+    const tenantSelect = document.getElementById('tenant_id');
+    if (tenantSelect.value) {
+        // Trigger manual change event to load couriers
+        tenantSelect.dispatchEvent(new Event('change'));
     }
 });
         
