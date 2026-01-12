@@ -14,6 +14,30 @@ ini_set('display_errors', 0);
 // Include the database connection file
 include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/connection/db_connection.php');
 
+// NEW: Session recovery logic
+$user_id = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
+
+if ($user_id == 0) {
+    // Try to recover user_id from session identifier if it's missing but we have a username/email
+    $session_identifier = isset($_SESSION['username']) ? $_SESSION['username'] : 
+                         (isset($_SESSION['email']) ? $_SESSION['email'] : '');
+    
+    if ($session_identifier) {
+        $userQuery = "SELECT id FROM users WHERE email = ? OR name = ? LIMIT 1";
+        $stmt = $conn->prepare($userQuery);
+        $stmt->bind_param("ss", $session_identifier, $session_identifier);
+        $stmt->execute();
+        $userResult = $stmt->get_result();
+        
+        if ($userResult && $userResult->num_rows > 0) {
+            $userData = $userResult->fetch_assoc();
+            $user_id = (int)$userData['id'];
+            $_SESSION['user_id'] = $user_id;
+        }
+        $stmt->close();
+    }
+}
+
 // Function to log user actions
 function logUserAction($conn, $user_id, $action_type, $inquiry_id, $details = null) {
     $stmt = $conn->prepare("INSERT INTO user_logs (user_id, action_type, inquiry_id, details) VALUES (?, ?, ?, ?)");
@@ -145,11 +169,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         // Begin transaction
         $conn->begin_transaction();
         
-      // ==========================================
+        // ==========================================
         // CRITICAL FIX: Get tenant_id from POST (not session)
         // This ensures we use the selected tenant from the form
         // ==========================================
-        $user_id = $_SESSION['user_id'] ?? 1;
 
         // Get tenant_id from POST data (this is what user selected in the form)
         $tenant_id = isset($_POST['tenant_id']) ? intval($_POST['tenant_id']) : ($_SESSION['tenant_id'] ?? 1);
