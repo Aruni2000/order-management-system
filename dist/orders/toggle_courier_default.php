@@ -38,15 +38,18 @@ if (!in_array($is_default, [0, 1, 2, 3])) {
     exit();
 }
 
-// Get user ID from session for logging
+// Get user ID and permissions from session
 $user_id = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : null;
+$is_main_admin = isset($_SESSION['is_main_admin']) ? (int)$_SESSION['is_main_admin'] : 0;
+$role_id = isset($_SESSION['role_id']) ? (int)$_SESSION['role_id'] : 0;
+$session_tenant_id = isset($_SESSION['tenant_id']) ? (int)$_SESSION['tenant_id'] : 0;
 
 // Start transaction
 $conn->begin_transaction();
 
 try {
-    // First, verify the courier exists and get all relevant data including API flags
-    $checkCourierSql = "SELECT co_id, courier_id, courier_name, is_default, has_api_new, has_api_existing FROM couriers WHERE co_id = ?";
+    // First, verify the courier exists and get all relevant data including API flags and tenant_id
+    $checkCourierSql = "SELECT co_id, courier_id, courier_name, is_default, has_api_new, has_api_existing, tenant_id FROM couriers WHERE co_id = ?";
     $checkStmt = $conn->prepare($checkCourierSql);
     $checkStmt->bind_param("i", $co_id);
     $checkStmt->execute();
@@ -62,7 +65,17 @@ try {
     $courier_id = $courierData['courier_id'];
     $has_api_new = (int)$courierData['has_api_new'];
     $has_api_existing = (int)$courierData['has_api_existing'];
+    $courier_tenant_id = (int)$courierData['tenant_id'];
     $checkStmt->close();
+    
+    // ✅ NEW: Check tenant access permissions
+    // Main admins can manage any courier, regular users only their own tenant
+    if (!($is_main_admin === 1 && $role_id === 1)) {
+        // Regular user - must match tenant
+        if ($courier_tenant_id !== $session_tenant_id) {
+            throw new Exception('Access denied: You can only manage couriers from your own tenant');
+        }
+    }
     
     // Check if courier already has the requested default status
     if ($current_default == $is_default) {
@@ -82,11 +95,28 @@ try {
         }
     }
     
-    // Check if trying to set an active status (1, 2, or 3) when another courier already has one
+    // ✅ FIXED: Check if trying to set an active status (1, 2, or 3) when another courier already has one
+    // Now filters by tenant for regular users, but allows main admins to manage across tenants
     if (in_array($is_default, [1, 2, 3])) {
-        $checkActiveCourierSql = "SELECT co_id, courier_name, is_default FROM couriers WHERE co_id != ? AND is_default IN (1, 2, 3)";
-        $checkActiveStmt = $conn->prepare($checkActiveCourierSql);
-        $checkActiveStmt->bind_param("i", $co_id);
+        // Build the check query based on user permissions
+        if ($is_main_admin === 1 && $role_id === 1) {
+            // Main admin: Only check within the SAME tenant as the courier being updated
+            $checkActiveCourierSql = "SELECT co_id, courier_name, is_default FROM couriers 
+                                      WHERE co_id != ? 
+                                      AND tenant_id = ? 
+                                      AND is_default IN (1, 2, 3)";
+            $checkActiveStmt = $conn->prepare($checkActiveCourierSql);
+            $checkActiveStmt->bind_param("ii", $co_id, $courier_tenant_id);
+        } else {
+            // Regular user: Check within their own tenant
+            $checkActiveCourierSql = "SELECT co_id, courier_name, is_default FROM couriers 
+                                      WHERE co_id != ? 
+                                      AND tenant_id = ? 
+                                      AND is_default IN (1, 2, 3)";
+            $checkActiveStmt = $conn->prepare($checkActiveCourierSql);
+            $checkActiveStmt->bind_param("ii", $co_id, $session_tenant_id);
+        }
+        
         $checkActiveStmt->execute();
         $activeResult = $checkActiveStmt->get_result();
         
