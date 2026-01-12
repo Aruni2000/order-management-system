@@ -24,6 +24,8 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/connection/db_connec
 $is_main_admin = $_SESSION['is_main_admin'];
 $teanent_id = $_SESSION['tenant_id'];
 
+$_SESSION['user_id'] = 4;
+
 // NEW: Get current user's role information
 $current_user_id = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
 $current_user_role = isset($_SESSION['role_id']) ? (int)$_SESSION['role_id'] : 0;
@@ -126,14 +128,14 @@ $sql = "SELECT i.*,
         LEFT JOIN users u2 ON i.user_id = u2.id
         LEFT JOIN customers c ON i.customer_id = c.customer_id
         LEFT JOIN tenants t ON i.tenant_id = t.tenant_id
-        WHERE i.interface IN ('individual', 'leads')";
+        WHERE i.interface IN ('individual', 'leads') $roleBasedCondition AND i.status NOT IN ('pending', 'cancel')";
 
 // Add tenant filter for non-main admin users
 if ($is_main_admin == 1){
 // Add ordering and pagination
 
 } else {
-    $sql .= " i.order_id DESC LIMIT $limit OFFSET $offset";
+    $sql .= " AND i.tenant_id = $teanent_id ";
 }
 
 // Build search conditions
@@ -227,7 +229,6 @@ if (!empty($searchConditions)) {
 
 // Add ordering and pagination
 $sql .= " ORDER BY i.updated_at DESC, i.order_id DESC LIMIT $limit OFFSET $offset";
-
 
 // Execute queries
 $countResult = $conn->query($countSql);

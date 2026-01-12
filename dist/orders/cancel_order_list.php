@@ -227,7 +227,7 @@ if ($is_main_admin == 1){
 } else {
 
     // Add ordering and pagination
-    $sql .= "  AND i.tenant_id = $teanent_id ORDER BY i.order_id DESC LIMIT $limit OFFSET $offset";
+    $sql .= "  AND i.tenant_id = $teanent_id";
 }
 
 // Build search conditions
