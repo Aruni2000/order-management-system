@@ -715,6 +715,80 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
         .info-box li {
             margin-bottom: 0.25rem;
         }
-    </style>
+        .info-box {
+            background-color: #e8f4fd;
+            border: 1px solid #bee5eb;
+            border-radius: 0.375rem;
+            padding: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        .info-box h4 {
+            color: #0c5460;
+            margin-bottom: 0.5rem;
+        }
+        
+        .info-box p {
+            color: #0c5460;
+            margin-bottom: 0.5rem;
+        }
+        
+        .info-box ul {
+            color: #0c5460;
+            margin-left: 1.5rem;
+        }
+        
+        .info-box li {
+            margin-bottom: 0.25rem;
+        }
+    .instruction-box {
+        background-color: #e8f4fd;
+        border: 1px solid #bee5eb;
+        border-radius: 0.375rem;
+        padding: 1rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .instruction-box h4 {
+        color: #0c5460;
+        margin-bottom: 0.75rem;
+        font-size: 1.25rem;
+        font-weight: bold;
+    }
+
+    .instruction-box h5 {
+        color: #0c5460;
+        margin-top: 1rem;
+        margin-bottom: 0.5rem;
+        font-size: 1rem;
+        font-weight: bold;
+    }
+
+    .instruction-box p,
+    .instruction-box ul {
+        color: #0c5460;
+        margin-bottom: 0.5rem;
+    }
+
+    .instruction-box ul {
+        list-style-type: disc;
+        margin-left: 1.5rem;
+        padding-left: 0;
+    }
+
+    .instruction-box li {
+        margin-bottom: 0.25rem;
+    }
+
+    .instruction-box .important-notes,
+    .instruction-box .quick-tips {
+        margin-top: 1.5rem;
+        padding-top: 1rem;
+        border-top: 1px solid #bee5eb;
+    }
+    .file-upload-section .customer-form-group {
+        margin-bottom: 1.5rem;
+    }
+</style>
 </body>
 </html>
