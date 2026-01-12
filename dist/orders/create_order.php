@@ -909,8 +909,11 @@ const PhoneValidator = {
     checkPhoneExists: async (phone, currentCustomerId = 0) => {
         if (!phone || phone.length !== 10) return { exists: false };
         
+        // Get tenant_id from hidden field
+        const tenantId = document.querySelector('input[name="tenant_id"]').value;
+        
         try {
-            const response = await fetch(`check_phone.php?phone=${encodeURIComponent(phone)}&customer_id=${currentCustomerId}`);
+            const response = await fetch(`check_phone.php?phone=${encodeURIComponent(phone)}&customer_id=${currentCustomerId}&tenant_id=${tenantId}`);
             const data = await response.json();
             return data;
         } catch (error) {
@@ -973,17 +976,15 @@ const PhoneValidator = {
 const EmailValidator = {
     timeout: null,
 
-    isValidFormat: (email) => {
-        const emailRegex = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-        return emailRegex.test(email);
-    },
-
     checkEmailExists: async (email, customerId = 0) => {
         if (!EmailValidator.isValidFormat(email)) return { exists: false };
 
+        // Get tenant_id from hidden field
+        const tenantId = document.querySelector('input[name="tenant_id"]').value;
+
         try {
             const response = await fetch(
-                `check_email.php?email=${encodeURIComponent(email)}&customer_id=${customerId}`
+                `check_email.php?email=${encodeURIComponent(email)}&customer_id=${customerId}&tenant_id=${tenantId}`
             );
             return await response.json();
         } catch (err) {
@@ -993,9 +994,12 @@ const EmailValidator = {
     },
 
     getCustomerByEmail: async (email) => {
+        // Get tenant_id from hidden field
+        const tenantId = document.querySelector('input[name="tenant_id"]').value;
+        
         try {
             const response = await fetch(
-                `get_customer_by_email.php?email=${encodeURIComponent(email)}`
+                `get_customer_by_email.php?email=${encodeURIComponent(email)}&tenant_id=${tenantId}`
             );
             return await response.json();
         } catch (err) {

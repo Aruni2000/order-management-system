@@ -12,19 +12,26 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
 // Include database connection
 include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/connection/db_connection.php');
 
-header('Content-Type: application/json'); // Set proper JSON header
+header('Content-Type: application/json');
 
 // Get email from query string
 $email = isset($_GET['email']) ? trim($_GET['email']) : '';
-$tenant_id = $_SESSION['tenant_id'] ?? 1; // ADDED: Get tenant_id from session
 
-// Validate email format
+// UPDATED: Get tenant_id from GET parameter (for admin switching) or session
+$tenant_id = isset($_GET['tenant_id']) ? intval($_GET['tenant_id']) : ($_SESSION['tenant_id'] ?? 0);
+
+// Validate email format and tenant_id
 if (empty($email) || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
     echo json_encode(['exists' => false, 'error' => 'Invalid email format']);
     exit();
 }
 
-// UPDATED: Query to get customer by email within the same tenant
+if ($tenant_id === 0) {
+    echo json_encode(['exists' => false, 'error' => 'Invalid tenant']);
+    exit();
+}
+
+// Query to get customer by email within the same tenant
 $sql = "SELECT 
             c.customer_id, 
             c.name, 
@@ -49,7 +56,7 @@ if (!$stmt) {
     exit();
 }
 
-$stmt->bind_param("si", $email, $tenant_id); // UPDATED: Added tenant_id parameter
+$stmt->bind_param("si", $email, $tenant_id);
 $stmt->execute();
 $result = $stmt->get_result();
 
