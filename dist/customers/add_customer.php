@@ -275,7 +275,7 @@ $is_main_admin = $_SESSION['is_main_admin'];
             <div class="page-header">
                 <div class="page-block">
                     <div class="page-header-title">
-                        <h5 class="mb-0 font-medium">Add New Customer - <?php echo $is_main_admin;?></h5>
+                        <h5 class="mb-0 font-medium">Add New Customer <!-- "-" <?php echo $is_main_admin;?>--></h5>
                     </div>
                 </div>
             </div>
@@ -302,8 +302,6 @@ $is_main_admin = $_SESSION['is_main_admin'];
                                             ?>
                                     <select class="form-select" id="teanetID" name="teanetID" required>
                                         <option value="0">Select Tenent User</option>
-                                        <option value=""></option>
-
                                         <?php while ($row = $result_tenant->fetch_assoc()) {?>
                                         <option value="<?php echo $row['tenant_id']; ?>">
                                             <?php echo $row['company_name']; ?>
@@ -373,11 +371,7 @@ $is_main_admin = $_SESSION['is_main_admin'];
                                     <div class="error-feedback" id="status-error"></div>
                                 </div>
                             </div>
-                        </div>
-                    </div>
-
-                    <div class="form-section address-section">
-                        <div class="section-content">
+                        
                             <div class="form-row">
                                 <div class="customer-form-group">
                                     <label for="address_line1" class="form-label">

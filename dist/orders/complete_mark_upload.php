@@ -1,4 +1,4 @@
-F<?php
+<?php
 // Start output buffering to prevent header issues
 ob_start();
 
@@ -18,7 +18,7 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/connection/db_connec
 // Check if user is main admin
 $is_main_admin = $_SESSION['is_main_admin'];
 $teanent_id = $_SESSION['tenant_id'];
-$co_id =$_POST['co_id'];
+
 
 //function for tenant name
 function TenantName($tenant_id) {
@@ -77,7 +77,8 @@ function validateTrackingNumber($trackingNumber) {
 }
 
 // Function to check if tracking number exists in order_header table with delivery status
-function validateTrackingInDB($trackingNumber, $conn) {
+function validateTrackingInDB($trackingNumber, $co_id, $conn) {
+
     if (empty($trackingNumber)) return ['valid' => false, 'message' => 'Tracking number is required'];
     
     // First validate format
@@ -89,7 +90,7 @@ function validateTrackingInDB($trackingNumber, $conn) {
     $cleanTracking = $formatValidation['clean_tracking'];
     
     // Check if tracking number exists in database with delivery status
-    $sql = "SELECT order_id, status, total_amount FROM order_header WHERE tracking_number = ? AND co_id = ?  LIMIT 1";
+    $sql = "SELECT order_id, status, total_amount FROM order_header WHERE tracking_number = ? AND co_id = ? LIMIT 1";
 
     $stmt = $conn->prepare($sql);
     if (!$stmt) {
@@ -99,7 +100,8 @@ function validateTrackingInDB($trackingNumber, $conn) {
     $stmt->bind_param("si", $cleanTracking, $co_id);
     $stmt->execute();
     $res = $stmt->get_result();
-    
+
+
     if ($res && $res->num_rows > 0) {
         $row = $res->fetch_assoc();
         $stmt->close();
@@ -276,7 +278,7 @@ function validateRowData($rowData, $rowNumber, $conn) {
     $cleanData = [];
     
     // Validate Tracking Number (Required)
-    $trackingValidation = validateTrackingInDB($rowData['tracking_number'], $conn);
+    $trackingValidation = validateTrackingInDB($rowData['tracking_number'], $rowData['co_id'], $conn);
     if (!$trackingValidation['valid']) {
         $errors[] = "Row $rowNumber: " . $trackingValidation['message'];
     } else {
@@ -453,7 +455,8 @@ if (!$foundTrackingColumn) {
                 
                 // Initialize tracking data
                 $trackingData = [
-                    'tracking_number' => ''
+                    'tracking_number' => '',
+                    'co_id' => isset($_POST['co_id']) ? intval($_POST['co_id']) : 0
                 ];
                 
                 // Map CSV data to fields
