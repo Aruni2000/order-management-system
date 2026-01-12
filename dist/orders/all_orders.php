@@ -125,7 +125,7 @@ $sql = "SELECT i.*,
         FROM order_header i 
         LEFT JOIN payments p ON i.order_id = p.order_id
         LEFT JOIN users u1 ON p.pay_by = u1.id
-        LEFT JOIN users u2 ON i.user_id = u2.id
+        LEFT JOIN users u2 ON i.created_by = u2.id
         LEFT JOIN customers c ON i.customer_id = c.customer_id
         LEFT JOIN tenants t ON i.tenant_id = t.tenant_id
         WHERE i.interface IN ('individual', 'leads')$roleBasedCondition";
