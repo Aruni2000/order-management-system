@@ -916,8 +916,8 @@ function getStatusInfo($is_default) {
             document.getElementById('statusChangeModal').style.display = 'block';
         }
 
-        // ✅ UPDATE: changeCourierStatus function
-// 1. ✅ FIXED: changeCourierStatus function
+        //  UPDATE: changeCourierStatus function
+// 1.  FIXED: changeCourierStatus function
 function changeCourierStatus(coId, newStatus) {
     showLoading('Updating courier status...');
     
@@ -927,7 +927,7 @@ function changeCourierStatus(coId, newStatus) {
             'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-            co_id: coId,  // ✅ Changed from courier_id to co_id
+            co_id: coId,  //  Changed from courier_id to co_id
             is_default: parseInt(newStatus)
         })
     })
@@ -972,11 +972,11 @@ function changeCourierStatus(coId, newStatus) {
 
         // Handle API button click - Check has_api_new OR has_api_existing status first
     // Handle API button click - Check has_api_new OR has_api_existing status first
-function handleApiButtonClick(coId, courierId, courierName, hasApiNew, hasApiExisting) {  // ✅ Added coId parameter
+function handleApiButtonClick(coId, courierId, courierName, hasApiNew, hasApiExisting) {  //  Added coId parameter
     // Allow access if either has_api_new OR has_api_existing is set to 1
     if (hasApiNew == 1 || hasApiExisting == 1) {
         // Proceed with opening API modal - pass coId
-        openApiModal(coId, courierId, courierName);  // ✅ Pass both coId and courierId
+        openApiModal(coId, courierId, courierName);  //  Pass both coId and courierId
     } else {
         // Show access denied modal
         document.getElementById('denied-courier-name').textContent = courierName;
@@ -990,14 +990,14 @@ document.addEventListener('DOMContentLoaded', function() {
     const statusDropdowns = document.querySelectorAll('.courier-status-dropdown');
     statusDropdowns.forEach(dropdown => {
         dropdown.addEventListener('change', function() {
-            const coId = this.getAttribute('data-co-id');  // ✅ This is the primary key
+            const coId = this.getAttribute('data-co-id');  //  This is the primary key
             const courierName = this.getAttribute('data-courier-name');
             const currentStatus = this.getAttribute('data-current-status');
             const newStatus = this.value;
             
             // Only show modal if status actually changed
             if (currentStatus !== newStatus) {
-                openStatusChangeModal(coId, courierName, currentStatus, newStatus);  // ✅ Pass co_id
+                openStatusChangeModal(coId, courierName, currentStatus, newStatus);  //  Pass co_id
             }
         });
     });
@@ -1045,7 +1045,7 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         });
 
-     // 2. ✅ FIXED: openApiModal function
+     // 2.  FIXED: openApiModal function
 function openApiModal(coId, courierId, courierName) {
     const modal = document.getElementById('apiModal');
     const modalTitle = document.getElementById('modalTitle');
@@ -1059,9 +1059,9 @@ function openApiModal(coId, courierId, courierName) {
     const originStateInput = document.getElementById('origin_state_name');
     const saveBtn = document.getElementById('saveApiBtn');
 
-    // ✅ Set co_id (primary key) in the form
+    //  Set co_id (primary key) in the form
     courierIdInput.value = coId;
-    courierIdInput.name = 'co_id';  // ✅ Change the name attribute
+    courierIdInput.name = 'co_id';  //  Change the name attribute
     modalTitle.textContent = `Configure API Settings - ${courierName}`;
 
     modal.classList.add('show');
@@ -1075,11 +1075,11 @@ function openApiModal(coId, courierId, courierName) {
 
     [clientIdInput, apiKeyInput, originCityInput, originStateInput, saveBtn].forEach(el => el.disabled = true);
 
-    // ✅ Fetch existing API data using co_id
+    //  Fetch existing API data using co_id
     fetch('get_courier_api.php', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ co_id: coId })  // ✅ Changed from courier_id to co_id
+        body: JSON.stringify({ co_id: coId })  //  Changed from courier_id to co_id
     })
     .then(res => res.json())
     .then(data => {
@@ -1291,8 +1291,8 @@ function openApiModal(coId, courierId, courierName) {
 
       // Open the modal and populate fields
 function openReturnFeeModal(coId, courierName, currentValue) {
-    document.getElementById("returnFeeCourierId").value = coId;  // ✅ Store co_id
-    document.getElementById("returnFeeCourierId").name = 'co_id';  // ✅ Change name attribute
+    document.getElementById("returnFeeCourierId").value = coId;  //  Store co_id
+    document.getElementById("returnFeeCourierId").name = 'co_id';  //  Change name attribute
     document.getElementById("returnFeeValue").value = currentValue ?? 0;
     document.getElementById("returnFeeModalTitle").innerText = "Set Return Fee - " + courierName;
     document.getElementById("returnFeeModal").style.display = "flex";
@@ -1413,7 +1413,7 @@ function openReturnFeeModal(coId, courierName, currentValue) {
         method: "POST",
         body: formData
     })
-    .then(res => res.json())  // ✅ Changed from .text() to .json()
+    .then(res => res.json())  //  Changed from .text() to .json()
     .then(data => {
         if (data.success) {
             toastManager.success(data.message);
