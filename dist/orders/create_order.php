@@ -429,7 +429,7 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
 <!-- REMOVED THE ELSE BLOCK COMPLETELY -->
 
       <!-- Alert Messages and Courier Status -->
-<div class="alert-container" style="position: absolute; top: 20px; right: 20px; z-index: 9999; max-width: 400px;">
+<div class="alert-container" style="position: absolute; top: 85px; right: 20px; z-index: 1000; max-width: 400px;">
     <?php
     // Display session messages
     if (isset($_SESSION['order_success'])) {

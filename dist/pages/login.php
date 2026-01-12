@@ -201,7 +201,7 @@ $fe_conn->close();
     <title>Login | Order Management Admin Portal</title>
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/head.php'); ?>
 </head>
-<link rel="stylesheet" href="../assets/css/login.css" id="main-style-link" />
+  <link rel="stylesheet" href="../assets/css/login.css" id="main-style-link" />
 
 <body>
     <!-- Loader -->
@@ -231,33 +231,29 @@ $fe_conn->close();
                     <div class="card sm:my-12 w-full shadow-none">
                         <div class="card-body ">
                             <div class="text-center mb-8">
-                                <!--  Branding logo -->
-                                <a href="#"><img src="<?php echo $logo_url; ?>" alt="Company Logo" /></a>
+                                <!-- Branding logo -->
+                                <a href="#"><img src="<?php echo $logo_url; ?>" alt="Company Logo" class="w-40 mx-auto" /></a>
                             </div>
 
                             <h4 class="text-center font-medium mb-4">Login</h4>
 
                             <!-- Error Message -->
                             <?php if (!empty($error_message)): ?>
-                            <div
-                                class="error-message text-red-600 text-center mb-3 p-3 bg-red-50 rounded-md border border-red-200">
-                                <?php echo $error_message; ?>
-                            </div>
+                                <div class="error-message text-red-600 text-center mb-3 p-3 bg-red-50 rounded-md border border-red-200">
+                                    <?php echo $error_message; ?>
+                                </div>
                             <?php endif; ?>
 
                             <!-- Login Form -->
                             <form action="<?php echo htmlspecialchars($_SERVER["PHP_SELF"]); ?>" method="POST">
                                 <div class="mb-3">
-                                    <input type="email" class="form-control" name="email" placeholder="Email Address"
-                                        value="<?php echo isset($_COOKIE['email']) ? $_COOKIE['email'] : ''; ?>"
-                                        required />
+                                    <input type="email" class="form-control" name="email" placeholder="Email Address" 
+                                           value="<?php echo isset($_COOKIE['email']) ? $_COOKIE['email'] : ''; ?>" required />
                                 </div>
                                 <div class="mb-4">
-                                    <div class="password-container relative">
-                                        <input type="password" class="form-control" id="floatingInput1" name="password"
-                                            placeholder="Password" required />
-                                        <span class="password-toggle absolute right-3 top-3 cursor-pointer"
-                                            id="togglePassword">
+                                    <div class="relative flex items-center">
+                                        <input type="password" class="form-control pr-10" id="floatingInput1" name="password" placeholder="Password" required />
+                                        <span class="password-toggle absolute right-0 flex items-center pr-3" id="togglePassword" style="cursor: pointer;">
                                             <i class="fas fa-eye"></i>
                                         </span>
                                     </div>
@@ -265,8 +261,8 @@ $fe_conn->close();
 
                                 <div class="flex mt-1 justify-between items-center flex-wrap">
                                     <div class="form-check">
-                                        <input class="form-check-input input-primary" type="checkbox" name="remember"
-                                            <?php echo isset($_COOKIE['email']) ? 'checked' : ''; ?> />
+                                        <input class="form-check-input input-primary" type="checkbox" name="remember" style="cursor: pointer;" 
+                                               <?php echo isset($_COOKIE['email']) ? 'checked' : ''; ?> />
                                         <label class="form-check-label text-muted">Remember me?</label>
                                     </div>
                                 </div>
