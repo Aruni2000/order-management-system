@@ -76,7 +76,7 @@ $order_query = "
 
     FROM order_header o 
     LEFT JOIN customers c ON o.customer_id = c.customer_id
-    LEFT JOIN couriers cr ON o.courier_id = cr.courier_id
+    LEFT JOIN couriers cr ON o.co_id = cr.co_id
     
     -- Join city_table using the preferred city_id (o.city_id or c.city_id)
     LEFT JOIN city_table ct ON 
