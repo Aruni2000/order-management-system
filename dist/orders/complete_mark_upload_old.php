@@ -18,16 +18,7 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/connection/db_connec
 // Check if user is main admin
 $is_main_admin = $_SESSION['is_main_admin'];
 $teanent_id = $_SESSION['tenant_id'];
-<<<<<<< Updated upstream
-
-// FIXED: Only get co_id when form is submitted
-$co_id = null;
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['co_id'])) {
-    $co_id = $_POST['co_id'];
-}
-=======
-$co_id =$_POST['co_id'] ?? '';
->>>>>>> Stashed changes
+$co_id = 15;
 
 //function for tenant name
 function TenantName($tenant_id) {
@@ -85,8 +76,9 @@ function validateTrackingNumber($trackingNumber) {
     return ['valid' => true, 'clean_tracking' => $cleanTracking];
 }
 
-// Function to check if tracking number exists in order_header table with return complete status
-function validateTrackingNumberInDB($trackingNumber, $conn, $co_id) {
+// Function to check if tracking number exists in order_header table with delivery status
+function validateTrackingInDB($trackingNumber, $co_id, $conn) {
+
     if (empty($trackingNumber)) return ['valid' => false, 'message' => 'Tracking number is required'];
     
     // First validate format
@@ -97,37 +89,39 @@ function validateTrackingNumberInDB($trackingNumber, $conn, $co_id) {
     
     $cleanTracking = $formatValidation['clean_tracking'];
     
-    // Check if tracking number exists in database with return complete status
-    $findTrackingSql = "SELECT order_id, status FROM order_header WHERE tracking_number = ? AND co_id = ? LIMIT 1";
-    $findTrackingStmt = $conn->prepare($findTrackingSql);
-    if (!$findTrackingStmt) {
+    // Check if tracking number exists in database with delivery status
+    $sql = "SELECT order_id, status, total_amount FROM order_header WHERE tracking_number = ? AND co_id = ? LIMIT 1";
+//echo "SELECT order_id, status, total_amount FROM order_header WHERE tracking_number = $trackingNumber AND co_id = $co_id LIMIT 1";
+    $stmt = $conn->prepare($sql);
+    if (!$stmt) {
         return ['valid' => false, 'message' => 'Database error while validating tracking number'];
     }
     
-    $findTrackingStmt->bind_param("si", $cleanTracking, $co_id);
-    $findTrackingStmt->execute();
-    $trackingResult = $findTrackingStmt->get_result();
-    
-    if ($trackingResult && $trackingResult->num_rows > 0) {
-        $trackingRow = $trackingResult->fetch_assoc();
-        $findTrackingStmt->close();
+    $stmt->bind_param("si", $cleanTracking, $co_id);
+    $stmt->execute();
+    $res = $stmt->get_result();
+
+    if ($res) {
+        $row = $res->fetch_assoc();
+        $stmt->close();
         
-        // Check if the order status is 'return complete'
-        if ($trackingRow['status'] !== 'return complete') {
+        // Check if the order status is 'delivered'
+        if ($row['status'] !== 'delivered') {
             return [
                 'valid' => false, 
-                'message' => "Tracking number '{$cleanTracking}' status is '{$trackingRow['status']}' - only orders with 'return complete' status can be updated to 'return_handover'"
+                'message' => "Tracking number '{$cleanTracking}' status is '{$row['status']}' - only orders with 'delivered' status can be updated to 'complete'"
             ];
         }
         
         return [
             'valid' => true, 
             'clean_tracking' => $cleanTracking, 
-            'order_id' => $trackingRow['order_id'],
-            'current_status' => $trackingRow['status']
+            'order_id' => $row['order_id'],
+            'current_status' => $row['status'],
+            'total_amount' => $row['total_amount']
         ];
     } else {
-        $findTrackingStmt->close();
+        $stmt->close();
         return ['valid' => false, 'message' => "Tracking number '{$cleanTracking}' does not exist in the database"];
     }
 }
@@ -153,19 +147,144 @@ function logUserAction($conn, $userId, $actionType, $orderId, $details) {
     return $result;
 }
 
+// Function to create payment record
+function createPaymentRecord($conn, $orderId, $totalAmount, $payBy) {
+    // Check if payment already exists for this order
+    $checkSql = "SELECT payment_id FROM payments WHERE order_id = ? LIMIT 1";
+    $checkStmt = $conn->prepare($checkSql);
+    
+    if (!$checkStmt) {
+        throw new Exception('Failed to prepare payment check statement: ' . $conn->error);
+    }
+    
+    $checkStmt->bind_param("i", $orderId);
+    $checkStmt->execute();
+    $result = $checkStmt->get_result();
+    
+    if ($result->num_rows > 0) {
+        $checkStmt->close();
+        return [
+            'success' => true,
+            'message' => 'Payment record already exists',
+            'created' => false
+        ];
+    }
+    $checkStmt->close();
+    
+    // Create new payment record
+    $paymentSql = "INSERT INTO payments (order_id, amount_paid, payment_method, payment_date, pay_by) VALUES (?, ?, 'COD', NOW(), ?)";
+    $paymentStmt = $conn->prepare($paymentSql);
+    
+    if (!$paymentStmt) {
+        throw new Exception('Failed to prepare payment insert statement: ' . $conn->error);
+    }
+    
+    $paymentStmt->bind_param("idi", $orderId, $totalAmount, $payBy);
+    
+    if (!$paymentStmt->execute()) {
+        $paymentStmt->close();
+        throw new Exception('Failed to create payment record: ' . $paymentStmt->error);
+    }
+    
+    $paymentId = $conn->insert_id;
+    $paymentStmt->close();
+    
+    return [
+        'success' => true,
+        'message' => "Payment record created with ID: {$paymentId}",
+        'created' => true,
+        'payment_id' => $paymentId
+    ];
+}
+
+// Function to update both order_header, order_items tables and create payment record
+function updateOrderToComplete($conn, $orderId, $trackingNumber, $totalAmount, $payBy) {
+    // Begin transaction for data consistency
+    $conn->begin_transaction();
+    
+    try {
+        // Update order_header table
+        $updateHeaderSql = "UPDATE order_header SET status='done', pay_status='paid', pay_by=?, updated_at=NOW() WHERE order_id=? AND status='delivered'";
+        $updateHeaderStmt = $conn->prepare($updateHeaderSql);
+        
+        if (!$updateHeaderStmt) {
+            throw new Exception('Failed to prepare order_header update statement: ' . $conn->error);
+        }
+        
+        $updateHeaderStmt->bind_param("ii", $payBy, $orderId);
+        
+        if (!$updateHeaderStmt->execute()) {
+            throw new Exception('Failed to update order_header: ' . $updateHeaderStmt->error);
+        }
+        
+        $headerAffectedRows = $updateHeaderStmt->affected_rows;
+        $updateHeaderStmt->close();
+        
+        // Check if header was actually updated
+        if ($headerAffectedRows == 0) {
+            throw new Exception("No rows updated in order_header - order may not exist or status may have changed");
+        }
+        
+        // Update order_items table - set status to 'done' and pay_status to 'paid' for all items in this order
+        $updateItemsSql = "UPDATE order_items SET status='done', pay_status='paid', updated_at=NOW() WHERE order_id=?";
+        $updateItemsStmt = $conn->prepare($updateItemsSql);
+        
+        if (!$updateItemsStmt) {
+            throw new Exception('Failed to prepare order_items update statement: ' . $conn->error);
+        }
+        
+        $updateItemsStmt->bind_param("i", $orderId);
+        
+        if (!$updateItemsStmt->execute()) {
+            throw new Exception('Failed to update order_items: ' . $updateItemsStmt->error);
+        }
+        
+        $itemsAffectedRows = $updateItemsStmt->affected_rows;
+        $updateItemsStmt->close();
+        
+        // Create payment record
+        $paymentResult = createPaymentRecord($conn, $orderId, $totalAmount, $payBy);
+        
+        if (!$paymentResult['success']) {
+            throw new Exception('Failed to create payment record: ' . $paymentResult['message']);
+        }
+        
+        // Commit the transaction
+        $conn->commit();
+        
+        return [
+            'success' => true,
+            'header_updated' => $headerAffectedRows,
+            'items_updated' => $itemsAffectedRows,
+            'payment_created' => $paymentResult['created'],
+            'payment_message' => $paymentResult['message'],
+            'message' => "Successfully updated order (Header: {$headerAffectedRows} row, Items: {$itemsAffectedRows} rows) and " . $paymentResult['message']
+        ];
+        
+    } catch (Exception $e) {
+        // Rollback the transaction on error
+        $conn->rollback();
+        return [
+            'success' => false,
+            'message' => $e->getMessage()
+        ];
+    }
+}
+
 // Function to validate entire row data
-function validateRowData($rowData, $rowNumber, $conn, $co_id) {
+function validateRowData($rowData, $rowNumber, $co_id, $conn) {
     $errors = [];
     $cleanData = [];
     
     // Validate Tracking Number (Required)
-    $trackingValidation = validateTrackingNumberInDB($rowData['tracking_number'], $conn, $co_id);
+    $trackingValidation = validateTrackingInDB($rowData['tracking_number'], $co_id, $conn);
     if (!$trackingValidation['valid']) {
         $errors[] = "Row $rowNumber: " . $trackingValidation['message'];
     } else {
         $cleanData['tracking_number'] = $trackingValidation['clean_tracking'];
         $cleanData['order_id'] = $trackingValidation['order_id'];
         $cleanData['current_status'] = $trackingValidation['current_status'];
+        $cleanData['total_amount'] = $trackingValidation['total_amount'];
     }
     
     return ['errors' => $errors, 'clean_data' => $cleanData];
@@ -181,15 +300,6 @@ $rowNumber = 2; // Start from row 2 (after header)
 
 // Process CSV file if form is submitted
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
-    
-    // Validate co_id is provided
-    if (empty($co_id)) {
-        $_SESSION['import_error'] = 'Please select a courier before uploading the CSV file.';
-        ob_end_clean();
-        header("Location: return_csv_upload.php");
-        exit();
-    }
-    
     // Check if file was uploaded without errors
     if ($_FILES['csv_file']['error'] == UPLOAD_ERR_OK) {
         $csvFile = $_FILES['csv_file']['tmp_name'];
@@ -202,7 +312,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
         if (!in_array($mimeType, ['text/csv', 'text/plain', 'application/csv'])) {
             $_SESSION['import_error'] = 'Invalid file type. Please upload a CSV file.';
             ob_end_clean();
-            header("Location: return_csv_upload.php");
+            header("Location: complete_mark_upload.php");
             exit();
         }
         
@@ -210,7 +320,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
         if ($_FILES['csv_file']['size'] > 5 * 1024 * 1024) {
             $_SESSION['import_error'] = 'File size too large. Maximum allowed size is 5MB.';
             ob_end_clean();
-            header("Location: return_csv_upload.php");
+            header("Location: complete_mark_upload.php");
             exit();
         }
         
@@ -222,7 +332,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                 $_SESSION['import_error'] = 'Could not read CSV headers. Please ensure the file is a valid CSV.';
                 fclose($handle);
                 ob_end_clean();
-                header("Location: return_csv_upload.php");
+                header("Location: complete_mark_upload.php");
                 exit();
             }
             
@@ -231,7 +341,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                 $_SESSION['import_error'] = 'CSV file appears to be empty or has no headers.';
                 fclose($handle);
                 ob_end_clean();
-                header("Location: return_csv_upload.php");
+                header("Location: complete_mark_upload.php");
                 exit();
             }
             
@@ -239,10 +349,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
             $header = array_map('cleanCsvHeader', $rawHeader);
             
             // Define flexible column mappings for tracking number
-            $columnMappings = [
-                'tracking_number' => ['trackingnumber', 'tracking_number', 'tracking', 'track', 'trackno', 'track_no']
-            ];
-            
+           $columnMappings = [
+    'tracking_number' => [
+        'trackingnumber', 
+        'tracking_number', 
+        'tracking', 
+        'track', 
+        'trackno', 
+        'track_no',
+        'trackingid',
+        'tracking_id',
+        'waybill',
+        'waybill_number',
+        'waybillid',
+        'waybill_id'
+    ]
+];            
             // Build field mapping based on actual CSV headers
             $fieldMap = [];
             $foundColumns = [];
@@ -269,16 +391,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                     }
                 }
                 
-                // Check required fields
-                if (!$found && $dbField === 'tracking_number') {
-                    $_SESSION['import_error'] = "Required column \"Tracking Number\" not found.<br>" .
-                                              'Found columns: ' . implode(', ', $header) . '<br>' .
-                                              'Please ensure you have a column for tracking numbers.';
-                    fclose($handle);
-                    ob_end_clean();
-                    header("Location: return_csv_upload.php");
-                    exit();
-                }
+                // Check if any column from possible tracking fields exists
+$foundTrackingColumn = false;
+foreach ($columnMappings['tracking_number'] as $possibleName) {
+    foreach ($normalizedHeaders as $headerInfo) {
+        if ($headerInfo['normalized'] === $possibleName) {
+            $foundTrackingColumn = true;
+            break 2;
+        }
+    }
+}
+
+if (!$foundTrackingColumn) {
+    $_SESSION['import_error'] = "No tracking column found in CSV.<br>" .
+                                "CSV should have one of these columns: " . 
+                                implode(', ', $columnMappings['tracking_number']) . "<br>" .
+                                'Found columns: ' . implode(', ', $header);
+    fclose($handle);
+    ob_end_clean();
+    header("Location: complete_mark_upload.php");
+    exit();
+}
+
             }
             
             // Pre-validation: Check if CSV has data rows
@@ -295,19 +429,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                 $_SESSION['import_error'] = 'CSV file has no data rows to process.';
                 fclose($handle);
                 ob_end_clean();
-                header("Location: return_csv_upload.php");
-                exit();
-            }
-            
-            // Prepare SQL statement to update order status from 'return complete' to 'return_handover'
-            $updateOrderSql = "UPDATE order_header SET status = 'return_handover', updated_at = NOW() WHERE order_id = ? AND status = 'return complete'";
-            $updateOrderStmt = $conn->prepare($updateOrderSql);
-            
-            if (!$updateOrderStmt) {
-                $_SESSION['import_error'] = 'Database prepare error: ' . $conn->error;
-                fclose($handle);
-                ob_end_clean();
-                header("Location: return_csv_upload.php");
+                header("Location: complete_mark_upload.php");
                 exit();
             }
             
@@ -332,7 +454,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                 
                 // Initialize tracking data
                 $trackingData = [
-                    'tracking_number' => ''
+                    'tracking_number' => '',
+                    'co_id' => isset($_POST['co_id']) ? intval($_POST['co_id']) : 0
                 ];
                 
                 // Map CSV data to fields
@@ -342,8 +465,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                     }
                 }
                 
-                // Validate row data - now passing $co_id
-                $validation = validateRowData($trackingData, $rowNumber, $conn, $co_id);
+                // Validate row data
+                $validation = validateRowData($trackingData, $rowNumber, $co_id, $conn);
                 
                 if (!empty($validation['errors'])) {
                     $errors = array_merge($errors, $validation['errors']);
@@ -356,40 +479,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                 $trackingData = array_merge($trackingData, $validation['clean_data']);
                 
                 // Double check - this should already be handled in validation, but extra safety
-                if ($trackingData['current_status'] !== 'return complete') {
-                    $errors[] = "Row $rowNumber: Tracking number '{$trackingData['tracking_number']}' has status '{$trackingData['current_status']}' - only 'return complete' orders can be updated";
+                if ($trackingData['current_status'] !== 'delivered') {
+                    $errors[] = "Row $rowNumber: Tracking number '{$trackingData['tracking_number']}' has status '{$trackingData['current_status']}' - only 'delivered' orders can be updated";
                     $errorCount++;
                     $rowNumber++;
                     continue;
                 }
                 
-                // Update order status from 'return complete' to 'return_handover'
-                try {
-                    $updateOrderStmt->bind_param("i", $trackingData['order_id']);
+                // Update both order_header, order_items tables and create payment record
+                $updateResult = updateOrderToComplete(
+                    $conn, 
+                    $trackingData['order_id'], 
+                    $trackingData['tracking_number'], 
+                    $trackingData['total_amount'], 
+                    $currentUserId
+                );
+                
+                if ($updateResult['success']) {
+                    $successCount++;
                     
-                    if ($updateOrderStmt->execute()) {
-                        // Check if any rows were actually affected
-                        if ($updateOrderStmt->affected_rows > 0) {
-                            $successCount++;
-                            
-                            // Log the successful status update with the requested format
-                            $logDetails = "Return CSV bulk handover order updated with tracking: {$trackingData['tracking_number']}, Order ID: {$trackingData['order_id']}";
-                            
-                            if (!logUserAction($conn, $currentUserId, 'return_csv', $trackingData['order_id'], $logDetails)) {
-                                // Log the error but don't stop processing
-                                error_log("Failed to log user action for order ID: " . $trackingData['order_id']);
-                            }
-                        } else {
-                            // This shouldn't happen due to our validation, but just in case
-                            $errors[] = "Row $rowNumber: No update performed for tracking number '{$trackingData['tracking_number']}' - status may have changed";
-                            $errorCount++;
-                        }
-                    } else {
-                        $errors[] = "Row $rowNumber: Database error - " . $updateOrderStmt->error;
-                        $errorCount++;
+                    // Log the successful status update
+                    $logDetails = "Delivery CSV bulk complete order updated with tracking: {$trackingData['tracking_number']}, Order ID: {$trackingData['order_id']}, " . $updateResult['message'];
+                    
+                    if (!logUserAction($conn, $currentUserId, 'complete_mark_csv', $trackingData['order_id'], $logDetails)) {
+                        // Log the error but don't stop processing
+                        error_log("Failed to log user action for order ID: " . $trackingData['order_id']);
                     }
-                } catch (Exception $e) {
-                    $errors[] = "Row $rowNumber: Error - " . $e->getMessage();
+                } else {
+                    $errors[] = "Row $rowNumber: " . $updateResult['message'];
                     $errorCount++;
                 }
                 
@@ -401,9 +518,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                     break;
                 }
             }
-            
-            // Close statement
-            $updateOrderStmt->close();
             
             // Close the CSV file
             fclose($handle);
@@ -418,12 +532,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
             ];
             
             ob_end_clean();
-            header("Location: return_csv_upload.php");
+            header("Location: complete_mark_upload.php");
             exit();
         } else {
             $_SESSION['import_error'] = 'Could not read the uploaded file. Please ensure it is a valid CSV file.';
             ob_end_clean();
-            header("Location: return_csv_upload.php");
+            header("Location: complete_mark_upload.php");
             exit();
         }
     } else {
@@ -440,7 +554,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
         $errorMessage = $uploadErrors[$_FILES['csv_file']['error']] ?? 'Unknown upload error';
         $_SESSION['import_error'] = 'File upload error: ' . $errorMessage;
         ob_end_clean();
-        header("Location: return_csv_upload.php");
+        header("Location: complete_mark_upload.php");
         exit();
     }
 }
@@ -448,6 +562,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
 // Include UI files after processing POST request to avoid header issues
 include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/navbar.php');
 include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php');
+
 ?>
 
 <!doctype html>
@@ -455,7 +570,7 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
     data-pc-theme="light">
 
 <head>
-    <title>Order Management Admin Portal - Return CSV Upload</title>
+    <title>Order Management Admin Portal - Delivery CSV Upload</title>
 
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/head.php'); ?>
 
@@ -475,7 +590,7 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
             <div class="page-header">
                 <div class="page-block">
                     <div class="page-header-title">
-                        <h5 class="mb-0 font-medium">Return Handover Management</h5>
+                        <h5 class="mb-0 font-medium">Delivery Complete Management</h5>
                     </div>
                 </div>
             </div>
@@ -487,8 +602,9 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                 <div
                     class="alert alert-<?php echo $_SESSION['import_result']['errors'] > 0 ? 'warning' : 'success'; ?>">
                     <h4>Processing Results</h4>
-                    <p><strong>Successfully updated to 'return_handover':</strong>
-                        <?php echo $_SESSION['import_result']['success']; ?> tracking numbers</p>
+                    <p><strong>Successfully updated to 'done':</strong>
+                        <?php echo $_SESSION['import_result']['success']; ?> orders (including header, items, and
+                        payment records)</p>
                     <?php if ($_SESSION['import_result']['skipped'] > 0): ?>
                     <p><strong>Skipped:</strong> <?php echo $_SESSION['import_result']['skipped']; ?> tracking numbers
                     </p>
@@ -521,99 +637,140 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                 <?php endif; ?>
 
                 <?php if (isset($_SESSION['import_error'])): ?>
-<<<<<<< Updated upstream
-                    <div class="alert alert-danger">
-                        <strong>Error:</strong> <?php echo $_SESSION['import_error']; ?>
-                    </div>
-                    <?php unset($_SESSION['import_error']); ?>
-                <?php endif; ?>
-
-                <div class="lead-upload-container">
-                   
-                    <!-- Instruction Box -->
-                    <div class="instruction-box">
-                        <h4>📋 How to Use Return Handover CSV Upload</h4>
-
-=======
                 <div class="alert alert-danger">
                     <strong>Error:</strong> <?php echo htmlspecialchars($_SESSION['import_error']); ?>
                 </div>
                 <?php unset($_SESSION['import_error']); ?>
                 <?php endif; ?>
 
-                <div class="lead-upload-container">
+                <!-- Info Box -->
+                <!-- <div class="info-box">
+                    <h4>What happens when you upload the CSV:</h4>
+                    <ul>
+                        <li><strong>Order Header:</strong> Status changes from 'delivered' to 'done', pay_status changes to 'paid', pay_by is set to current user</li>
+                        <li><strong>Order Items:</strong> All items in the order get status 'done' and pay_status 'paid'</li>
+                        <li><strong>Payment Record:</strong> A new payment record is created with COD method and current user as pay_by</li>
+                        <li><strong>Validation:</strong> Only orders with 'delivered' status can be updated to 'complete'</li>
+                    </ul>
+                </div> -->
+
+                <!-- Instruction Box Component - Place this in your complete_mark_upload.php after page header -->
+                <div class="instruction-box">
+                    <h4>📦 How to Use Delivery Complete CSV Upload</h4>
+
+                    <!-- What Happens When You Upload -->
+                    <!-- <div class="what-happens">
+        <h5>🔄 What Happens When You Upload the CSV:</h5>
+        <ul>
+            <li><strong>Order Status Updated:</strong> Changes from <code>delivered</code> to <code>done</code> (order completed)</li>
+            <li><strong>Payment Status Updated:</strong> Changes to <code>paid</code> in both order header and all order items</li>
+            <li><strong>Payment Record Created:</strong> System automatically creates a COD payment record</li>
+            <li><strong>Pay By Recorded:</strong> Your user ID is recorded as the person who confirmed the payment</li>
+            <li><strong>Transaction Safety:</strong> All changes are done together - if one fails, all are rolled back</li>
+        </ul>
+    </div> -->
+
+                    <!-- System Actions Breakdown -->
+                    <div class="system-actions">
 
 
-                    <!-- Place this after the opening of main-content-wrapper div -->
-                    <div class="instruction-box">
-                        <h4>📋 How to Use Return Handover CSV Upload</h4>
-
->>>>>>> Stashed changes
-                        <div class="important-notes">
-                            <h5>⚠️ Important Requirements:</h5>
-                            <ul>
-                                <li><strong>Only orders with "return complete" status</strong> will be updated</li>
-                                <li>Tracking numbers must exist in the database</li>
-                                <li>Maximum file size: <strong>5MB</strong></li>
-                                <li>File format: <strong>CSV only</strong></li>
-<<<<<<< Updated upstream
-                                <li>Status will change from: <code>return complete</code> → <code>return_handover</code></li>
-                            </ul>
+                        <div class="action-item">
+                            <div class="action-item-title">1️⃣ Order Header Table</div>
+                            <p class="action-item-desc">
+                                Status: <code>delivered</code> <span class="arrow">→</span> <code>done</code><br>
+                                Pay Status: <code>unpaid</code> <span class="arrow">→</span> <code>paid</code><br>
+                                Pay By: Records your user ID
+                            </p>
                         </div>
-                        
-=======
-                                <li>Status will change from: <code>return complete</code> → <code>return_handover</code>
-                                </li>
-                            </ul>
+
+                        <div class="action-item">
+                            <div class="action-item-title">2️⃣ Order Items Table</div>
+                            <p class="action-item-desc">
+                                All items in the order updated:<br>
+                                Status: <span class="arrow">→</span> <code>done</code><br>
+                                Pay Status: <span class="arrow">→</span> <code>paid</code>
+                            </p>
                         </div>
 
->>>>>>> Stashed changes
-                        <div class="quick-tips">
-                            <h5>💡 Quick Tips:</h5>
-                            <ul>
-                                <li>Check tracking numbers are correct before uploading</li>
-                                <li>Remove any extra spaces or special characters</li>
-                                <li>Orders with other statuses will be skipped</li>
-                                <li>You'll see a detailed report after processing</li>
-                            </ul>
+                        <div class="action-item">
+                            <div class="action-item-title">3️⃣ Payment Record Created</div>
+                            <p class="action-item-desc">
+                                New payment entry with:<br>
+                                • Order ID linked<br>
+                                • Amount: From order total<br>
+                                • Method: COD (Cash on Delivery)<br>
+                                • Date: Current date/time<br>
+                                • Pay By: Your user ID
+                            </p>
                         </div>
                     </div>
-<<<<<<< Updated upstream
-=======
 
+                    <!-- Important Requirements -->
+                    <div class="important-notes">
+                        <h5>⚠️ Important Requirements:</h5>
+                        <ul>
+                            <li><strong>Only 'delivered' orders</strong> can be marked as complete - orders with other
+                                statuses will be skipped</li>
+                            <li><strong>Tracking numbers must exist</strong> in the database - invalid tracking numbers
+                                will be rejected</li>
+                            <li><strong>No duplicate processing</strong> - if payment record already exists, it won't be
+                                duplicated</li>
+                            <li><strong>Maximum file size:</strong> 5MB</li>
+                            <li><strong>CSV format only</strong> - must be a valid CSV file</li>
+                            <li><strong>Valid tracking format:</strong> 5-50 characters, alphanumeric with
+                                hyphens/underscores only</li>
+                        </ul>
+                    </div>
 
->>>>>>> Stashed changes
+                    <!-- Quick Tips -->
+                    <div class="quick-tips">
+                        <h5>💡 Quick Tips:</h5>
+                        <ul>
+                            <li><strong>Verify order status first:</strong> Make sure orders are in 'delivered' status
+                                before uploading</li>
+                            <li><strong>Double-check tracking numbers:</strong> Incorrect numbers will cause errors</li>
+                            <li><strong>Keep a backup:</strong> Save your original CSV file before uploading</li>
+                            <li><strong>Review the report:</strong> After upload, check the detailed results for any
+                                failed entries</li>
+                            <li><strong>Transaction safety:</strong> Each order is processed safely - if something
+                                fails, it won't partially update</li>
+                            <li><strong>Empty rows ignored:</strong> Blank rows in your CSV are automatically skipped
+                            </li>
+                        </ul>
+                    </div>
+                </div>
 
+                <div class="lead-upload-container">
                     <form method="POST" enctype="multipart/form-data" id="uploadForm">
                         <!-- Download CSV Template Section -->
                         <div class="file-upload-section">
-                            <a href="/order_management/dist/templates/return_csv.php" class="choose-file-btn">
+                            <a href="/order_management/dist/templates/delivery_csv.php" class="choose-file-btn">
                                 Download CSV Template
                             </a>
                             <div class="customer-form-group">
-                                <label for="co_id" class="form-label">
+                                <label for="courier_id" class="form-label">
                                     Select Courier
                                 </label>
                                 <?php if ($is_main_admin == 1) { 
-                                    // Fetch active couriers for dropdown
+                                // Fetch active couriers for dropdown
                                     $courierSql = "SELECT co_id, tenant_id, courier_id, courier_name FROM couriers WHERE status = 'active' ORDER BY courier_name ASC";
                                 } else { 
                                     $courierSql = "SELECT co_id, tenant_id, courier_id, courier_name FROM couriers WHERE status = 'active' AND tenant_id = $teanent_id ORDER BY courier_name ASC";                   
                                 }
-                                $courierResult = $conn->query($courierSql); ?>
+                                 $courierResult = $conn->query($courierSql); ?>
                                 <select class="form-select" id="co_id" name="co_id" required>
                                     <option value="">Select Courier</option>
                                     <?php
                                     if ($courierResult && $courierResult->num_rows > 0) {
                                         while ($courier = $courierResult->fetch_assoc()) {
-                                            echo "<option value='{$courier['co_id']}'>" . htmlspecialchars($courier['courier_name']) . " - " . htmlspecialchars($courier['courier_id']) . " - " . htmlspecialchars(TenantName($courier['tenant_id'])) . "</option>";
+                                            echo "<option value='{$courier['co_id']}'>" . htmlspecialchars($courier['courier_name']) . " - ".($courier['courier_id']) . " - ".TenantName($courier['tenant_id']); "</option>";
                                         }
                                     }
                                     ?>
                                 </select>
                                 <div class="error-feedback" id="courier-error"></div>
-                            </div>
 
+                            </div>
                             <div class="file-upload-box">
                                 <p><strong>Select CSV File</strong></p>
                                 <p id="file-name">No file selected</p>
@@ -624,22 +781,20 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                                     Choose File
                                 </button>
                             </div>
-                        </div>
-
-                        <hr>
-
-                        <!-- Action Buttons -->
-                        <div class="action-buttons">
-                            <button type="button" class="action-btn reset-btn" id="resetBtn"> Reset</button>
-                            <button type="submit" class="action-btn import-btn" id="importBtn">
-                                Update to Return Handover
-                            </button>
-                        </div>
+                            <hr>
+                            <!-- Action Buttons -->
+                            <div class="action-buttons">
+                                <button type="button" class="action-btn reset-btn" id="resetBtn"> Reset</button>
+                                <button type="submit" class="action-btn import-btn" id="importBtn">
+                                    Update to Complete
+                                </button>
+                            </div>
                     </form>
                 </div>
             </div>
         </div>
     </div>
+
     <!-- Footer -->
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/footer.php'); ?>
 
@@ -647,31 +802,6 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/scripts.php'); ?>
 
     <script>
-<<<<<<< Updated upstream
-        // Form validation
-        document.getElementById('uploadForm').addEventListener('submit', function(e) {
-            const fileInput = document.getElementById('csv_file');
-            const courierSelect = document.getElementById('co_id');
-            
-            // Check if courier is selected
-            if (!courierSelect.value) {
-                e.preventDefault();
-                alert('Please select a courier before uploading.');
-                courierSelect.focus();
-                return false;
-            }
-            
-            // Check if file is selected
-            if (!fileInput.files.length) {
-                e.preventDefault();
-                alert('Please upload the CSV file before proceeding.');
-                return false;
-            }
-            
-            // Additional file validation
-            const file = fileInput.files[0];
-            
-=======
     // Form validation
     document.getElementById('uploadForm').addEventListener('submit', function(e) {
         const fileInput = document.getElementById('csv_file');
@@ -712,6 +842,7 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
 
         return true;
     });
+
     // Reset button functionality
     document.getElementById('resetBtn').addEventListener('click', function() {
         if (confirm('Are you sure you want to reset the form?')) {
@@ -722,7 +853,7 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
             // Reset import button
             const importBtn = document.getElementById('importBtn');
             importBtn.disabled = false;
-            importBtn.innerHTML = ' Update to Return Handover';
+            importBtn.innerHTML = ' Update to Complete';
         }
     });
 
@@ -732,87 +863,14 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
         const fileNameEl = document.getElementById('file-name');
 
         if (file) {
->>>>>>> Stashed changes
             // Check file extension
             const validExtensions = ['.csv'];
             const fileName = file.name.toLowerCase();
             const isValidExtension = validExtensions.some(ext => fileName.endsWith(ext));
-<<<<<<< Updated upstream
-            
-            if (!isValidExtension) {
-                e.preventDefault();
-                alert('Please upload a valid CSV file.');
-                return false;
-            }
-            
-            // Check file size (5MB limit)
-            const maxSize = 5 * 1024 * 1024; // 5MB in bytes
-            if (file.size > maxSize) {
-                e.preventDefault();
-                alert('File size must be less than 5MB. Please upload a smaller CSV file.');
-                return false;
-            }
-            
-            // Show loading state
-            const importBtn = document.getElementById('importBtn');
-            importBtn.disabled = true;
-            importBtn.innerHTML = ' Processing...';
-            
-            return true;
-        });
-        
-        // Reset button functionality
-        document.getElementById('resetBtn').addEventListener('click', function() {
-            if (confirm('Are you sure you want to reset the form?')) {
-                // Reset file input
-                document.getElementById('csv_file').value = '';
-                document.getElementById('file-name').textContent = 'No file selected';
-                
-                // Reset courier select
-                document.getElementById('co_id').value = '';
-                
-                // Reset import button
-                const importBtn = document.getElementById('importBtn');
-                importBtn.disabled = false;
-                importBtn.innerHTML = ' Update to Return Handover';
-            }
-        });
-        
-        // Show selected file name and validate file type
-        document.getElementById('csv_file').addEventListener('change', function() {
-            const file = this.files[0];
-            const fileNameEl = document.getElementById('file-name');
-            
-            if (file) {
-                // Check file extension
-                const validExtensions = ['.csv'];
-                const fileName = file.name.toLowerCase();
-                const isValidExtension = validExtensions.some(ext => fileName.endsWith(ext));
-                
-                if (!isValidExtension) {
-                    alert('Please select a valid CSV file.');
-                    this.value = '';
-                    fileNameEl.textContent = 'No file selected';
-                    return;
-                }
-                
-                // Check file size (5MB limit)
-                const maxSize = 5 * 1024 * 1024; // 5MB in bytes
-                if (file.size > maxSize) {
-                    alert('File size must be less than 5MB.');
-                    this.value = '';
-                    fileNameEl.textContent = 'No file selected';
-                    return;
-                }
-                
-                fileNameEl.textContent = file.name + ' (' + (file.size / 1024).toFixed(1) + ' KB)';
-            } else {
-=======
 
             if (!isValidExtension) {
                 alert('Please select a valid CSV file.');
                 this.value = '';
->>>>>>> Stashed changes
                 fileNameEl.textContent = 'No file selected';
                 return;
             }
@@ -834,117 +892,6 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
     </script>
 
     <style>
-<<<<<<< Updated upstream
-        .instruction-box {
-            background-color: #e8f4fd;
-            border: 1px solid #bee5eb;
-            border-radius: 0.375rem;
-            padding: 1rem;
-            margin-bottom: 1.5rem;
-        }
-
-        .instruction-box h4 {
-            color: #0c5460;
-            margin-bottom: 0.75rem;
-            font-size: 1.25rem;
-            font-weight: bold;
-        }
-
-        .instruction-box h5 {
-            color: #0c5460;
-            margin-top: 1rem;
-            margin-bottom: 0.5rem;
-            font-size: 1rem;
-            font-weight: bold;
-        }
-
-        .instruction-box p,
-        .instruction-box ul {
-            color: #0c5460;
-            margin-bottom: 0.5rem;
-        }
-
-        .instruction-box ul {
-            list-style-type: disc;
-            margin-left: 1.5rem;
-            padding-left: 0;
-        }
-
-        .instruction-box li {
-            margin-bottom: 0.25rem;
-        }
-
-        .instruction-box .important-notes,
-        .instruction-box .quick-tips {
-            margin-top: 1.5rem;
-            padding-top: 1rem;
-            border-top: 1px solid #bee5eb;
-        }
-        
-        .file-upload-section .customer-form-group {
-            margin-bottom: 1.5rem;
-        }
-        
-        .alert {
-            padding: 15px;
-            margin-bottom: 20px;
-            border: 1px solid transparent;
-            border-radius: 4px;
-        }
-        
-        .alert-success {
-            color: #155724;
-            background-color: #d4edda;
-            border-color: #c3e6cb;
-        }
-        
-        .alert-warning {
-            color: #856404;
-            background-color: #fff3cd;
-            border-color: #ffeaa7;
-        }
-        
-        .alert-danger {
-            color: #721c24;
-            background-color: #f8d7da;
-            border-color: #f5c6cb;
-        }
-        
-        .alert h4 {
-            margin-top: 0;
-            margin-bottom: 10px;
-        }
-        
-        .alert p {
-            margin: 5px 0;
-        }
-        
-        .alert details {
-            margin-top: 10px;
-        }
-        
-        .alert summary {
-            cursor: pointer;
-            font-weight: bold;
-            padding: 5px;
-            background-color: rgba(0,0,0,0.05);
-            border-radius: 3px;
-        }
-        
-        .alert summary:hover {
-            background-color: rgba(0,0,0,0.1);
-        }
-        
-        .alert ul {
-            margin: 10px 0;
-            padding-left: 20px;
-        }
-        
-        .alert li {
-            margin: 5px 0;
-            line-height: 1.5;
-        }
-=======
     .info-box {
         background-color: #e8f4fd;
         border: 1px solid #bee5eb;
@@ -971,7 +918,6 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
     .info-box li {
         margin-bottom: 0.25rem;
     }
->>>>>>> Stashed changes
     </style>
 </body>
 
