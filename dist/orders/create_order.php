@@ -1055,18 +1055,25 @@ const EmailValidator = {
         
         if (!email) {
             if (isExistingCustomer) {
-                CustomerManager.clearFields();
+                document.getElementById('customer_id').value = ''; // Only clear customer_id
+                isExistingCustomer = false; // Reset flag
+                CustomerManager.toggleFields(false); // Make fields editable again
             }
             FormValidator.validateAndToggleSubmit();
             return;
         }
 
-        if (!EmailValidator.isValidFormat(email)) {
+        if (!ValidationUtils.isValidEmail(email)) { // Changed from EmailValidator.isValidFormat
             ValidationUtils.showError(
                 field,
                 'Please enter a valid email address (e.g., name@example.com)',
                 'email-validation-error'
             );
+            if (isExistingCustomer) {
+                document.getElementById('customer_id').value = '';
+                isExistingCustomer = false;
+                CustomerManager.toggleFields(false);
+            }
             FormValidator.validateAndToggleSubmit();
             return;
         }
@@ -1089,10 +1096,16 @@ const EmailValidator = {
                         'This email is already registered',
                         'email-validation-error'
                     );
+                    if (isExistingCustomer) {
+                        document.getElementById('customer_id').value = '';
+                        isExistingCustomer = false;
+                        CustomerManager.toggleFields(false);
+                    }
                 } else {
                     if (isExistingCustomer) {
-                        CustomerManager.clearFields();
-                        document.getElementById('customer_email').value = email;
+                        document.getElementById('customer_id').value = '';
+                        isExistingCustomer = false;
+                        CustomerManager.toggleFields(false);
                     }
                 }
             }

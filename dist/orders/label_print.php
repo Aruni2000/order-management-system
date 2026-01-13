@@ -275,13 +275,36 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
     </div>
 
     <script>
-        // Print labels function
+             // Print labels function
         function printLabels(format) {
-            // Get current filter parameters
-            const params = new URLSearchParams(window.location.search);
+            // Build parameters object with current filter values from the form
+            const params = new URLSearchParams();
+            
+            // Get values from form inputs
+            const date = document.getElementById('date').value;
+            const timeFrom = document.getElementById('time_from').value;
+            const timeTo = document.getElementById('time_to').value;
+            const statusFilter = document.querySelector('input[name="status_filter"]').value;
+            const dateFilter = document.querySelector('input[name="date_filter"]').value;
+            
+            // Add filter parameters
+            if (date) params.set('date', date);
+            if (timeFrom) params.set('time_from', timeFrom);
+            if (timeTo) params.set('time_to', timeTo);
+            params.set('status_filter', statusFilter);
+            params.set('date_filter', dateFilter);
+            
+            // Add tenant filter if exists (for main admin)
+            const tenantFilter = document.getElementById('tenant_filter');
+            if (tenantFilter && tenantFilter.value) {
+                params.set('tenant_filter', tenantFilter.value);
+            }
+            
+            // Add format
             params.set('format', format);
-            params.delete('page'); // Remove pagination for print
-            params.delete('limit'); // Remove limit for print
+            
+            // Set high limit to get all matching orders
+            params.set('limit', '1000');
 
             // Open print page in new window
             const printUrl = 'bulk_print.php?' + params.toString();
@@ -290,7 +313,6 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                 alert('Please allow popups for this site to open the print window.');
             }
         }
-
         // Clear filters function
         function clearFilters() {
             // Reset date and time fields only
