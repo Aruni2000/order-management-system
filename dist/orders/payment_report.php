@@ -300,6 +300,8 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
 </head>
 
 <body>
+    <!-- Page Loader -->
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/loader.php'); ?>
     <div class="pc-container">
         <div class="pc-content">
             <div class="page-header">
