@@ -18,7 +18,12 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/connection/db_connec
 // Check if user is main admin
 $is_main_admin = $_SESSION['is_main_admin'];
 $teanent_id = $_SESSION['tenant_id'];
-$co_id =$_POST['co_id'];
+
+// FIXED: Only get co_id when form is submitted
+$co_id = null;
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['co_id'])) {
+    $co_id = $_POST['co_id'];
+}
 
 //function for tenant name
 function TenantName($tenant_id) {
@@ -77,7 +82,7 @@ function validateTrackingNumber($trackingNumber) {
 }
 
 // Function to check if tracking number exists in order_header table with return complete status
-function validateTrackingNumberInDB($trackingNumber, $conn) {
+function validateTrackingNumberInDB($trackingNumber, $conn, $co_id) {
     if (empty($trackingNumber)) return ['valid' => false, 'message' => 'Tracking number is required'];
     
     // First validate format
@@ -95,7 +100,7 @@ function validateTrackingNumberInDB($trackingNumber, $conn) {
         return ['valid' => false, 'message' => 'Database error while validating tracking number'];
     }
     
-    $findTrackingStmt->bind_param("s", $cleanTracking);
+    $findTrackingStmt->bind_param("si", $cleanTracking, $co_id);
     $findTrackingStmt->execute();
     $trackingResult = $findTrackingStmt->get_result();
     
@@ -145,12 +150,12 @@ function logUserAction($conn, $userId, $actionType, $orderId, $details) {
 }
 
 // Function to validate entire row data
-function validateRowData($rowData, $rowNumber, $conn) {
+function validateRowData($rowData, $rowNumber, $conn, $co_id) {
     $errors = [];
     $cleanData = [];
     
     // Validate Tracking Number (Required)
-    $trackingValidation = validateTrackingNumberInDB($rowData['tracking_number'], $conn);
+    $trackingValidation = validateTrackingNumberInDB($rowData['tracking_number'], $conn, $co_id);
     if (!$trackingValidation['valid']) {
         $errors[] = "Row $rowNumber: " . $trackingValidation['message'];
     } else {
@@ -172,6 +177,15 @@ $rowNumber = 2; // Start from row 2 (after header)
 
 // Process CSV file if form is submitted
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
+    
+    // Validate co_id is provided
+    if (empty($co_id)) {
+        $_SESSION['import_error'] = 'Please select a courier before uploading the CSV file.';
+        ob_end_clean();
+        header("Location: return_csv_upload.php");
+        exit();
+    }
+    
     // Check if file was uploaded without errors
     if ($_FILES['csv_file']['error'] == UPLOAD_ERR_OK) {
         $csvFile = $_FILES['csv_file']['tmp_name'];
@@ -324,8 +338,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                     }
                 }
                 
-                // Validate row data
-                $validation = validateRowData($trackingData, $rowNumber, $conn);
+                // Validate row data - now passing $co_id
+                $validation = validateRowData($trackingData, $rowNumber, $conn, $co_id);
                 
                 if (!empty($validation['errors'])) {
                     $errors = array_merge($errors, $validation['errors']);
@@ -386,8 +400,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
             
             // Close statement
             $updateOrderStmt->close();
-            
-            // Remove the overall CSV processing log - only individual order logs will be created
             
             // Close the CSV file
             fclose($handle);
@@ -502,41 +514,38 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                 
                 <?php if (isset($_SESSION['import_error'])): ?>
                     <div class="alert alert-danger">
-                        <strong>Error:</strong> <?php echo htmlspecialchars($_SESSION['import_error']); ?>
+                        <strong>Error:</strong> <?php echo $_SESSION['import_error']; ?>
                     </div>
                     <?php unset($_SESSION['import_error']); ?>
                 <?php endif; ?>
 
                 <div class="lead-upload-container">
                    
+                    <!-- Instruction Box -->
+                    <div class="instruction-box">
+                        <h4>📋 How to Use Return Handover CSV Upload</h4>
 
-<!-- Place this after the opening of main-content-wrapper div -->
-<div class="instruction-box">
-    <h4>📋 How to Use Return Handover CSV Upload</h4>
-
-    <div class="important-notes">
-        <h5>⚠️ Important Requirements:</h5>
-        <ul>
-            <li><strong>Only orders with "return complete" status</strong> will be updated</li>
-            <li>Tracking numbers must exist in the database</li>
-            <li>Maximum file size: <strong>5MB</strong></li>
-            <li>File format: <strong>CSV only</strong></li>
-            <li>Status will change from: <code>return complete</code> → <code>return_handover</code></li>
-        </ul>
-    </div>
-    
-    <div class="quick-tips">
-        <h5>💡 Quick Tips:</h5>
-        <ul>
-            <li>Check tracking numbers are correct before uploading</li>
-            <li>Remove any extra spaces or special characters</li>
-            <li>Orders with other statuses will be skipped</li>
-            <li>You'll see a detailed report after processing</li>
-        </ul>
-    </div>
-</div>
-
-
+                        <div class="important-notes">
+                            <h5>⚠️ Important Requirements:</h5>
+                            <ul>
+                                <li><strong>Only orders with "return complete" status</strong> will be updated</li>
+                                <li>Tracking numbers must exist in the database</li>
+                                <li>Maximum file size: <strong>5MB</strong></li>
+                                <li>File format: <strong>CSV only</strong></li>
+                                <li>Status will change from: <code>return complete</code> → <code>return_handover</code></li>
+                            </ul>
+                        </div>
+                        
+                        <div class="quick-tips">
+                            <h5>💡 Quick Tips:</h5>
+                            <ul>
+                                <li>Check tracking numbers are correct before uploading</li>
+                                <li>Remove any extra spaces or special characters</li>
+                                <li>Orders with other statuses will be skipped</li>
+                                <li>You'll see a detailed report after processing</li>
+                            </ul>
+                        </div>
+                    </div>
 
                     <form method="POST" enctype="multipart/form-data" id="uploadForm">
                         <!-- Download CSV Template Section -->
@@ -545,28 +554,27 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                                  Download CSV Template
                             </a>
                             <div class="customer-form-group">
-                                <label for="courier_id" class="form-label">
+                                <label for="co_id" class="form-label">
                                     Select Courier
                                 </label>
                                 <?php if ($is_main_admin == 1) { 
-                                // Fetch active couriers for dropdown
+                                    // Fetch active couriers for dropdown
                                     $courierSql = "SELECT co_id, tenant_id, courier_id, courier_name FROM couriers WHERE status = 'active' ORDER BY courier_name ASC";
                                 } else { 
                                     $courierSql = "SELECT co_id, tenant_id, courier_id, courier_name FROM couriers WHERE status = 'active' AND tenant_id = $teanent_id ORDER BY courier_name ASC";                   
                                 }
-                                 $courierResult = $conn->query($courierSql); ?>
+                                $courierResult = $conn->query($courierSql); ?>
                                 <select class="form-select" id="co_id" name="co_id" required>
                                     <option value="">Select Courier</option>
                                     <?php
                                     if ($courierResult && $courierResult->num_rows > 0) {
                                         while ($courier = $courierResult->fetch_assoc()) {
-                                            echo "<option value='{$courier['co_id']}'>" . htmlspecialchars($courier['courier_name']) . " - ".($courier['courier_id']) . " - ".TenantName($courier['tenant_id']); "</option>";
+                                            echo "<option value='{$courier['co_id']}'>" . htmlspecialchars($courier['courier_name']) . " - " . htmlspecialchars($courier['courier_id']) . " - " . htmlspecialchars(TenantName($courier['tenant_id'])) . "</option>";
                                         }
                                     }
                                     ?>
                                 </select>
                                 <div class="error-feedback" id="courier-error"></div>
-
                             </div>
 
                             <div class="file-upload-box">
@@ -601,51 +609,64 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
     
     <script>
         // Form validation
-       document.getElementById('uploadForm').addEventListener('submit', function(e) {
-    const fileInput = document.getElementById('csv_file');
-    
-    // Check if file is selected
-    if (!fileInput.files.length) {
-        e.preventDefault();
-        alert('Please upload the CSV file before proceeding.');
-        return false;
-    }
-    
-    // Additional file validation
-    const file = fileInput.files[0];
-    
-    // Check file extension
-    const validExtensions = ['.csv'];
-    const fileName = file.name.toLowerCase();
-    const isValidExtension = validExtensions.some(ext => fileName.endsWith(ext));
-    
-    if (!isValidExtension) {
-        e.preventDefault();
-        alert('Please upload a valid CSV file.');
-        return false;
-    }
-    
-    // Check file size (5MB limit)
-    const maxSize = 5 * 1024 * 1024; // 5MB in bytes
-    if (file.size > maxSize) {
-        e.preventDefault();
-        alert('File size must be less than 5MB. Please upload a smaller CSV file.');
-        return false;
-    }
-    
-    // Show loading state
-    const importBtn = document.getElementById('importBtn');
-    importBtn.disabled = true;
-    importBtn.innerHTML = ' Processing...';
-    
-    return true;
-});
+        document.getElementById('uploadForm').addEventListener('submit', function(e) {
+            const fileInput = document.getElementById('csv_file');
+            const courierSelect = document.getElementById('co_id');
+            
+            // Check if courier is selected
+            if (!courierSelect.value) {
+                e.preventDefault();
+                alert('Please select a courier before uploading.');
+                courierSelect.focus();
+                return false;
+            }
+            
+            // Check if file is selected
+            if (!fileInput.files.length) {
+                e.preventDefault();
+                alert('Please upload the CSV file before proceeding.');
+                return false;
+            }
+            
+            // Additional file validation
+            const file = fileInput.files[0];
+            
+            // Check file extension
+            const validExtensions = ['.csv'];
+            const fileName = file.name.toLowerCase();
+            const isValidExtension = validExtensions.some(ext => fileName.endsWith(ext));
+            
+            if (!isValidExtension) {
+                e.preventDefault();
+                alert('Please upload a valid CSV file.');
+                return false;
+            }
+            
+            // Check file size (5MB limit)
+            const maxSize = 5 * 1024 * 1024; // 5MB in bytes
+            if (file.size > maxSize) {
+                e.preventDefault();
+                alert('File size must be less than 5MB. Please upload a smaller CSV file.');
+                return false;
+            }
+            
+            // Show loading state
+            const importBtn = document.getElementById('importBtn');
+            importBtn.disabled = true;
+            importBtn.innerHTML = ' Processing...';
+            
+            return true;
+        });
+        
         // Reset button functionality
         document.getElementById('resetBtn').addEventListener('click', function() {
             if (confirm('Are you sure you want to reset the form?')) {
                 // Reset file input
                 document.getElementById('csv_file').value = '';
                 document.getElementById('file-name').textContent = 'No file selected';
+                
+                // Reset courier select
+                document.getElementById('co_id').value = '';
                 
                 // Reset import button
                 const importBtn = document.getElementById('importBtn');
@@ -689,106 +710,115 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
     </script>
 
     <style>
-        .info-box {
+        .instruction-box {
             background-color: #e8f4fd;
             border: 1px solid #bee5eb;
             border-radius: 0.375rem;
             padding: 1rem;
             margin-bottom: 1.5rem;
         }
-        
-        .info-box h4 {
+
+        .instruction-box h4 {
+            color: #0c5460;
+            margin-bottom: 0.75rem;
+            font-size: 1.25rem;
+            font-weight: bold;
+        }
+
+        .instruction-box h5 {
+            color: #0c5460;
+            margin-top: 1rem;
+            margin-bottom: 0.5rem;
+            font-size: 1rem;
+            font-weight: bold;
+        }
+
+        .instruction-box p,
+        .instruction-box ul {
             color: #0c5460;
             margin-bottom: 0.5rem;
         }
-        
-        .info-box p {
-            color: #0c5460;
-            margin-bottom: 0.5rem;
-        }
-        
-        .info-box ul {
-            color: #0c5460;
+
+        .instruction-box ul {
+            list-style-type: disc;
             margin-left: 1.5rem;
+            padding-left: 0;
         }
-        
-        .info-box li {
+
+        .instruction-box li {
             margin-bottom: 0.25rem;
         }
-        .info-box {
-            background-color: #e8f4fd;
-            border: 1px solid #bee5eb;
-            border-radius: 0.375rem;
-            padding: 1rem;
+
+        .instruction-box .important-notes,
+        .instruction-box .quick-tips {
+            margin-top: 1.5rem;
+            padding-top: 1rem;
+            border-top: 1px solid #bee5eb;
+        }
+        
+        .file-upload-section .customer-form-group {
             margin-bottom: 1.5rem;
         }
         
-        .info-box h4 {
-            color: #0c5460;
-            margin-bottom: 0.5rem;
+        .alert {
+            padding: 15px;
+            margin-bottom: 20px;
+            border: 1px solid transparent;
+            border-radius: 4px;
         }
         
-        .info-box p {
-            color: #0c5460;
-            margin-bottom: 0.5rem;
+        .alert-success {
+            color: #155724;
+            background-color: #d4edda;
+            border-color: #c3e6cb;
         }
         
-        .info-box ul {
-            color: #0c5460;
-            margin-left: 1.5rem;
+        .alert-warning {
+            color: #856404;
+            background-color: #fff3cd;
+            border-color: #ffeaa7;
         }
         
-        .info-box li {
-            margin-bottom: 0.25rem;
+        .alert-danger {
+            color: #721c24;
+            background-color: #f8d7da;
+            border-color: #f5c6cb;
         }
-    .instruction-box {
-        background-color: #e8f4fd;
-        border: 1px solid #bee5eb;
-        border-radius: 0.375rem;
-        padding: 1rem;
-        margin-bottom: 1.5rem;
-    }
-
-    .instruction-box h4 {
-        color: #0c5460;
-        margin-bottom: 0.75rem;
-        font-size: 1.25rem;
-        font-weight: bold;
-    }
-
-    .instruction-box h5 {
-        color: #0c5460;
-        margin-top: 1rem;
-        margin-bottom: 0.5rem;
-        font-size: 1rem;
-        font-weight: bold;
-    }
-
-    .instruction-box p,
-    .instruction-box ul {
-        color: #0c5460;
-        margin-bottom: 0.5rem;
-    }
-
-    .instruction-box ul {
-        list-style-type: disc;
-        margin-left: 1.5rem;
-        padding-left: 0;
-    }
-
-    .instruction-box li {
-        margin-bottom: 0.25rem;
-    }
-
-    .instruction-box .important-notes,
-    .instruction-box .quick-tips {
-        margin-top: 1.5rem;
-        padding-top: 1rem;
-        border-top: 1px solid #bee5eb;
-    }
-    .file-upload-section .customer-form-group {
-        margin-bottom: 1.5rem;
-    }
-</style>
+        
+        .alert h4 {
+            margin-top: 0;
+            margin-bottom: 10px;
+        }
+        
+        .alert p {
+            margin: 5px 0;
+        }
+        
+        .alert details {
+            margin-top: 10px;
+        }
+        
+        .alert summary {
+            cursor: pointer;
+            font-weight: bold;
+            padding: 5px;
+            background-color: rgba(0,0,0,0.05);
+            border-radius: 3px;
+        }
+        
+        .alert summary:hover {
+            background-color: rgba(0,0,0,0.1);
+        }
+        
+        .alert ul {
+            margin: 10px 0;
+            padding-left: 20px;
+        }
+        
+        .alert li {
+            margin: 5px 0;
+            line-height: 1.5;
+        }
+    </style>
 </body>
 </html>

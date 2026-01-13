@@ -53,7 +53,7 @@ body {
 hr {
   height: 0; /* 1 */
   color: inherit; /* 2 */
-  border-top-width: 1px; /* 3 */
+ /* border-top-width: 1px; 3 */
 }
 /*
 Add the correct text decoration in Chrome, Edge, and Safari.
@@ -1482,7 +1482,7 @@ b, strong{
 .pc-container .pc-content{
   padding-left: 2.5rem;
   padding-right: 0.5rem;
-  padding-top: 1rem;
+  padding-top: 2rem;
 }
 @media not all and (min-width: 640px){
   .pc-container .pc-content{
@@ -3051,7 +3051,7 @@ text:is([data-pc-theme="dark"] *),.apexcharts-theme-light .apexcharts-menu-icon:
   border-color: rgb(241 241 241 / var(--tw-border-opacity));
   --tw-bg-opacity: 1;
   background-color: rgb(255 255 255 / var(--tw-bg-opacity));
-  padding: 5px -;
+  padding: 5px;
   --tw-shadow: 0 6px 12px rgba(0,0,0,.17);
   --tw-shadow-colored: 0 6px 12px var(--tw-shadow-color);
   box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);
@@ -5308,7 +5308,7 @@ table.dataTable thead tr >.dtfc-fixed-start:is([data-pc-theme="dark"] *),table.d
   padding: 3px 20px;
 }
 .p-\[5px_-\]{
-  padding: 5px -;
+  padding: 5px;
 }
 .px-0{
   padding-left: 0px;
@@ -7411,5 +7411,3 @@ table.dataTable thead tr >.dtfc-fixed-start:is([data-pc-theme="dark"] *),table.d
   -webkit-text-decoration-line: line-through;
           text-decoration-line: line-through;
 }
-
-

@@ -29,7 +29,38 @@ function logUserAction($conn, $user_id, $action_type, $inquiry_id, $details) {
         $logStmt->close();
     }
 }
-
+// NEW: Handle CSV export of failed rows
+if (isset($_GET['download_errors']) && isset($_SESSION['failed_rows_data'])) {
+    $failedData = $_SESSION['failed_rows_data'];
+    
+    // Set headers for CSV download
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename="failed_leads_' . date('Y-m-d_His') . '.csv"');
+    header('Pragma: no-cache');
+    header('Expires: 0');
+    
+    // Open output stream
+    $output = fopen('php://output', 'w');
+    
+    // Add BOM for Excel UTF-8 compatibility
+    fprintf($output, chr(0xEF).chr(0xBB).chr(0xBF));
+    
+    // Write header row with error column
+    $headerRow = array_merge($failedData['headers'], ['Error Reason']);
+    fputcsv($output, $headerRow);
+    
+    // Write failed rows with their error messages
+    foreach ($failedData['rows'] as $rowData) {
+        $rowWithError = array_merge($rowData['data'], [$rowData['error']]);
+        fputcsv($output, $rowWithError);
+    }
+    
+    fclose($output);
+    
+    // Clear the session data after download
+    unset($_SESSION['failed_rows_data']);
+    exit();
+}
 // Get logged-in user info
 $loggedInUserId = $_SESSION['user_id'];
 $isMainAdmin = $_SESSION['is_main_admin'] ?? 0;
@@ -184,6 +215,7 @@ if ($_POST && isset($_FILES['csv_file']) && isset($_POST['users'])) {
         $successCount = 0;
         $errorCount = 0;
         $errorMessages = [];
+        $failedRowsData = [];
         $infoMessages = [];
         $rowNumber = 1;
         $successfulOrderIds = [];
@@ -524,8 +556,16 @@ if ($_POST && isset($_FILES['csv_file']) && isset($_POST['users'])) {
                 
             } catch (Exception $e) {
                 $errorCount++;
-                $errorMessages[] = "Row $rowNumber: " . $e->getMessage();
-                error_log("ERROR - Row $rowNumber: " . $e->getMessage());
+                $errorMessage = $e->getMessage();
+                $errorMessages[] = "Row $rowNumber: " . $errorMessage;
+                
+                // ADD THESE LINES - Store the complete failed row data for CSV export
+                $failedRowsData[] = [
+                    'data' => $row,
+                    'error' => $errorMessage
+                ];
+                
+                error_log("ERROR - Row $rowNumber: " . $errorMessage);
                 continue;
             }
         }
@@ -547,12 +587,20 @@ if ($_POST && isset($_FILES['csv_file']) && isset($_POST['users'])) {
         }
         
         // Store results in session
-        $_SESSION['import_result'] = [
-            'success' => $successCount,
-            'errors' => $errorCount,
-            'messages' => $errorMessages,
-            'info' => $infoMessages 
-        ];
+            $_SESSION['import_result'] = [
+                'success' => $successCount,
+                'errors' => $errorCount,
+                'messages' => $errorMessages,
+                'info' => $infoMessages 
+            ];
+
+            // ADD THESE LINES - Store failed rows data for CSV export
+            if (!empty($failedRowsData)) {
+                $_SESSION['failed_rows_data'] = [
+                    'headers' => $headers, // Original headers from CSV
+                    'rows' => $failedRowsData
+                ];
+            }
         
         // Redirect to avoid resubmission
         header("Location: " . $_SERVER['PHP_SELF']);
@@ -823,6 +871,16 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
         gap: 15px;
     }
 }
+/* Download button styling */
+.btn-danger {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.btn-danger i {
+    font-size: 1rem;
+}
 </style>
 
 <body>
@@ -839,44 +897,58 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                 </div>
             </div>
 
-            <?php if (isset($_SESSION['import_result'])): ?>
-                <div class="alert alert-<?php echo $_SESSION['import_result']['errors'] > 0 ? 'warning' : 'success'; ?>">
-                    <h4>Import Results</h4>
-                    <p><strong>Successfully imported:</strong> <?php echo $_SESSION['import_result']['success']; ?> records</p>
-                    
-                    <?php if (!empty($_SESSION['import_result']['info'])): ?>
-                        <div class="alert alert-info mt-3" style="background-color: #e7f3ff; border-color: #b3d9ff;">
-                            <details open>
-                                <summary style="cursor: pointer; font-weight: bold; color: #004085;">
-                                     Additional Information (<?php echo count($_SESSION['import_result']['info']); ?> notices)
-                                </summary>
-                                <ul class="mt-2" style="margin-bottom: 0;">
-                                    <?php foreach ($_SESSION['import_result']['info'] as $infoMsg): ?>
-                                        <li style="color: #004085;"><?php echo htmlspecialchars($infoMsg); ?></li>
-                                    <?php endforeach; ?>
-                                </ul>
-                            </details>
-                        </div>
-                    <?php endif; ?>
-                    
-                    <?php if ($_SESSION['import_result']['errors'] > 0): ?>
-                        <p><strong>Failed imports:</strong> <?php echo $_SESSION['import_result']['errors']; ?> records</p>
-                        <?php if (!empty($_SESSION['import_result']['messages'])): ?>
-                            <details>
-                                <summary style="cursor: pointer; font-weight: bold; color: #856404;">⚠️ View Error Details</summary>
-                                <div class="error-section">
-                                    <ul class="mt-2">
-                                        <?php foreach ($_SESSION['import_result']['messages'] as $message): ?>
-                                            <li><?php echo htmlspecialchars($message); ?></li>
-                                        <?php endforeach; ?>
-                                    </ul>
-                                </div>
-                            </details>
-                        <?php endif; ?>
-                    <?php endif; ?>
+          <?php if (isset($_SESSION['import_result'])): ?>
+    <div class="alert alert-<?php echo $_SESSION['import_result']['errors'] > 0 ? 'warning' : 'success'; ?>">
+        <h4>Import Results</h4>
+        <p><strong>Successfully imported:</strong> <?php echo $_SESSION['import_result']['success']; ?> records</p>
+        
+        <?php if (!empty($_SESSION['import_result']['info'])): ?>
+            <div class="alert alert-info mt-3" style="background-color: #e7f3ff; border-color: #b3d9ff;">
+                <details open>
+                    <summary style="cursor: pointer; font-weight: bold; color: #004085;">
+                         Additional Information (<?php echo count($_SESSION['import_result']['info']); ?> notices)
+                    </summary>
+                    <ul class="mt-2" style="margin-bottom: 0;">
+                        <?php foreach ($_SESSION['import_result']['info'] as $infoMsg): ?>
+                            <li style="color: #004085;"><?php echo htmlspecialchars($infoMsg); ?></li>
+                        <?php endforeach; ?>
+                    </ul>
+                </details>
+            </div>
+        <?php endif; ?>
+        
+        <?php if ($_SESSION['import_result']['errors'] > 0): ?>
+            <p><strong>Failed imports:</strong> <?php echo $_SESSION['import_result']['errors']; ?> records</p>
+            
+            <!-- ============ ADD THIS ENTIRE BLOCK HERE ============ -->
+            <?php if (isset($_SESSION['failed_rows_data'])): ?>
+                <div style="margin-top: 1rem; margin-bottom: 1rem;">
+                    <a href="?download_errors=1" class="btn btn-danger">
+                        <i class="feather icon-download"></i> Download Failed Rows CSV
+                    </a>
+                    <p style="margin-top: 0.5rem; font-size: 0.9rem; color: #721c24;">
+                        <em>💡 Download the CSV file containing only the failed rows with error reasons. Fix the issues and re-upload just those rows.</em>
+                    </p>
                 </div>
-                <?php unset($_SESSION['import_result']); ?>
             <?php endif; ?>
+            <!-- ============ END OF NEW BLOCK ============ -->
+            
+            <?php if (!empty($_SESSION['import_result']['messages'])): ?>
+                <details>
+                    <summary style="cursor: pointer; font-weight: bold; color: #856404;">⚠️ View Error Details</summary>
+                    <div class="error-section">
+                        <ul class="mt-2">
+                            <?php foreach ($_SESSION['import_result']['messages'] as $message): ?>
+                                <li><?php echo htmlspecialchars($message); ?></li>
+                            <?php endforeach; ?>
+                        </ul>
+                    </div>
+                </details>
+            <?php endif; ?>
+        <?php endif; ?>
+    </div>
+    <?php unset($_SESSION['import_result']); ?>
+<?php endif; ?>
             
             <?php if (isset($_SESSION['import_error'])): ?>
                 <div class="alert alert-danger">

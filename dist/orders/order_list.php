@@ -568,7 +568,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                 <?php } else { ?>
                                 <!--<input type="hidden" name="teanetID" value="0">-->
                                 <?php } ?>
-                                <th>Payed By</th>
+                                <th>Paid By</th>
                                 <?php if ($current_user_role == 1): ?>
                                 <th>Processed By</th>
                                 <?php endif; ?>

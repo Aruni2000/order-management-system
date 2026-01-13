@@ -64,6 +64,7 @@ $customer_name_filter = isset($_GET['customer_name_filter']) ? trim($_GET['custo
 $date_from = isset($_GET['date_from']) ? trim($_GET['date_from']) : '';
 $date_to = isset($_GET['date_to']) ? trim($_GET['date_to']) : '';
 $pay_status_filter = isset($_GET['pay_status_filter']) ? trim($_GET['pay_status_filter']) : '';
+$call_status_filter = isset($_GET['call_status_filter']) ? trim($_GET['call_status_filter']) : '';
 $tenant_id_filter = isset($_GET['tenant_id_filter']) ? trim($_GET['tenant_id_filter']) : '';
 
 // AFTER (Fixed Code):
@@ -173,6 +174,12 @@ if (!empty($date_to)) {
 if (!empty($pay_status_filter)) {
     $payStatusTerm = $conn->real_escape_string($pay_status_filter);
     $searchConditions[] = "i.pay_status = '$payStatusTerm'";
+}
+
+// Call Answer filter
+if (!empty($call_status_filter !== '')) {
+    $callStatusTerm = $conn->real_escape_string($call_status_filter);
+    $searchConditions[] = "i.call_log = '$callStatusTerm'";
 }
 
 // Specific tenant ID filter
@@ -306,6 +313,16 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                 <option value="unpaid"
                                     <?php echo ($pay_status_filter == 'unpaid') ? 'selected' : ''; ?>>Unpaid</option>
                                 <!-- <option value="partial" <?php echo ($pay_status_filter == 'partial') ? 'selected' : ''; ?>>Partial</option> -->
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="call_status_filter">Call Answer</label>
+                            <select id="call_status_filter" name="call_status_filter">
+                                <option value="">Call Answer Status</option>
+                                <option value="0" <?php echo ($call_status_filter == '0') ? 'selected' : ''; ?>>No Answer</option>
+                                <option value="1" <?php echo ($call_status_filter == '1') ? 'selected' : ''; ?>>Answer</option>
+                                
                             </select>
                         </div>
 
