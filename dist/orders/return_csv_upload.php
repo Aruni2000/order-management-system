@@ -18,16 +18,12 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/connection/db_connec
 // Check if user is main admin
 $is_main_admin = $_SESSION['is_main_admin'];
 $teanent_id = $_SESSION['tenant_id'];
-<<<<<<< Updated upstream
 
 // FIXED: Only get co_id when form is submitted
 $co_id = null;
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['co_id'])) {
     $co_id = $_POST['co_id'];
 }
-=======
-$co_id =$_POST['co_id'] ?? '';
->>>>>>> Stashed changes
 
 //function for tenant name
 function TenantName($tenant_id) {
@@ -521,7 +517,6 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                 <?php endif; ?>
 
                 <?php if (isset($_SESSION['import_error'])): ?>
-<<<<<<< Updated upstream
                     <div class="alert alert-danger">
                         <strong>Error:</strong> <?php echo $_SESSION['import_error']; ?>
                     </div>
@@ -534,21 +529,6 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                     <div class="instruction-box">
                         <h4>📋 How to Use Return Handover CSV Upload</h4>
 
-=======
-                <div class="alert alert-danger">
-                    <strong>Error:</strong> <?php echo htmlspecialchars($_SESSION['import_error']); ?>
-                </div>
-                <?php unset($_SESSION['import_error']); ?>
-                <?php endif; ?>
-
-                <div class="lead-upload-container">
-
-
-                    <!-- Place this after the opening of main-content-wrapper div -->
-                    <div class="instruction-box">
-                        <h4>📋 How to Use Return Handover CSV Upload</h4>
-
->>>>>>> Stashed changes
                         <div class="important-notes">
                             <h5>⚠️ Important Requirements:</h5>
                             <ul>
@@ -556,18 +536,10 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                                 <li>Tracking numbers must exist in the database</li>
                                 <li>Maximum file size: <strong>5MB</strong></li>
                                 <li>File format: <strong>CSV only</strong></li>
-<<<<<<< Updated upstream
                                 <li>Status will change from: <code>return complete</code> → <code>return_handover</code></li>
                             </ul>
                         </div>
                         
-=======
-                                <li>Status will change from: <code>return complete</code> → <code>return_handover</code>
-                                </li>
-                            </ul>
-                        </div>
-
->>>>>>> Stashed changes
                         <div class="quick-tips">
                             <h5>💡 Quick Tips:</h5>
                             <ul>
@@ -578,11 +550,6 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                             </ul>
                         </div>
                     </div>
-<<<<<<< Updated upstream
-=======
-
-
->>>>>>> Stashed changes
 
                     <form method="POST" enctype="multipart/form-data" id="uploadForm">
                         <!-- Download CSV Template Section -->
@@ -647,7 +614,6 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/scripts.php'); ?>
 
     <script>
-<<<<<<< Updated upstream
         // Form validation
         document.getElementById('uploadForm').addEventListener('submit', function(e) {
             const fileInput = document.getElementById('csv_file');
@@ -671,73 +637,10 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
             // Additional file validation
             const file = fileInput.files[0];
             
-=======
-    // Form validation
-    document.getElementById('uploadForm').addEventListener('submit', function(e) {
-        const fileInput = document.getElementById('csv_file');
-
-        // Check if file is selected
-        if (!fileInput.files.length) {
-            e.preventDefault();
-            alert('Please upload the CSV file before proceeding.');
-            return false;
-        }
-
-        // Additional file validation
-        const file = fileInput.files[0];
-
-        // Check file extension
-        const validExtensions = ['.csv'];
-        const fileName = file.name.toLowerCase();
-        const isValidExtension = validExtensions.some(ext => fileName.endsWith(ext));
-
-        if (!isValidExtension) {
-            e.preventDefault();
-            alert('Please upload a valid CSV file.');
-            return false;
-        }
-
-        // Check file size (5MB limit)
-        const maxSize = 5 * 1024 * 1024; // 5MB in bytes
-        if (file.size > maxSize) {
-            e.preventDefault();
-            alert('File size must be less than 5MB. Please upload a smaller CSV file.');
-            return false;
-        }
-
-        // Show loading state
-        const importBtn = document.getElementById('importBtn');
-        importBtn.disabled = true;
-        importBtn.innerHTML = ' Processing...';
-
-        return true;
-    });
-    // Reset button functionality
-    document.getElementById('resetBtn').addEventListener('click', function() {
-        if (confirm('Are you sure you want to reset the form?')) {
-            // Reset file input
-            document.getElementById('csv_file').value = '';
-            document.getElementById('file-name').textContent = 'No file selected';
-
-            // Reset import button
-            const importBtn = document.getElementById('importBtn');
-            importBtn.disabled = false;
-            importBtn.innerHTML = ' Update to Return Handover';
-        }
-    });
-
-    // Show selected file name and validate file type
-    document.getElementById('csv_file').addEventListener('change', function() {
-        const file = this.files[0];
-        const fileNameEl = document.getElementById('file-name');
-
-        if (file) {
->>>>>>> Stashed changes
             // Check file extension
             const validExtensions = ['.csv'];
             const fileName = file.name.toLowerCase();
             const isValidExtension = validExtensions.some(ext => fileName.endsWith(ext));
-<<<<<<< Updated upstream
             
             if (!isValidExtension) {
                 e.preventDefault();
@@ -807,12 +710,6 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                 
                 fileNameEl.textContent = file.name + ' (' + (file.size / 1024).toFixed(1) + ' KB)';
             } else {
-=======
-
-            if (!isValidExtension) {
-                alert('Please select a valid CSV file.');
-                this.value = '';
->>>>>>> Stashed changes
                 fileNameEl.textContent = 'No file selected';
                 return;
             }
@@ -834,7 +731,6 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
     </script>
 
     <style>
-<<<<<<< Updated upstream
         .instruction-box {
             background-color: #e8f4fd;
             border: 1px solid #bee5eb;
@@ -944,34 +840,6 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
             margin: 5px 0;
             line-height: 1.5;
         }
-=======
-    .info-box {
-        background-color: #e8f4fd;
-        border: 1px solid #bee5eb;
-        border-radius: 0.375rem;
-        padding: 1rem;
-        margin-bottom: 1.5rem;
-    }
-
-    .info-box h4 {
-        color: #0c5460;
-        margin-bottom: 0.5rem;
-    }
-
-    .info-box p {
-        color: #0c5460;
-        margin-bottom: 0.5rem;
-    }
-
-    .info-box ul {
-        color: #0c5460;
-        margin-left: 1.5rem;
-    }
-
-    .info-box li {
-        margin-bottom: 0.25rem;
-    }
->>>>>>> Stashed changes
     </style>
 </body>
 
