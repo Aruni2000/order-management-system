@@ -194,7 +194,7 @@ if ($rbac->isAdmin()) {
     } else {
     $tableExists = $conn->query("SHOW TABLES LIKE 'products'");
     if ($tableExists && $tableExists->num_rows > 0) {
-        $stats['total_products'] = safeQuery($conn, "SELECT COUNT(*) as count FROM products WHERE tenant_id = $teanent_id");
+        $stats['total_products'] = safeQuery($conn, "SELECT COUNT(*) as count FROM products");
     }
     }
 }

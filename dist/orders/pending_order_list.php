@@ -129,7 +129,16 @@ $sql = "SELECT i.*,
         WHERE i.interface IN ('individual', 'leads') 
         AND i.status = 'pending'$roleBasedCondition";
 
-// Build search conditions
+
+// Add tenant filter for non-main admin users
+if ($is_main_admin == 1){
+// Add ordering and pagination
+
+} else {
+    $sql .= " AND i.tenant_id = $teanent_id ";
+}
+
+
 // Build search conditions
 $searchConditions = [];
 
