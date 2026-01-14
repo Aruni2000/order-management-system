@@ -83,6 +83,8 @@ $roleBasedCondition = "";
 if ($current_user_role != 1) {
     // Non-admin users can only see their own orders
     $roleBasedCondition = " AND i.user_id = $current_user_id";
+}else{
+    $roleBasedCondition = "";
 }
 
 /**
@@ -126,10 +128,10 @@ $sql = "SELECT i.*,
 // Add tenant filter for non-main admin users
 if ($is_main_admin == 1){
    // Add ordering and pagination
-
+   $sql .= "$roleBasedCondition";
 }else{
     // Add ordering and pagination
-    $sql .= "  AND i.tenant_id = $teanent_id";
+    $sql .= "  AND i.tenant_id = $teanent_id $roleBasedCondition";
 }
 
 

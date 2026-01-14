@@ -21,6 +21,7 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
 // Check if user is main admin
 $is_main_admin = $_SESSION['is_main_admin'];
 $teanent_id = $_SESSION['tenant_id'];
+$is_admin = $_SESSION['role_id'];
 
 // NEW: Get current user's role information
 $current_user_id = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
@@ -71,7 +72,9 @@ $tenant_id_filter = isset($_GET['tenant_id_filter']) ? trim($_GET['tenant_id_fil
 $tenant_id_filter = isset($_GET['tenant_id_filter']) ? trim($_GET['tenant_id_filter']) : '';
 // Determine if tenant filter is active
 // Show checkboxes: always for regular users, or when main admin selects tenant
-$show_checkboxes = ($is_main_admin == 0) || !empty($tenant_id_filter);
+//$show_checkboxes = ($is_main_admin == 0) || !empty($tenant_id_filter);
+$show_checkboxes = (!(($is_admin == 1) && $is_main_admin)) || !empty($tenant_id_filter);
+
 
 
 $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 10;
@@ -335,7 +338,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                             </select>
                         </div>
 
-                        <?php if ($is_admin && $is_main_admin) { ?>
+                        <?php if (($is_admin == 1) && $is_main_admin) { ?>
                         <div class="form-group">
                             <label for="tenant_id_filter">Teanent ID</label>
                             <select id="tenant_id_filter" name="tenant_id_filter">
