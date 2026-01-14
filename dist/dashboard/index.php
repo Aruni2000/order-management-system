@@ -183,21 +183,23 @@ if ($rbac->isAdmin()) {
 }
 }
 
-// Total Products - Only admin can see all products
-if ($rbac->isAdmin()) {
-    // Check if products table exists
-    if ($is_main_admin == 1) {
-    $tableExists = $conn->query("SHOW TABLES LIKE 'products'");
-    if ($tableExists && $tableExists->num_rows > 0) {
-        $stats['total_products'] = safeQuery($conn, "SELECT COUNT(*) as count FROM products");
-    }
-    } else {
-    $tableExists = $conn->query("SHOW TABLES LIKE 'products'");
-    if ($tableExists && $tableExists->num_rows > 0) {
-        $stats['total_products'] = safeQuery($conn, "SELECT COUNT(*) as count FROM products");
-    }
-    }
-}
+// // Total Products - Only admin can see all products
+// if ($rbac->isAdmin()) {
+//     // Check if products table exists
+//     if ($is_main_admin == 1) {
+//     $tableExists = $conn->query("SHOW TABLES LIKE 'products'");
+//     if ($tableExists && $tableExists->num_rows > 0) {
+//         $stats['total_products'] = safeQuery($conn, "SELECT COUNT(*) as count FROM products");
+//     }
+//     } else {
+//     $tableExists = $conn->query("SHOW TABLES LIKE 'products'");
+//     if ($tableExists && $tableExists->num_rows > 0) {
+//         $stats['total_products'] = safeQuery($conn, "SELECT COUNT(*) as count FROM products");
+//     }
+//     }
+// }
+
+$stats['total_products'] = safeQuery($conn, "SELECT COUNT(*) as count FROM products");
 
 // Check if orders table exists
 $tableExists = $conn->query("SHOW TABLES LIKE 'order_header'");
