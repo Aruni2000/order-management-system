@@ -151,7 +151,7 @@ $safe_company_name = htmlspecialchars($company_name, ENT_QUOTES, 'UTF-8');
             <a href="#!" class="pc-link"><span class="pc-micon"> <i data-feather="truck"></i></span><span class="pc-mtext">Courier Management</span><span class="pc-arrow"><i class="ti ti-chevron-right"></i></span></a>
             <ul class="pc-submenu">
                 <li class="pc-item"><a class="pc-link" href="../orders/couriers.php">Courier List</a></li>
-                <?php if ($is_main_admin_tenant): ?>
+                <?php if ($is_admin && $is_main_admin_tenant): ?>
                 <li class="pc-item"><a class="pc-link" href="../orders/add_courier_account.php">Add Courier Account</a></li>
                 <?php endif; ?>
             </ul>

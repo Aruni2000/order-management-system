@@ -7,11 +7,15 @@ class RoleBasedAccessControl {
     private $current_user_id;
     private $current_user_role;
     private $conn;
+    private $is_main_admin;
+    private $tenant_id;
     
-    public function __construct($conn, $current_user_id = 0, $current_user_role = 0) {
+    public function __construct($conn, $current_user_id = 0, $current_user_role = 0, $is_main_admin = 0, $tenant_id = 0) {
         $this->conn = $conn;
         $this->current_user_id = (int)$current_user_id;
         $this->current_user_role = (int)$current_user_role;
+        $this->is_main_admin = (int)$is_main_admin;
+        $this->tenant_id = (int)$tenant_id;
     }
     
     /**
@@ -56,10 +60,20 @@ class RoleBasedAccessControl {
     /**
      * Get users query based on role
      */
+    /**
+     * Get users query based on role
+     */
     public function getUsersQuery() {
         if ($this->isAdmin()) {
-            return "SELECT id, name FROM users ORDER BY name ASC";
+            if ($this->is_main_admin == 1) {
+                 // Main Admin sees ALL users
+                 return "SELECT id, name FROM users ORDER BY name ASC";
+            } else {
+                 // Regular Admin sees users in their TENANT
+                 return "SELECT id, name FROM users WHERE tenant_id = {$this->tenant_id} ORDER BY name ASC";
+            }
         } else {
+            // Regular user sees ONLY THEMSELVES
             return "SELECT id, name FROM users WHERE id = {$this->current_user_id} ORDER BY name ASC";
         }
     }
@@ -162,7 +176,7 @@ if ($current_user_id == 0) {
 }
 
 // Initialize RBAC helper - CENTRALIZED CONTROL
-$rbac = new RoleBasedAccessControl($conn, $current_user_id, $current_user_role);
+$rbac = new RoleBasedAccessControl($conn, $current_user_id, $current_user_role, $is_main_admin, $teanent_id);
 
 /**
  * SEARCH AND PAGINATION PARAMETERS
@@ -460,7 +474,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                             </select>
                         </div>
 
-                        <?php if ($is_main_admin == 1) { ?>
+                        <?php if ($is_admin && $is_main_admin) { ?>
                         <div class="form-group">
                             <label for="tenant_id_filter">Tenant ID</label>
                             <select id="tenant_id_filter" name="tenant_id_filter">

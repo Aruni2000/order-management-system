@@ -39,6 +39,12 @@ if ($user_role['role_id'] != 1) {
     exit();
 }
 
+// Check if user is Main Admin
+if (!isset($_SESSION['is_main_admin']) || $_SESSION['is_main_admin'] != 1) {
+    header("Location: /order_management/dist/dashboard/index.php");
+    exit();
+}
+
 // Fetch tenants from database
 $tenantQuery = "SELECT tenant_id, company_name FROM tenants WHERE status = 'active' ORDER BY company_name";
 $tenantResult = mysqli_query($conn, $tenantQuery);

@@ -335,7 +335,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                             </select>
                         </div>
 
-                        <?php if ($is_main_admin == 1) { ?>
+                        <?php if ($is_admin && $is_main_admin) { ?>
                         <div class="form-group">
                             <label for="tenant_id_filter">Teanent ID</label>
                             <select id="tenant_id_filter" name="tenant_id_filter">

@@ -44,6 +44,13 @@ try {
         exit();
     }
 
+    // Check if user is Main Admin
+    if (!isset($_SESSION['is_main_admin']) || $_SESSION['is_main_admin'] != 1) {
+        $response['message'] = 'Access denied. Main Admin privileges required.';
+        echo json_encode($response);
+        exit();
+    }
+
     // Check if request method is POST
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         $response['message'] = 'Invalid request method.';

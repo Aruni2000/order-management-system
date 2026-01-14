@@ -238,7 +238,14 @@ $totalPages = ceil($totalRows / $limit);
 $result = $conn->query($sql);
 
 // Fetch all users for the User ID dropdown
-$usersQuery = "SELECT id, name FROM users ORDER BY name ASC";
+// Fetch users for the dropdown based on permissions
+if ($is_main_admin == 1 && $current_user_role == 1) {
+    // Super Main Admin can see all users
+    $usersQuery = "SELECT id, name FROM users ORDER BY name ASC";
+} else {
+    // Regular Admins (or others) can only see users in their tenant
+    $usersQuery = "SELECT id, name FROM users WHERE tenant_id = " . (int)$teanent_id . " ORDER BY name ASC";
+}
 $usersResult = $conn->query($usersQuery);
 
 // Include navigation components
@@ -489,7 +496,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                             </select>
                         </div>
 
-                        <?php if ($is_main_admin == 1) { ?>
+                        <?php if ($is_admin && $is_main_admin) { ?>
                         <div class="form-group">
                             <label for="tenant_id_filter">Tenant ID</label>
                             <select id="tenant_id_filter" name="tenant_id_filter">
