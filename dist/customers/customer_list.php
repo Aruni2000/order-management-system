@@ -18,7 +18,8 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
 
 // Check if user is main admin
 $is_main_admin = $_SESSION['is_main_admin'];
-$teanent_id = $_SESSION['tenant_id'];
+$tenent_id = $_SESSION['tenant_id'];
+$is_admin = $_SESSION['role_id'];
 
 // Handle search and filter parameters
 $search = isset($_GET['search']) ? trim($_GET['search']) : '';
@@ -141,14 +142,18 @@ if (!empty($searchConditions)) {
     $sql .= $finalSearchCondition;
 }
 
-if ($is_main_admin == 1){
+// $is_main_admin == 1 can see all users and $is_main_admin == 0 can see only their tenant users
+if (($is_main_admin == 1) && ($is_admin == 1)) {
     // Add ordering and pagination
+    
 $sql .= " ORDER BY c.created_at DESC LIMIT $limit OFFSET $offset";
 
 
 }else{
 // Add ordering and pagination
-$sql .= " WHERE c.tenant_id = $teanent_id ORDER BY c.created_at DESC LIMIT $limit OFFSET $offset";
+
+$sql .= " WHERE c.tenant_id = $tenent_id ORDER BY c.created_at DESC LIMIT $limit OFFSET $offset";
+
 
 }
     

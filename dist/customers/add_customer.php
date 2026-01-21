@@ -32,6 +32,7 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/navbar.php')
 include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php');
 
 $is_main_admin = $_SESSION['is_main_admin'];
+$role_id = $_SESSION['role_id'];
 ?>
 
 <!doctype html>
@@ -287,7 +288,7 @@ $is_main_admin = $_SESSION['is_main_admin'];
                     <div class="form-section">
                         <div class="section-content">
 
-                            <?php if ($is_main_admin == 1) { ?>
+                            <?php if (($is_main_admin == 1) && ($role_id == 1)) { ?>
                             <div class="form-row">
                                 <div class="customer-form-group">
                                     <label for="status" class="form-label">
