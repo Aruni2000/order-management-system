@@ -128,8 +128,48 @@ try {
         throw new Exception('Upload directory is not writable');
     }
     
+    // Get company names for filename prefix
+    $mainCompanyName = '';
+    $companyName = '';
+
+    // 1. Fetch Main Company Name
+    $mainBrandQuery = "SELECT b.company_name FROM branding b 
+                       JOIN tenants t ON b.tenant_id = t.tenant_id 
+                       WHERE t.is_main_admin = 1 AND b.active = 1 LIMIT 1";
+    $mainBrandResult = $conn->query($mainBrandQuery);
+    if ($mainBrandResult && $mainRow = $mainBrandResult->fetch_assoc()) {
+        if (!empty($mainRow['company_name'])) {
+            $cleanMainName = strtolower(preg_replace('/[^a-zA-Z0-9]/', '', $mainRow['company_name']));
+            if (!empty($cleanMainName)) {
+                $mainCompanyName = $cleanMainName . '_';
+            }
+        }
+    }
+
+    // 2. Fetch Tenant Company Name
+    $tenantId = $_SESSION['tenant_id'] ?? 0;
+    $brandQuery = "SELECT company_name FROM branding WHERE tenant_id = ? AND active = 1 LIMIT 1";
+    $brandStmt = $conn->prepare($brandQuery);
+    $brandStmt->bind_param("i", $tenantId);
+    $brandStmt->execute();
+    $brandResult = $brandStmt->get_result();
+
+    if ($brandResult && $brandRow = $brandResult->fetch_assoc()) {
+        if (!empty($brandRow['company_name'])) {
+            // Keep only alphanumeric characters and convert to lowercase
+            $cleanCompanyName = strtolower(
+                preg_replace('/[^a-zA-Z0-9]/', '', $brandRow['company_name'])
+            );
+
+            if (!empty($cleanCompanyName)) {
+                $companyName = $cleanCompanyName . '_';
+            }
+        }
+    }
+    $brandStmt->close();
+
     // Generate unique filename
-    $fileName = 'payment_' . $orderId . '_' . time() . '.' . $fileExtension;
+    $fileName = $mainCompanyName . $companyName . 'payment_' . $orderId . '_' . time() . '.' . $fileExtension;
     $filePath = $uploadDir . $fileName;
     
     // Move uploaded file

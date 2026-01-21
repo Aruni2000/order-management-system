@@ -1,0 +1,46 @@
+/* Status Badge Colors */
+.status-pending,
+.status-hold,
+.status-processing,
+.status-pickup,
+.status-pending-deliver {
+  background-color: #fef3c7 !important;
+  color: #92400e !important;
+}
+
+.status-transfer {
+  background-color: #e0f2fe !important;
+  color: #1d4ed8 !important;
+}
+
+.status-dispatched,
+.status-courier-dispatched {
+  background-color: #dbeafe !important;
+  color: #1e40af !important;
+}
+
+.status-waiting,
+.status-delivered,
+.status-completed {
+  background-color: #dcfce7 !important;
+  color: #166534 !important;
+}
+
+.status-cancelled,
+.status-return,
+.status-return-pending,
+.status-return-complete,
+.status-return-handover,
+.status-return-transfer,
+.status-damaged,
+.status-rearrange,
+.status-no-answer {
+  background-color: #fee2e2 !important;
+  color: #991b1b !important;
+}
+
+.status-removed,
+.status-default {
+  background-color: #f3f4f6 !important;
+  color: #4b5563 !important;
+}

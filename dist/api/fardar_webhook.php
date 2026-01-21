@@ -27,8 +27,7 @@ if (empty($waybill_id) || empty($delivery_status)) {
 
 // Map courier statuses to system statuses
 if ($delivery_status === 'Reschedule' || 
-    $delivery_status === 'Date Changed' || 
-    $delivery_status === 'Rearrange') {
+    $delivery_status === 'Date Changed') {
 
     $status_update = 'Pending to Deliver';
 

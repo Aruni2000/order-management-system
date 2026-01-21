@@ -266,6 +266,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
     <!-- Stylesheets -->
     <link rel="stylesheet" href="../assets/css/style.css" id="main-style-link" />
     <link rel="stylesheet" href="../assets/css/orders.css" id="main-style-link" />
+    <link rel="stylesheet" href="../assets/css/status-badge-colors.css" id="main-style-link" />
     <style>
     .print-btn {
         background-color: #28a745;
@@ -367,55 +368,28 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                         <div class="form-group">
                             <label for="status_filter">Status</label>
                             <select id="status_filter" name="status_filter">
-                                <option value="">All Status</option>
-                                <option value="waiting" <?php echo ($status_filter == 'waiting') ? 'selected' : ''; ?>>
-                                    Waiting</option>
-                                <option value="pickup" <?php echo ($status_filter == 'pickup') ? 'selected' : ''; ?>>
-                                    Pickup</option>
-                                <option value="processing"
-                                    <?php echo ($status_filter == 'processing') ? 'selected' : ''; ?>>Processing
-                                </option>
-                                <option value="dispatch"
-                                    <?php echo ($status_filter == 'dispatch') ? 'selected' : ''; ?>>Dispatch</option>
-                                <option value="courier dispatch"
-                                    <?php echo ($status_filter == 'courier dispatch') ? 'selected' : ''; ?>>Courier
-                                    Dispatch</option>
-                                <option value="pending to deliver"
-                                    <?php echo ($status_filter == 'pending to deliver') ? 'selected' : ''; ?>>Pending to
-                                    Deliver</option>
-                                <option value="delivered"
-                                    <?php echo ($status_filter == 'delivered') ? 'selected' : ''; ?>>Delivered</option>
-                                <option value="done" <?php echo ($status_filter == 'done') ? 'selected' : ''; ?>>
-                                    Completed</option>
-                                <option value="pending" <?php echo ($status_filter == 'pending') ? 'selected' : ''; ?>>
-                                    Pending</option>
-                                <option value="no_answer"
-                                    <?php echo ($status_filter == 'no_answer') ? 'selected' : ''; ?>>No Answer</option>
-                                <option value="return" <?php echo ($status_filter == 'return') ? 'selected' : ''; ?>>
-                                    Return</option>
-                                <option value="return pending"
-                                    <?php echo ($status_filter == 'return pending') ? 'selected' : ''; ?>>Return Pending
-                                </option>
-                                <option value="return complete"
-                                    <?php echo ($status_filter == 'return complete') ? 'selected' : ''; ?>>Return
-                                    Complete</option>
-                                <option value="return_handover"
-                                    <?php echo ($status_filter == 'return_handover') ? 'selected' : ''; ?>>Return
-                                    Handover</option>
-                                <option value="return transfer"
-                                    <?php echo ($status_filter == 'return transfer') ? 'selected' : ''; ?>>Return
-                                    Transfer</option>
-                                <option value="transfer"
-                                    <?php echo ($status_filter == 'transfer') ? 'selected' : ''; ?>>Transfer</option>
-                                <option value="cancel" <?php echo ($status_filter == 'cancel') ? 'selected' : ''; ?>>
-                                    Cancel</option>
-                                <option value="removed" <?php echo ($status_filter == 'removed') ? 'selected' : ''; ?>>
-                                    Removed</option>
-                                <option value="damaged" <?php echo ($status_filter == 'damaged') ? 'selected' : ''; ?>>
-                                    Damaged</option>
-                                <option value="hold" <?php echo ($status_filter == 'hold') ? 'selected' : ''; ?>>Hold
-                                </option>
-                            </select>
+                                    <option value="">All Status</option>
+                                    <option value="waiting" <?php echo ($status_filter == 'waiting') ? 'selected' : ''; ?>>Waiting</option>
+                                    <option value="pickup" <?php echo ($status_filter == 'pickup') ? 'selected' : ''; ?>>Pickup</option>
+                                    <option value="processing" <?php echo ($status_filter == 'processing') ? 'selected' : ''; ?>>Processing</option>
+                                    <option value="dispatch" <?php echo ($status_filter == 'dispatch') ? 'selected' : ''; ?>>Dispatch</option>
+                                    <option value="courier dispatch" <?php echo ($status_filter == 'courier dispatch') ? 'selected' : ''; ?>>Courier Dispatch</option>
+                                    <option value="rearrange" <?php echo ($status_filter == 'rearrange') ? 'selected' : ''; ?>>Rearrange</option>
+                                    <option value="pending to deliver" <?php echo ($status_filter == 'pending to deliver') ? 'selected' : ''; ?>>Pending to Deliver</option>
+                                    <option value="delivered" <?php echo ($status_filter == 'delivered') ? 'selected' : ''; ?>>Delivered</option>
+                                    <option value="done" <?php echo ($status_filter == 'done') ? 'selected' : ''; ?>>Completed</option>
+                                    <option value="pending" <?php echo ($status_filter == 'pending') ? 'selected' : ''; ?>>Pending</option>
+                                    <option value="return" <?php echo ($status_filter == 'return') ? 'selected' : ''; ?>>Return</option>
+                                    <option value="return pending" <?php echo ($status_filter == 'return pending') ? 'selected' : ''; ?>>Return Pending</option>
+                                    <option value="return complete" <?php echo ($status_filter == 'return complete') ? 'selected' : ''; ?>>Return Complete</option>
+                                    <option value="return_handover" <?php echo ($status_filter == 'return_handover') ? 'selected' : ''; ?>>Return Handover</option>
+                                    <option value="return transfer" <?php echo ($status_filter == 'return transfer') ? 'selected' : ''; ?>>Return Transfer</option>
+                                    <option value="transfer" <?php echo ($status_filter == 'transfer') ? 'selected' : ''; ?>>Transfer</option>
+                                    <option value="cancel" <?php echo ($status_filter == 'cancel') ? 'selected' : ''; ?>>Cancel</option>
+                                    <option value="removed" <?php echo ($status_filter == 'removed') ? 'selected' : ''; ?>>Removed</option>
+                                    <option value="damaged" <?php echo ($status_filter == 'damaged') ? 'selected' : ''; ?>>Damaged</option>
+                                    <option value="hold" <?php echo ($status_filter == 'hold') ? 'selected' : ''; ?>>Hold</option>
+                                </select>
                         </div>
 
                         <?php if ($is_main_admin == 1) { ?>
@@ -553,9 +527,12 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                                 case 'pending to deliver':
                                                 case 'reschedule':
                                                 case 'date changed':
-                                                case 'rearranged':
                                                     $statusText = 'Pending to Deliver';
                                                     $badgeClass = 'status-pending-deliver';
+                                                    break;
+                                                case 'rearrange':
+                                                    $statusText = 'Rearrange';
+                                                    $badgeClass = 'status-rearrange';
                                                     break;
                                                 case 'delivered':
                                                     $statusText = 'Delivered';
