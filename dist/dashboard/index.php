@@ -165,9 +165,8 @@ if ($rbac->isAdmin()) {
     if ($tableExists && $tableExists->num_rows > 0) {
         $stats['total_customers'] = safeQuery($conn, 
             "SELECT COUNT(DISTINCT c.customer_id) as count 
-             FROM customers c 
-             INNER JOIN order_header oh ON c.customer_id = oh.customer_id 
-             WHERE oh.user_id = $current_user_id"
+             FROM customers c
+             WHERE c.tenant_id = $teanent_id"
         );
     }
     } else {
@@ -175,9 +174,8 @@ if ($rbac->isAdmin()) {
     if ($tableExists && $tableExists->num_rows > 0) {
         $stats['total_customers'] = safeQuery($conn, 
             "SELECT COUNT(DISTINCT c.customer_id) as count 
-             FROM customers c 
-             INNER JOIN order_header oh ON c.customer_id = oh.customer_id 
-             WHERE oh.user_id = $current_user_id AND c.tenant_id = $teanent_id"
+             FROM customers c
+             WHERE c.tenant_id = $teanent_id"
         );
     }
 }
@@ -763,7 +761,7 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                 </div>
 
                 <!-- Inventory & User Management Section - Admin Only -->
-                <div class="col-span-12 mt-6 admin-only">
+                <div class="col-span-12 mt-6">
                     <h2 class="section-title">Inventory & User Management</h2>
                 </div>
 

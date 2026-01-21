@@ -135,6 +135,12 @@ if (!empty($tenant_id_filter)) {
     $searchConditions[] = "c.tenant_id = '$tenantIdTerm'";
 }
 
+// Apply tenant restrictions for non-main admins
+if ($is_main_admin != 1) {
+    // Ensure we filter by tenant ID
+    $searchConditions[] = "c.tenant_id = '$tenent_id'";
+}
+
 // Apply all search conditions
 if (!empty($searchConditions)) {
     $finalSearchCondition = " WHERE " . implode(' AND ', $searchConditions);
@@ -142,20 +148,8 @@ if (!empty($searchConditions)) {
     $sql .= $finalSearchCondition;
 }
 
-// $is_main_admin == 1 can see all users and $is_main_admin == 0 can see only their tenant users
-if (($is_main_admin == 1) && ($is_admin == 1)) {
-    // Add ordering and pagination
-    
-$sql .= " ORDER BY c.created_at DESC LIMIT $limit OFFSET $offset";
-
-
-}else{
 // Add ordering and pagination
-
-$sql .= " WHERE c.tenant_id = $tenent_id ORDER BY c.created_at DESC LIMIT $limit OFFSET $offset";
-
-
-}
+$sql .= " ORDER BY c.created_at DESC LIMIT $limit OFFSET $offset";
     
 
 // Execute queries
