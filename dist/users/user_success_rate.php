@@ -67,10 +67,11 @@ if (isset($_GET['export']) && $_GET['export'] == 'success_report') {
     // Build export query with same filters as main query
     $export_sql = "SELECT u.id as user_id, u.name as username, u.email, u.mobile as phone, 
                    u.nic, r.name as role, u.status, u.created_at, t.company_name as tenant_name,
-                   (SELECT COUNT(*) FROM order_header WHERE user_id = u.id AND status NOT IN ('pending', 'cancel', 'dispatch')) as dispatched_orders,
+                   (SELECT COUNT(*) FROM order_header WHERE user_id = u.id AND status NOT IN ('pending', 'cancel', 'dispatch','waiting')) as dispatched_orders,
                    (SELECT COUNT(*) FROM order_header WHERE user_id = u.id AND status IN ('done', 'delivered')) as delivered_orders,
                    (SELECT COUNT(*) FROM order_header WHERE user_id = u.id AND status = 'cancel') as cancelled_orders,
-                   (SELECT COUNT(*) FROM order_header WHERE user_id = u.id AND status = 'pending') as pending_orders
+                   (SELECT COUNT(*) FROM order_header WHERE user_id = u.id AND status = 'pending') as pending_orders,
+                   (SELECT COUNT(*) FROM order_header WHERE user_id = u.id AND status = 'waiting') as waiting_orders
             FROM users u 
             LEFT JOIN roles r ON u.role_id = r.id
             LEFT JOIN tenants t ON u.tenant_id = t.tenant_id";
@@ -147,6 +148,7 @@ if (isset($_GET['export']) && $_GET['export'] == 'success_report') {
         'Delivered Orders',
         'Cancelled Orders',
         'Pending Orders',
+        'Waiting Orders',
         'Success Rate (%)',
         'Performance Rating',
         'Created Date'
@@ -191,6 +193,7 @@ if (isset($_GET['export']) && $_GET['export'] == 'success_report') {
                 $delivered,
                 $export_row['cancelled_orders'],
                 $export_row['pending_orders'],
+                $export_row['waiting_orders'],
                 $success_rate,
                 $performance_rating,
                 date('Y-m-d H:i:s', strtotime($export_row['created_at']))
@@ -237,7 +240,7 @@ $countSql = "SELECT COUNT(*) as total FROM users u LEFT JOIN tenants t ON u.tena
 // Main query with success rate calculation
 $sql = "SELECT u.id as user_id, u.name as username, u.email, u.mobile as phone, 
                u.nic, r.name as role, u.status, u.created_at, t.company_name as tenant_name,
-               (SELECT COUNT(*) FROM order_header WHERE user_id = u.id AND status NOT IN ('pending', 'cancel', 'dispatch')) as dispatched_orders,
+               (SELECT COUNT(*) FROM order_header WHERE user_id = u.id AND status NOT IN ('pending', 'cancel', 'dispatch','waiting')) as dispatched_orders,
                (SELECT COUNT(*) FROM order_header WHERE user_id = u.id AND status IN ('done', 'delivered')) as delivered_orders
         FROM users u 
         LEFT JOIN roles r ON u.role_id = r.id

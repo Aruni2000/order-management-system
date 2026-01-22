@@ -180,10 +180,10 @@ $safe_company_name = htmlspecialchars($company_name, ENT_QUOTES, 'UTF-8');
           <ul class="pc-submenu">
             <li class="pc-item"><a class="pc-link" href="../users/add_user.php">Add New User</a></li>
             <li class="pc-item"><a class="pc-link" href="../users/users.php">All Users</a></li>
-            <li class="pc-item"><a class="pc-link" href="../users/user_logs.php">User Activity Log</a></li>
             <?php if ($is_admin == 1 && $is_main_admin_tenant): ?>
             <li class="pc-item"><a class="pc-link" href="../users/user_success_rate.php">User Success Rate</a></li>
             <?php endif; ?>
+            <li class="pc-item"><a class="pc-link" href="../users/user_logs.php">User Activity Log</a></li>
           </ul>
         </li>
         <?php endif; ?>
