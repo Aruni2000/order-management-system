@@ -151,7 +151,7 @@ $safe_company_name = htmlspecialchars($company_name, ENT_QUOTES, 'UTF-8');
             <a href="#!" class="pc-link"><span class="pc-micon"> <i data-feather="truck"></i></span><span class="pc-mtext">Courier Management</span><span class="pc-arrow"><i class="ti ti-chevron-right"></i></span></a>
             <ul class="pc-submenu">
                 <li class="pc-item"><a class="pc-link" href="../orders/couriers.php">Courier List</a></li>
-                <?php if ($is_admin && $is_main_admin_tenant): ?>
+                <?php if ($is_admin == 1 && $is_main_admin_tenant): ?>
                 <li class="pc-item"><a class="pc-link" href="../orders/add_courier_account.php">Add Courier Account</a></li>
                 <?php endif; ?>
             </ul>
@@ -164,7 +164,7 @@ $safe_company_name = htmlspecialchars($company_name, ENT_QUOTES, 'UTF-8');
           </ul>
         </li>
         
-        <?php if ($is_admin && $is_main_admin_tenant): ?>
+        <?php if ($is_admin == 1 && $is_main_admin_tenant): ?>
         <li class="pc-item pc-hasmenu">
           <a href="#!" class="pc-link"><span class="pc-micon"> <i data-feather="briefcase"></i></span><span class="pc-mtext">Tenants</span><span class="pc-arrow"><i class="ti ti-chevron-right"></i></span></a>
           <ul class="pc-submenu">
@@ -174,13 +174,16 @@ $safe_company_name = htmlspecialchars($company_name, ENT_QUOTES, 'UTF-8');
         </li>
         <?php endif; ?>
         
-        <?php if ($is_admin): ?>
+        <?php if ($is_admin == 1): ?>
         <li class="pc-item pc-hasmenu">
           <a href="#!" class="pc-link"><span class="pc-micon"> <i data-feather="users"></i></span><span class="pc-mtext">Users</span><span class="pc-arrow"><i class="ti ti-chevron-right"></i></span></a>
           <ul class="pc-submenu">
             <li class="pc-item"><a class="pc-link" href="../users/add_user.php">Add New User</a></li>
             <li class="pc-item"><a class="pc-link" href="../users/users.php">All Users</a></li>
             <li class="pc-item"><a class="pc-link" href="../users/user_logs.php">User Activity Log</a></li>
+            <?php if ($is_admin == 1 && $is_main_admin_tenant): ?>
+            <li class="pc-item"><a class="pc-link" href="../users/user_success_rate.php">User Success Rate</a></li>
+            <?php endif; ?>
           </ul>
         </li>
         <?php endif; ?>
