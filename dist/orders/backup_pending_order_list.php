@@ -305,7 +305,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
 
                         <?php if ($is_main_admin == 1) { ?>
                         <div class="form-group">
-                            <label for="tenant_id_filter">Teanent ID</label>
+                            <label for="tenant_id_filter">TENENT</label>
                             <select id="tenant_id_filter" name="tenant_id_filter">
                                 <option value="">All Companies</option>
                                 <?php foreach ($tenants as $tenant): ?>

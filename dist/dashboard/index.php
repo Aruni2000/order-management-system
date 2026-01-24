@@ -534,10 +534,10 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                             <?php endif; ?>
                         </h5>
                     </div>
-                    <ul class="breadcrumb">
+                    <!-- <ul class="breadcrumb">
                         <li class="breadcrumb-item"><a href="index.php">Home</a></li>
                         <li class="breadcrumb-item"><a href="javascript: void(0)">Dashboard</a></li>
-                    </ul>
+                    </ul> -->
                 </div>
             </div>
             <!-- [ breadcrumb ] end -->

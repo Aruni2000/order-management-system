@@ -113,7 +113,7 @@
     <div class="floting-button fixed bottom-[50px] right-[30px] z-[1030]">
     </div>
 
-    
+<!--     
     <script>
       layout_change('false');
     </script>
@@ -142,7 +142,7 @@
      
     <script>
       main_layout_change('vertical');
-    </script>
+    </script> -->
     
  
   </body>

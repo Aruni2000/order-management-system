@@ -1,6 +1,17 @@
 <?php
 session_start(); // Start the session at the very beginning
 
+// Add anti-caching headers
+header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
+header("Cache-Control: post-check=0, pre-check=0", false);
+header("Pragma: no-cache");
+
+// Check if user is already logged in
+if (isset($_SESSION['logged_in']) && $_SESSION['logged_in'] === true) {
+    header("Location: /order_management/dist/dashboard/index.php");
+    exit();
+}
+
 // Include both database connection files
 include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/connection/db_connection.php');
 include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/connection/fe_it_db_connection.php');
@@ -200,6 +211,14 @@ $fe_conn->close();
 <head>
     <title>Login | Order Management Admin Portal</title>
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/head.php'); ?>
+    <script>
+        // Force reload if page is loaded from back-forward cache
+        window.addEventListener('pageshow', function(event) {
+            if (event.persisted || (window.performance && window.performance.navigation.type === 2)) {
+                window.location.reload();
+            }
+        });
+    </script>
 </head>
   <link rel="stylesheet" href="../assets/css/login.css" id="main-style-link" />
 

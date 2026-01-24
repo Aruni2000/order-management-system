@@ -98,6 +98,12 @@ $countSql = "SELECT COUNT(*) as total FROM order_header i
              WHERE i.status = 'return_handover'
              AND (i.interface = 'individual' OR i.interface = 'leads')$roleBasedCondition";
 
+// Add tenant filter for non-main admin users to count query
+if ($is_main_admin != 1) {
+    $countSql .= " AND i.tenant_id = $teanent_id";
+}
+
+
 
 // Main query with all required joins - RETURN_HANDOVER STATUS - Updated to use user_id
 $sql = "SELECT i.*, 
@@ -126,13 +132,13 @@ $sql = "SELECT i.*,
         AND (i.interface = 'individual' OR i.interface = 'leads')$roleBasedCondition";
 
 // Add tenant filter for non-main admin users
-if ($is_main_admin == 1){
-   // Add ordering and pagination
-
-}else{
-    // Add ordering and pagination
-    $sql .= "  AND i.tenant_id = $teanent_id";
+if ($is_main_admin != 1) {
+    $sql .= " AND i.tenant_id = $teanent_id";
 }
+
+
+// Tenant filter logic handled above in $sql building
+
 
 
 // Build search conditions
@@ -221,9 +227,14 @@ if ($countResult && $countResult->num_rows > 0) {
 $totalPages = ceil($totalRows / $limit);
 $result = $conn->query($sql);
 
-// NEW: Fetch all users for the User ID dropdown
-$usersQuery = "SELECT id, name FROM users ORDER BY name ASC";
+// NEW: Fetch all users for the User ID dropdown - tenant scoped for non-main admin
+if ($is_main_admin == 1 && $current_user_role == 1) {
+    $usersQuery = "SELECT id, name FROM users ORDER BY name ASC";
+} else {
+    $usersQuery = "SELECT id, name FROM users WHERE tenant_id = " . (int)$teanent_id . " ORDER BY name ASC";
+}
 $usersResult = $conn->query($usersQuery);
+
 
 // Include navigation components
 include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/navbar.php');
@@ -323,9 +334,10 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                 value="<?php echo htmlspecialchars($date_to); ?>">
                         </div>
 
-                        <?php if ($is_main_admin == 1) { ?>
+                        <?php if ($is_main_admin == 1 &&$current_user_role == 1) { ?>
                         <div class="form-group">
-                            <label for="tenant_id_filter">Tenent ID</label>
+                            <label for="tenant_id_filter">Tenant ID</label>
+
                             <select id="tenant_id_filter" name="tenant_id_filter">
                                 <option value="">All Companies</option>
                                 <?php foreach ($tenants as $tenant): ?>
@@ -373,12 +385,12 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                 <th>Total Amount</th>
                                 <th>Pay Status</th>
                                 <th>Tracking Number</th>
-                                <?php if ($is_main_admin == 1) { ?>
+                                <th>Processed By</th>
+                                <?php if ($is_main_admin == 1 && $current_user_role == 1) { ?>
                                 <th>Tenant Company Name</th>
                                 <?php } else { ?>
                                 <!--<input type="hidden" name="teanetID" value="0">-->
                                 <?php } ?>
-                                <th>Processed By</th>
                                 <?php if ($current_user_role == 1): ?>
                                 <th>User</th>
                                 <?php endif; ?>
@@ -435,8 +447,15 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                                 ?>
                                 </td>
 
+                                <!-- Processed By User -->
+                                <td>
+                                    <?php
+                                                echo isset($row['paid_by_name']) ? htmlspecialchars($row['paid_by_name']) : 'N/A';
+                                                ?>
+                                </td>
+
                                 <!-- Teanaent Company Name -->
-                                <?php if ($is_main_admin == 1) { ?>
+                                <?php if ($is_main_admin == 1  &&$current_user_role == 1) { ?>
                                 <td class="customer-name">
                                     <div class="customer-info">
                                         <h6 style="margin: 0; font-size: 14px;">
@@ -447,15 +466,9 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                 <!--<input type="hidden" name="teanetID" value="0">-->
                                 <?php } ?>
 
-                                <!-- Processed By User -->
-                                <td>
-                                    <?php
-                                                echo isset($row['paid_by_name']) ? htmlspecialchars($row['paid_by_name']) : 'N/A';
-                                                ?>
-                                </td>
 
                                 <!-- User Column - CONDITIONAL: Only show for admin users -->
-                                <?php if ($current_user_role == 1): ?>
+                                <?php if ($current_user_role == 1 ): ?>
                                 <td>
                                     <?php
                                                 $userName = isset($row['user_name']) ? htmlspecialchars($row['user_name']) : 'N/A';
@@ -774,6 +787,8 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
         }
     });
     </script>
+    <!--Footer-->
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/footer.php'); ?>
 </body>
 
 </html>

@@ -441,7 +441,9 @@ if ($is_main_admin === 1 && $role_id === 1) {
                                 <th>Order ID</th>
                                 <th>Customer Name</th>
                                 <th>Phone Number</th>
+                                <?php if ($is_main_admin === 1 && $role_id === 1): ?>
                                 <th>Tenant</th>
+                                <?php endif; ?>
                                 <th>Total Amount</th>
                                 <th>Pay Status</th>
                                 <th>Status</th>
@@ -498,10 +500,12 @@ if ($is_main_admin === 1 && $role_id === 1) {
                                             ?>
                                         </td>
 
-                                        <!-- Tenant Column -->
+                                         <!-- Tenant Column -->
+                                        <?php if ($is_main_admin === 1 && $role_id === 1): ?>
                                         <td class="tenant-info">
                                             <?php echo isset($row['tenant_name']) ? htmlspecialchars($row['tenant_name']) : 'N/A'; ?>
                                         </td>
+                                        <?php endif; ?>
                                        
                                         <!-- Total Amount with Currency -->
                                         <td class="amount">
@@ -622,8 +626,8 @@ if ($is_main_admin === 1 && $role_id === 1) {
                                     </tr>
                                 <?php endwhile; ?>
                             <?php else: ?>
-                                <tr>
-                                    <td colspan="9" class="text-center" style="padding: 40px; text-align: center; color: #666;">
+                                 <tr>
+                                    <td colspan="<?php echo ($is_main_admin === 1 && $role_id === 1) ? '9' : '8'; ?>" class="text-center" style="padding: 40px; text-align: center; color: #666;">
                                         No leads assigned to you
                                     </td>
                                 </tr>

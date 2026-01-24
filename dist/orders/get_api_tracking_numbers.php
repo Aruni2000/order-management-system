@@ -70,7 +70,7 @@ try {
             // Get unused tracking numbers for the specified courier AND tenant (limit to requested count)
             $tracking_query = "SELECT tracking_id FROM tracking 
                 WHERE courier_id = ? AND status = 'unused' AND tenant_id = ? 
-                ORDER BY id ASC 
+                ORDER BY created_at ASC 
                 LIMIT ?";
 
             $stmt = $conn->prepare($tracking_query);
@@ -100,7 +100,7 @@ try {
             // Get whatever tracking numbers are available
             $tracking_query = "SELECT tracking_id FROM tracking 
                 WHERE courier_id = ? AND status = 'unused' AND tenant_id = ? 
-                ORDER BY id ASC";
+                ORDER BY created_at ASC";
 
             $stmt = $conn->prepare($tracking_query);
             $stmt->bind_param("ii", $courier_id, $tenant_id);

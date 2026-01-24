@@ -135,8 +135,8 @@ if (!empty($tenant_id_filter)) {
     $searchConditions[] = "c.tenant_id = '$tenantIdTerm'";
 }
 
-// Apply tenant restrictions for non-main admins
-if ($is_main_admin != 1) {
+// Apply tenant restrictions for non-main admins or main admins who are not super admins (role_id 1)
+if (!($is_main_admin == 1 && $is_admin == 1)) {
     // Ensure we filter by tenant ID
     $searchConditions[] = "c.tenant_id = '$tenent_id'";
 }
@@ -149,7 +149,7 @@ if (!empty($searchConditions)) {
 }
 
 // Add ordering and pagination
-$sql .= " ORDER BY c.created_at DESC LIMIT $limit OFFSET $offset";
+$sql .= " ORDER BY c.customer_id DESC LIMIT $limit OFFSET $offset";
     
 
 // Execute queries
@@ -265,9 +265,9 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                             </select>
                         </div>
 
-                        <?php if ($is_main_admin == 1) { ?>
+                        <?php if ($is_main_admin == 1 && $is_admin == 1) { ?>
                         <div class="form-group">
-                            <label for="tenant_id_filter">Teanent ID</label>
+                            <label for="tenant_id_filter">TENENT</label>
                             <select id="tenant_id_filter" name="tenant_id_filter">
                                 <option value="">All Companies</option>
                                 <?php foreach ($tenants as $tenant): ?>
@@ -314,7 +314,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                 <th>Customer Name</th>
                                 <th>Phone & Email</th>
                                 <th>Address</th>
-                                <?php if ($is_main_admin == 1) { ?>
+                                <?php if ($is_main_admin == 1 && $is_admin == 1) { ?>
                                 <th>Teanet Company Name</th>
                                 <?php } else { ?>
                                 <!--<input type="hidden" name="teanetID" value="0">-->
@@ -377,7 +377,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                 </td>
 
                                 <!-- Teanaent Company Name -->
-                                <?php if ($is_main_admin == 1) { ?>
+                                <?php if ($is_main_admin == 1 && $is_admin == 1) { ?>
                                 <td class="customer-name">
                                     <div class="customer-info">
                                         <h6 style="margin: 0; font-size: 14px;">

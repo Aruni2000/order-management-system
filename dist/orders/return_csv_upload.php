@@ -15,8 +15,44 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
 // Include the database connection file early
 include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/connection/db_connection.php');
 
+// Handle AJAX request for fetching couriers
+if (isset($_GET['action']) && $_GET['action'] === 'get_couriers' && isset($_GET['tenant_id'])) {
+    header('Content-Type: application/json');
+    $tenantId = intval($_GET['tenant_id']);
+    $sql = "SELECT co_id, courier_id, courier_name 
+            FROM couriers 
+            WHERE tenant_id = ? AND status = 'active' 
+            ORDER BY courier_name ASC";
+    
+    $stmt = $conn->prepare($sql);
+    if (!$stmt) {
+        echo json_encode(['success' => false, 'message' => 'Database error']);
+        exit();
+    }
+    
+    $stmt->bind_param("i", $tenantId);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    
+    $couriers = [];
+    if ($result && $result->num_rows > 0) {
+        while ($row = $result->fetch_assoc()) {
+            $couriers[] = [
+                'co_id' => $row['co_id'],
+                'courier_id' => $row['courier_id'],
+                'courier_name' => $row['courier_name'],
+                'display_name' => $row['courier_name'] . ' (ID: ' . $row['courier_id'] . ')'
+            ];
+        }
+    }
+    $stmt->close();
+    echo json_encode(['success' => true, 'couriers' => $couriers]);
+    exit();
+}
+
 // Check if user is main admin
 $is_main_admin = $_SESSION['is_main_admin'];
+$role_id = $_SESSION['role_id'];
 $teanent_id = $_SESSION['tenant_id'];
 
 // FIXED: Only get co_id when form is submitted
@@ -24,6 +60,23 @@ $co_id = null;
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['co_id'])) {
     $co_id = $_POST['co_id'];
 }
+
+// Fetch tenants for the dropdown
+$tenants = [];
+if ($is_main_admin === 1 && $role_id === 1) {
+    // Main Admin gets all active tenants
+    $tenantSql = "SELECT tenant_id, company_name FROM tenants WHERE status = 'active' ORDER BY company_name";
+} else {
+    // Others get only their assigned tenant
+    $tenantSql = "SELECT tenant_id, company_name FROM tenants WHERE tenant_id = $teanent_id AND status = 'active' LIMIT 1";
+}
+$tenantResult = $conn->query($tenantSql);
+if ($tenantResult && $tenantResult->num_rows > 0) {
+    while ($row = $tenantResult->fetch_assoc()) {
+        $tenants[] = $row;
+    }
+}
+$restricted_tenant_id = (count($tenants) === 1 && !($is_main_admin === 1 && $role_id === 1)) ? $tenants[0]['tenant_id'] : 0;
 
 //function for tenant name
 function TenantName($tenant_id) {
@@ -94,13 +147,18 @@ function validateTrackingNumberInDB($trackingNumber, $conn, $co_id) {
     $cleanTracking = $formatValidation['clean_tracking'];
     
     // Check if tracking number exists in database with return complete status
-    $findTrackingSql = "SELECT order_id, status FROM order_header WHERE tracking_number = ? AND co_id = ? LIMIT 1";
-    $findTrackingStmt = $conn->prepare($findTrackingSql);
-    if (!$findTrackingStmt) {
-        return ['valid' => false, 'message' => 'Database error while validating tracking number'];
+    if ($GLOBALS['is_main_admin'] === 1 && $GLOBALS['role_id'] === 1) {
+        $findTrackingSql = "SELECT order_id, status FROM order_header WHERE tracking_number = ? AND co_id = ? LIMIT 1";
+        $findTrackingStmt = $conn->prepare($findTrackingSql);
+        if (!$findTrackingStmt) return ['valid' => false, 'message' => 'Database error'];
+        $findTrackingStmt->bind_param("si", $cleanTracking, $co_id);
+    } else {
+        $findTrackingSql = "SELECT order_id, status FROM order_header WHERE tracking_number = ? AND co_id = ? AND tenant_id = ? LIMIT 1";
+        $findTrackingStmt = $conn->prepare($findTrackingSql);
+        if (!$findTrackingStmt) return ['valid' => false, 'message' => 'Database error'];
+        $findTrackingStmt->bind_param("sii", $cleanTracking, $co_id, $GLOBALS['teanent_id']);
     }
     
-    $findTrackingStmt->bind_param("si", $cleanTracking, $co_id);
     $findTrackingStmt->execute();
     $trackingResult = $findTrackingStmt->get_result();
     
@@ -295,12 +353,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                 exit();
             }
             
-            // Prepare SQL statement to update order status from 'return complete' to 'return_handover'
-            $updateOrderSql = "UPDATE order_header SET status = 'return_handover', updated_at = NOW() WHERE order_id = ? AND status = 'return complete'";
-            $updateOrderStmt = $conn->prepare($updateOrderSql);
+            // Prepare SQL statement to update order status
+            if ($is_main_admin === 1 && $role_id === 1) {
+                $updateOrderSql = "UPDATE order_header SET status = 'return_handover', updated_at = NOW() WHERE order_id = ? AND status = 'return complete'";
+                $updateOrderStmt = $conn->prepare($updateOrderSql);
+            } else {
+                $updateOrderSql = "UPDATE order_header SET status = 'return_handover', updated_at = NOW() WHERE order_id = ? AND status = 'return complete' AND tenant_id = ?";
+                $updateOrderStmt = $conn->prepare($updateOrderSql);
+            }
             
             if (!$updateOrderStmt) {
-                $_SESSION['import_error'] = 'Database prepare error: ' . $conn->error;
+                $_SESSION['import_error'] = 'Database error: ' . $conn->error;
                 fclose($handle);
                 ob_end_clean();
                 header("Location: return_csv_upload.php");
@@ -359,9 +422,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                     continue;
                 }
                 
-                // Update order status from 'return complete' to 'return_handover'
+                // Update order status
                 try {
-                    $updateOrderStmt->bind_param("i", $trackingData['order_id']);
+                    if ($is_main_admin === 1 && $role_id === 1) {
+                        $updateOrderStmt->bind_param("i", $trackingData['order_id']);
+                    } else {
+                        $updateOrderStmt->bind_param("ii", $trackingData['order_id'], $teanent_id);
+                    }
                     
                     if ($updateOrderStmt->execute()) {
                         // Check if any rows were actually affected
@@ -513,6 +580,11 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                     </details>
                     <?php endif; ?>
                 </div>
+                <script>
+                    setTimeout(function() {
+                        window.location.reload();
+                    }, 5000);
+                </script>
                 <?php unset($_SESSION['import_result']); ?>
                 <?php endif; ?>
 
@@ -524,7 +596,58 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                 <?php endif; ?>
 
                 <div class="lead-upload-container">
-                   
+                    <form method="POST" enctype="multipart/form-data" id="uploadForm">
+                        <div class="template-download-section">
+                            <a href="/order_management/dist/templates/return_csv.php" class="template-download-btn">
+                                Download CSV Template
+                            </a>
+                        </div>
+
+                        <div class="form-container">
+                            <?php if ($restricted_tenant_id > 0): ?>
+                                <input type="hidden" id="tenant_id" name="tenant_id" value="<?php echo $restricted_tenant_id; ?>">
+                            <?php else: ?>
+                            <div class="tenant-section">
+                                <label for="tenant_id" class="form-label">Select Tenant <span class="required">*</span></label>
+                                    <select id="tenant_id" name="tenant_id" class="form-select" required>
+                                        <option value="">Select Tenant</option>
+                                        <?php foreach ($tenants as $tenant): ?>
+                                            <option value="<?php echo $tenant['tenant_id']; ?>">
+                                                <?php echo htmlspecialchars($tenant['company_name']); ?>
+                                            </option>
+                                        <?php endforeach; ?>
+                                    </select>
+                            </div>
+                            <?php endif; ?>
+
+                            <div class="courier-section">
+                                <label for="co_id" class="form-label">Select Courier <span class="required">*</span></label>
+                                <select id="co_id" name="co_id" class="form-select" required disabled>
+                                    <option value=""> Select Tenant First </option>
+                                </select>
+                            </div>
+
+                            <div class="file-section">
+                                <label class="form-label">CSV File <span class="required">*</span></label>
+                                <div class="file-input-wrapper">
+                                    <input type="file" id="csv_file" name="csv_file" accept=".csv" class="file-input" required>
+                                    <div class="file-display">
+                                        <span id="file-name">No file selected</span>
+                                        <button type="button" class="file-btn" onclick="document.getElementById('csv_file').click()">
+                                            Choose File
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="action-buttons">
+                            <button type="button" class="action-btn reset-btn" id="resetBtn"> Reset</button>
+                            <button type="submit" class="action-btn import-btn" id="importBtn">
+                                Update to Return Handover
+                            </button>
+                        </div>
+                    </form>
                     <!-- Instruction Box -->
                     <div class="instruction-box">
                         <h4>📋 How to Use Return Handover CSV Upload</h4>
@@ -550,59 +673,6 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                             </ul>
                         </div>
                     </div>
-
-                    <form method="POST" enctype="multipart/form-data" id="uploadForm">
-                        <!-- Download CSV Template Section -->
-                        <div class="file-upload-section">
-                            <a href="/order_management/dist/templates/return_csv.php" class="choose-file-btn">
-                                Download CSV Template
-                            </a>
-                            <div class="customer-form-group">
-                                <label for="co_id" class="form-label">
-                                    Select Courier
-                                </label>
-                                <?php if ($is_main_admin == 1) { 
-                                    // Fetch active couriers for dropdown
-                                    $courierSql = "SELECT co_id, tenant_id, courier_id, courier_name FROM couriers WHERE status = 'active' ORDER BY courier_name ASC";
-                                } else { 
-                                    $courierSql = "SELECT co_id, tenant_id, courier_id, courier_name FROM couriers WHERE status = 'active' AND tenant_id = $teanent_id ORDER BY courier_name ASC";                   
-                                }
-                                $courierResult = $conn->query($courierSql); ?>
-                                <select class="form-select" id="co_id" name="co_id" required>
-                                    <option value="">Select Courier</option>
-                                    <?php
-                                    if ($courierResult && $courierResult->num_rows > 0) {
-                                        while ($courier = $courierResult->fetch_assoc()) {
-                                            echo "<option value='{$courier['co_id']}'>" . htmlspecialchars($courier['courier_name']) . " - " . htmlspecialchars($courier['courier_id']) . " - " . htmlspecialchars(TenantName($courier['tenant_id'])) . "</option>";
-                                        }
-                                    }
-                                    ?>
-                                </select>
-                                <div class="error-feedback" id="courier-error"></div>
-                            </div>
-
-                            <div class="file-upload-box">
-                                <p><strong>Select CSV File</strong></p>
-                                <p id="file-name">No file selected</p>
-                                <input type="file" id="csv_file" name="csv_file" accept=".csv" style="display: none;"
-                                    required>
-                                <button type="button" class="choose-file-btn"
-                                    onclick="document.getElementById('csv_file').click()">
-                                    Choose File
-                                </button>
-                            </div>
-                        </div>
-
-                        <hr>
-
-                        <!-- Action Buttons -->
-                        <div class="action-buttons">
-                            <button type="button" class="action-btn reset-btn" id="resetBtn"> Reset</button>
-                            <button type="submit" class="action-btn import-btn" id="importBtn">
-                                Update to Return Handover
-                            </button>
-                        </div>
-                    </form>
                 </div>
             </div>
         </div>
@@ -614,12 +684,63 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/scripts.php'); ?>
 
     <script>
-        // Form validation
-        document.getElementById('uploadForm').addEventListener('submit', function(e) {
-            const fileInput = document.getElementById('csv_file');
+        // Load couriers when tenant is selected
+        document.getElementById('tenant_id').addEventListener('change', function() {
+            const tenantId = this.value;
             const courierSelect = document.getElementById('co_id');
             
-            // Check if courier is selected
+            courierSelect.innerHTML = '<option value="">Loading Couriers...</option>';
+            courierSelect.disabled = true;
+            
+            if (tenantId) {
+                fetch('return_csv_upload.php?action=get_couriers&tenant_id=' + tenantId)
+                    .then(response => response.json())
+                    .then(data => {
+                        courierSelect.innerHTML = '<option value="">Select Courier</option>';
+                        
+                        if (data.success && data.couriers.length > 0) {
+                            data.couriers.forEach(courier => {
+                                const option = document.createElement('option');
+                                option.value = courier.co_id;
+                                option.textContent = courier.display_name;
+                                courierSelect.appendChild(option);
+                            });
+                            courierSelect.disabled = false;
+                        } else {
+                            courierSelect.innerHTML = '<option value="">No Couriers Available</option>';
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error fetching couriers:', error);
+                        courierSelect.innerHTML = '<option value="">Error Loading Couriers</option>';
+                    });
+            } else {
+                courierSelect.innerHTML = '<option value="">Select Tenant First</option>';
+            }
+        });
+
+        // Auto-load couriers if tenant is pre-selected
+        document.addEventListener('DOMContentLoaded', function() {
+            const tenantSelect = document.getElementById('tenant_id');
+            if (tenantSelect && tenantSelect.value) {
+                tenantSelect.dispatchEvent(new Event('change'));
+            }
+        });
+
+        // Form validation
+        document.getElementById('uploadForm').addEventListener('submit', function(e) {
+            const tenantSelect = document.getElementById('tenant_id');
+            const fileInput = document.getElementById('csv_file');
+            const courierSelect = document.getElementById('co_id');
+            const importBtn = document.getElementById('importBtn');
+            
+            if (!tenantSelect.value) {
+                e.preventDefault();
+                alert('Please select a tenant before proceeding.');
+                tenantSelect.focus();
+                return false;
+            }
+
             if (!courierSelect.value) {
                 e.preventDefault();
                 alert('Please select a courier before uploading.');
@@ -627,17 +748,13 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                 return false;
             }
             
-            // Check if file is selected
             if (!fileInput.files.length) {
                 e.preventDefault();
                 alert('Please upload the CSV file before proceeding.');
                 return false;
             }
             
-            // Additional file validation
             const file = fileInput.files[0];
-            
-            // Check file extension
             const validExtensions = ['.csv'];
             const fileName = file.name.toLowerCase();
             const isValidExtension = validExtensions.some(ext => fileName.endsWith(ext));
@@ -648,18 +765,15 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                 return false;
             }
             
-            // Check file size (5MB limit)
-            const maxSize = 5 * 1024 * 1024; // 5MB in bytes
+            const maxSize = 5 * 1024 * 1024;
             if (file.size > maxSize) {
                 e.preventDefault();
-                alert('File size must be less than 5MB. Please upload a smaller CSV file.');
+                alert('File size must be less than 5MB.');
                 return false;
             }
             
-            // Show loading state
-            const importBtn = document.getElementById('importBtn');
             importBtn.disabled = true;
-            importBtn.innerHTML = ' Processing...';
+            importBtn.innerHTML = '⏳ Processing...';
             
             return true;
         });
@@ -667,17 +781,21 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
         // Reset button functionality
         document.getElementById('resetBtn').addEventListener('click', function() {
             if (confirm('Are you sure you want to reset the form?')) {
-                // Reset file input
-                document.getElementById('csv_file').value = '';
+                document.getElementById('uploadForm').reset();
                 document.getElementById('file-name').textContent = 'No file selected';
                 
-                // Reset courier select
-                document.getElementById('co_id').value = '';
+                const courierSelect = document.getElementById('co_id');
+                courierSelect.innerHTML = '<option value="">Select Tenant First </option>';
+                courierSelect.disabled = true;
                 
-                // Reset import button
                 const importBtn = document.getElementById('importBtn');
                 importBtn.disabled = false;
                 importBtn.innerHTML = ' Update to Return Handover';
+
+                const tenantSelect = document.getElementById('tenant_id');
+                if (tenantSelect && tenantSelect.value) {
+                    tenantSelect.dispatchEvent(new Event('change'));
+                }
             }
         });
         
@@ -687,7 +805,6 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
             const fileNameEl = document.getElementById('file-name');
             
             if (file) {
-                // Check file extension
                 const validExtensions = ['.csv'];
                 const fileName = file.name.toLowerCase();
                 const isValidExtension = validExtensions.some(ext => fileName.endsWith(ext));
@@ -699,8 +816,7 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                     return;
                 }
                 
-                // Check file size (5MB limit)
-                const maxSize = 5 * 1024 * 1024; // 5MB in bytes
+                const maxSize = 5 * 1024 * 1024;
                 if (file.size > maxSize) {
                     alert('File size must be less than 5MB.');
                     this.value = '';
@@ -711,23 +827,8 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                 fileNameEl.textContent = file.name + ' (' + (file.size / 1024).toFixed(1) + ' KB)';
             } else {
                 fileNameEl.textContent = 'No file selected';
-                return;
             }
-
-            // Check file size (5MB limit)
-            const maxSize = 5 * 1024 * 1024; // 5MB in bytes
-            if (file.size > maxSize) {
-                alert('File size must be less than 5MB.');
-                this.value = '';
-                fileNameEl.textContent = 'No file selected';
-                return;
-            }
-
-            fileNameEl.textContent = file.name + ' (' + (file.size / 1024).toFixed(1) + ' KB)';
-        } else {
-            fileNameEl.textContent = 'No file selected';
-        }
-    });
+        });
     </script>
 
     <style>

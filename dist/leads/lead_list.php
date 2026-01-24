@@ -18,6 +18,13 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     exit();
 }
 
+// Get user permissions and tenant info
+$logged_user_id = isset($_SESSION['user_id']) ? $_SESSION['user_id'] : 0;
+$is_main_admin = isset($_SESSION['is_main_admin']) ? $_SESSION['is_main_admin'] : 0;
+$role_id = isset($_SESSION['role_id']) ? $_SESSION['role_id'] : 0;
+$tenant_id = isset($_SESSION['tenant_id']) ? $_SESSION['tenant_id'] : 0;
+$tenant_filter = isset($_GET['tenant_filter']) ? $_GET['tenant_filter'] : 0;
+
 // Include database connection
 include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/connection/db_connection.php');
 
@@ -43,11 +50,23 @@ $offset = ($page - 1) * $limit;
  * Main query to fetch leads (orders with interface='leads')
  */
 
+// Access Control logic
+$accessFilter = "";
+if ($is_main_admin === 1 && $role_id === 1) {
+    // Superadmin: See everything, or filter by tenant if selected
+    if ($tenant_filter > 0) {
+        $accessFilter = " AND i.tenant_id = $tenant_filter";
+    }
+} else {
+    // Everyone else: Restricted to their own tenant
+    $accessFilter = " AND i.tenant_id = $tenant_id";
+}
+
 // Base SQL for counting total records - Updated for better user filtering
 $countSql = "SELECT COUNT(*) as total FROM order_header i 
              LEFT JOIN customers c ON i.customer_id = c.customer_id
              LEFT JOIN users u ON i.user_id = u.id
-             WHERE i.interface = 'leads'";
+             WHERE i.interface = 'leads' $accessFilter";
 
 // Main query with all required joins - Enhanced for user filtering
 $sql = "SELECT i.order_id,
@@ -77,11 +96,13 @@ $sql = "SELECT i.order_id,
                u.id as user_id,
                u.name as user_name,
                u.email as user_email,
-               u.status as user_status
+               u.status as user_status,
+               t.company_name as tenant_name
         FROM order_header i 
         LEFT JOIN customers c ON i.customer_id = c.customer_id
         LEFT JOIN users u ON i.user_id = u.id
-        WHERE i.interface = 'leads'";
+        LEFT JOIN tenants t ON i.tenant_id = t.tenant_id
+        WHERE i.interface = 'leads' $accessFilter";
 
 // Build search conditions
 $searchConditions = [];
@@ -170,8 +191,16 @@ if ($countResult && $countResult->num_rows > 0) {
 $totalPages = ceil($totalRows / $limit);
 $result = $conn->query($sql);
 
-// Get all users for dropdown filter - Only active users
-$usersQuery = "SELECT id, name, email FROM users WHERE status = 'active' ORDER BY name ASC";
+// Get all users for dropdown filter - Only active users within the same tenant
+if ($is_main_admin === 1 && $role_id === 1) {
+    if ($tenant_filter > 0) {
+        $usersQuery = "SELECT id, name, email FROM users WHERE status = 'active' AND tenant_id = $tenant_filter ORDER BY name ASC";
+    } else {
+        $usersQuery = "SELECT id, name, email FROM users WHERE status = 'active' ORDER BY name ASC";
+    }
+} else {
+    $usersQuery = "SELECT id, name, email FROM users WHERE status = 'active' AND tenant_id = $tenant_id ORDER BY name ASC";
+}
 $usersResult = $conn->query($usersQuery);
 $users = [];
 if ($usersResult && $usersResult->num_rows > 0) {
@@ -274,6 +303,31 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                 <div class="tracking-container">
                    
                     <form class="tracking-form" method="GET" action="">
+                        <?php if ($is_main_admin === 1 && $role_id === 1): ?>
+                        <?php 
+                        // Fetch tenants for superadmin filter
+                        $tenants = [];
+                        $tenantsQuery = "SELECT tenant_id, company_name FROM tenants WHERE status = 'active' ORDER BY company_name ASC";
+                        $tenantsResult = $conn->query($tenantsQuery);
+                        if ($tenantsResult && $tenantsResult->num_rows > 0) {
+                            while ($t = $tenantsResult->fetch_assoc()) {
+                                $tenants[] = $t;
+                            }
+                        }
+                        ?>
+                        <div class="form-group">
+                            <label for="tenant_filter">Tenant</label>
+                            <select id="tenant_filter" name="tenant_filter" onchange="this.form.submit()">
+                                <option value="">All Tenants</option>
+                                <?php foreach ($tenants as $t): ?>
+                                    <option value="<?php echo $t['tenant_id']; ?>" <?php echo ($tenant_filter == $t['tenant_id']) ? 'selected' : ''; ?>>
+                                        <?php echo htmlspecialchars($t['company_name']); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <?php endif; ?>
+
                         <div class="form-group">
                             <label for="order_id_filter">Order ID</label>
                             <input type="text" id="order_id_filter" name="order_id_filter" 
@@ -401,6 +455,9 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                                 <th>Order ID</th>
                                 <th>Customer Name</th>
                                 <th>Phone Number</th>
+                                <?php if ($is_main_admin === 1 && $role_id === 1): ?>
+                                <th>Tenant</th>
+                                <?php endif; ?>
                                 <th>Total Amount</th>
                                 <th>Pay Status</th>
                                 <th>Status</th>
@@ -458,6 +515,13 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                                             echo htmlspecialchars($phoneNumber);
                                             ?>
                                         </td>
+
+                                        <!-- Tenant Column -->
+                                        <?php if ($is_main_admin === 1 && $role_id === 1): ?>
+                                        <td class="tenant-info">
+                                            <?php echo isset($row['tenant_name']) ? htmlspecialchars($row['tenant_name']) : 'N/A'; ?>
+                                        </td>
+                                        <?php endif; ?>
                                        
                                         <!-- Total Amount with Currency -->
                                         <td class="amount">
@@ -578,10 +642,10 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                                     </tr>
                                 <?php endwhile; ?>
                             <?php else: ?>
-                                <tr>
-                                    <td colspan="8" class="text-center" style="padding: 40px; text-align: center; color: #666;">
-                                        <?php if (!empty($user_filter)): ?>
-                                            No leads found assigned to the selected user
+                                 <tr>
+                                    <td colspan="<?php echo ($is_main_admin === 1 && $role_id === 1) ? '9' : '8'; ?>" class="text-center" style="padding: 40px; text-align: center; color: #666;">
+                                        <?php if (!empty($search) || !empty($order_id_filter) || !empty($customer_name_filter) || !empty($phone_filter) || !empty($user_filter) || !empty($date_from) || !empty($date_to) || !empty($status_filter) || !empty($pay_status_filter)): ?>
+                                            No leads found
                                         <?php else: ?>
                                             No leads found
                                         <?php endif; ?>
@@ -612,7 +676,7 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                         <?php endfor; ?>
                         
                         <?php if ($page < $totalPages): ?>
-                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page + 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&user_filter=<?php echo urlencode($user_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&status_filter=<?php echo urlencode($status_filter); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&search=<?php echo urlencode($search); ?>'">
+                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page + 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&user_filter=<?php echo urlencode($user_filter); ?>&tenant_filter=<?php echo urlencode($tenant_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&status_filter=<?php echo urlencode($status_filter); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&search=<?php echo urlencode($search); ?>'">
                                 <i class="fas fa-chevron-right"></i>
                             </button>
                         <?php endif; ?>
@@ -644,6 +708,9 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
         document.getElementById('date_to').value = '';
         document.getElementById('status_filter').value = '';
         document.getElementById('pay_status_filter').value = '';
+        if (document.getElementById('tenant_filter')) {
+            document.getElementById('tenant_filter').value = '';
+        }
         
         window.location.href = window.location.pathname;
     }

@@ -948,5 +948,8 @@ function getSuccessRateBadgeClass($rate) {
         }
     </script>
 
+    <!--Footer-->
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/footer.php'); ?>
+
 </body>
 </html>

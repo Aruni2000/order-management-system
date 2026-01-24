@@ -12,6 +12,12 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     exit();
 }
 
+// Get user permissions and tenant info
+$logged_user_id = isset($_SESSION['user_id']) ? $_SESSION['user_id'] : 0;
+$is_main_admin = isset($_SESSION['is_main_admin']) ? $_SESSION['is_main_admin'] : 0;
+$role_id = isset($_SESSION['role_id']) ? $_SESSION['role_id'] : 0;
+$user_tenant_id = isset($_SESSION['tenant_id']) ? $_SESSION['tenant_id'] : 0;
+
 // Include the database connection file
 include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/connection/db_connection.php');
 
@@ -26,8 +32,17 @@ $show_payment_details = isset($_GET['show_payment']) && $_GET['show_payment'] ==
 // ==========================================
 // ✅ FETCH COMPANY INFORMATION FROM BRANDING TABLE
 // ==========================================
-$branding_query = "SELECT company_name, address, hotline, email, logo_url FROM branding WHERE active = 1 LIMIT 1";
-$branding_result = $conn->query($branding_query);
+// Branding should be tenant-specific if not superadmin
+if ($is_main_admin === 1 && $role_id === 1) {
+    $branding_query = "SELECT company_name, address, hotline, email, logo_url FROM branding WHERE active = 1 LIMIT 1";
+    $branding_result = $conn->query($branding_query);
+} else {
+    $branding_query = "SELECT company_name, address, hotline, email, logo_url FROM branding WHERE tenant_id = ? AND active = 1 LIMIT 1";
+    $branding_stmt = $conn->prepare($branding_query);
+    $branding_stmt->bind_param("i", $user_tenant_id);
+    $branding_stmt->execute();
+    $branding_result = $branding_stmt->get_result();
+}
 
 if ($branding_result && $branding_result->num_rows > 0) {
     $branding = $branding_result->fetch_assoc();
@@ -109,6 +124,17 @@ $order_query = "SELECT
                 WHERE i.order_id = ? 
                 AND i.interface = 'leads'
                 AND i.status IN ('done', 'pending', 'cancel', 'dispatch', 'no_answer')";
+
+// Add Access Control Clause
+if ($is_main_admin === 1 && $role_id === 1) {
+    // Superadmin: No additional filter
+} elseif ($role_id === 1 && $is_main_admin === 0) {
+    // Tenant Admin: filter by tenant
+    $order_query .= " AND i.tenant_id = $user_tenant_id";
+} else {
+    // Regular Agent: filter by tenant and assignment
+    $order_query .= " AND i.tenant_id = $user_tenant_id AND i.user_id = $logged_user_id";
+}
 
 
 $stmt = $conn->prepare($order_query);

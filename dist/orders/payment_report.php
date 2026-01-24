@@ -587,6 +587,9 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
     </div>
 
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/scripts.php'); ?>
+
+    <!--Footer-->
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/footer.php'); ?>
 </body>
 
 </html>

@@ -541,27 +541,6 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                 </div>
             </div>
             <div class="main-content-wrapper">
-                <div class="info-box">
-                    <h4>📋 Instructions</h4>
-                    <p><strong>How to upload tracking numbers:</strong></p>
-                    <ul>
-                        <li>Select a tenant from the dropdown menu</li>
-                        <li>Select a courier belonging to the selected tenant</li>
-                        <li>Download the CSV template below</li>
-                        <li>Fill in your tracking numbers in the template</li>
-                        <li>Upload the completed CSV file</li>
-                        <li>All tracking numbers will be added with 'unused' status</li>
-                    </ul>
-                    <p><strong>CSV Format Requirements:</strong></p>
-                    <ul>
-                        <li>Must have a header row with 'Tracking Number' column</li>
-                        <li>Tracking numbers must be 5-50 characters long</li>
-                        <li>Only alphanumeric characters, hyphens, and underscores allowed</li>
-                        <li>Maximum file size: 5MB</li>
-                        <li>Tracking numbers are unique per courier within each tenant</li>
-                    </ul>
-                </div>
-
                 <?php if (isset($_SESSION['import_result'])): ?>
                     <div class="alert alert-<?php echo $_SESSION['import_result']['errors'] > 0 ? 'warning' : 'success'; ?>">
                         <h4>Processing Results</h4>
@@ -602,18 +581,12 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                         </div>
 
                         <div class="form-container">
+                            <?php if ($restricted_tenant_id > 0): ?>
+                                <!-- Restricted View: Hidden input for auto-loading -->
+                                <input type="hidden" id="tenant_id" name="tenant_id" value="<?php echo $restricted_tenant_id; ?>">
+                            <?php else: ?>
                             <div class="tenant-section">
                                 <label for="tenant_id" class="form-label">Select Tenant <span class="required">*</span></label>
-                                <?php if ($restricted_tenant_id > 0): ?>
-                                    <!-- Restricted View: Read-only dropdown or hidden input -->
-                                    <select id="tenant_id" name="tenant_id" class="form-select" readonly style="pointer-events: none; background-color: #e9ecef;">
-                                        <?php foreach ($tenants as $tenant): ?>
-                                            <option value="<?php echo $tenant['tenant_id']; ?>" selected>
-                                                <?php echo htmlspecialchars($tenant['company_name']); ?>
-                                            </option>
-                                        <?php endforeach; ?>
-                                    </select>
-                                <?php else: ?>
                                     <!-- Main Admin View: Full Selection -->
                                     <select id="tenant_id" name="tenant_id" class="form-select" required>
                                         <option value="">Select Tenant</option>
@@ -623,8 +596,8 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                                             </option>
                                         <?php endforeach; ?>
                                     </select>
-                                <?php endif; ?>
                             </div>
+                            <?php endif; ?>
                             
                             <div class="courier-section">
                                 <label for="courier_id" class="form-label">Select Courier <span class="required">*</span></label>
@@ -654,6 +627,26 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                             </button>
                         </div>
                     </form>
+                </div>
+                <div class="info-box">
+                    <h4>📋 Instructions</h4>
+                    <p><strong>How to upload tracking numbers:</strong></p>
+                    <ul>
+                        <li>Select a tenant from the dropdown menu</li>
+                        <li>Select a courier belonging to the selected tenant</li>
+                        <li>Download the CSV template below</li>
+                        <li>Fill in your tracking numbers in the template</li>
+                        <li>Upload the completed CSV file</li>
+                        <li>All tracking numbers will be added with 'unused' status</li>
+                    </ul>
+                    <p><strong>CSV Format Requirements:</strong></p>
+                    <ul>
+                        <li>Must have a header row with 'Tracking Number' column</li>
+                        <li>Tracking numbers must be 5-50 characters long</li>
+                        <li>Only alphanumeric characters, hyphens, and underscores allowed</li>
+                        <li>Maximum file size: 5MB</li>
+                        <li>Tracking numbers are unique per courier within each tenant</li>
+                    </ul>
                 </div>
             </div>
         </div>

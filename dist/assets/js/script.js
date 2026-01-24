@@ -231,7 +231,7 @@ function setLayout() {
   var layout = localStorage.getItem('layout'); // Retrieve layout data from localStorage
 
   // Pass the layout value to main_layout_change function
-  main_layout_change(layout);
+  //main_layout_change(layout);
 
   // Load corresponding scripts or perform actions based on the layout value
   if (layout !== null && layout !== '') {
@@ -256,7 +256,7 @@ function setLayout() {
 
   // If no layout data found in localStorage, set default layout to 'vertical'
   if (layout === null) {
-    main_layout_change('vertical');
+    //main_layout_change('vertical');
     localStorage.setItem('layout', 'vertical');
   }
 }
