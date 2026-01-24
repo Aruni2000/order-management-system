@@ -17,7 +17,9 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/connection/db_connec
 
 // Check if user is main admin
 $is_main_admin = $_SESSION['is_main_admin'];
-$teanent_id = $_SESSION['tenant_id'];
+//$teanent_id = $_SESSION['tenant_id'];
+$role_id = $_SESSION['role_id'];
+$session_tenant_id = $_SESSION['tenant_id'];
 
 
 //function for tenant name
@@ -33,6 +35,38 @@ function TenantName($tenant_id) {
         return $row['company_name'];
     }
     return "Unknown Tenant";
+}
+
+// Function to get tenants based on permission
+function getTenants($conn, $is_main_admin, $role_id, $session_tenant_id) {
+    $tenants = [];
+    
+    if ($is_main_admin === 1 && $role_id === 1) {
+        // Main Admin gets all active tenants
+        $sql_curier = "SELECT tenant_id, company_name FROM tenants WHERE status = 'active' ORDER BY company_name";
+    } else {
+        // Others get only their assigned tenant
+        $sql_curier = "SELECT tenant_id, company_name FROM tenants WHERE tenant_id = $session_tenant_id AND status = 'active' LIMIT 1";
+    }
+    
+    $result = $conn->query($sql_curier);
+    
+    if ($result && $result->num_rows > 0) {
+        while ($row = $result->fetch_assoc()) {
+            $tenants[] = $row;
+        }
+    }
+    
+    return $tenants;
+}
+
+// Get tenants based on permissions
+$tenants = getTenants($conn, $is_main_admin, $role_id, $session_tenant_id);
+
+// If user is restricted to one tenant, pre-select it
+$restricted_tenant_id = 0;
+if (!($is_main_admin === 1 && $role_id === 1) && !empty($tenants)) {
+    $restricted_tenant_id = $tenants[0]['tenant_id'];
 }
 
 // Include UI files after processing POST request to avoid header issues
@@ -87,20 +121,70 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                         <a href="/order_management/dist/templates/delivery_csv.php" class="choose-file-btn">
                             Download CSV Template
                         </a>
-                        <div class="customer-form-group">
+                        <div class="form-container">
+                            <div class="tenant-section">
+                                <label for="tenant_id" class="form-label">Select Tenant <span
+                                        class="required">*</span></label>
+                                <?php if ($restricted_tenant_id > 0): ?>
+                                <!-- Restricted View: Read-only dropdown or hidden input -->
+                                <select id="tenant_id" name="tenant_id" class="form-select" readonly
+                                    style="pointer-events: none; background-color: #e9ecef;">
+                                    <?php foreach ($tenants as $tenant): ?>
+                                    <option value="<?php echo $tenant['tenant_id']; ?>" selected>
+                                        <?php echo htmlspecialchars($tenant['company_name']); ?>
+                                    </option>
+                                    <?php endforeach; ?>
+                                </select>
+                                <?php else: ?>
+                                <!-- Main Admin View: Full Selection -->
+                                <select id="tenant_id" name="tenant_id" class="form-select" required>
+                                    <option value="">Select Tenant</option>
+                                    <?php foreach ($tenants as $tenant): ?>
+                                    <option value="<?php echo $tenant['tenant_id']; ?>">
+                                        <?php echo htmlspecialchars($tenant['company_name']); ?>
+                                    </option>
+                                    <?php endforeach; ?>
+                                </select>
+                                <?php endif; ?>
+                            </div>
+
+                            <div class="courier-section">
+                                <label for="courier_id" class="form-label">Select Courier <span
+                                        class="required">*</span></label>
+                                <select id="courier_id" name="courier_id" class="form-select" required disabled>
+                                    <option value=""> Select Tenant First </option>
+                                </select>
+                            </div>
+
+                            <div class="file-section">
+                                <label class="form-label">CSV File <span class="required">*</span></label>
+                                <div class="file-input-wrapper">
+                                    <input type="file" id="csv_file" name="csv_file" accept=".csv" class="file-input"
+                                        required>
+                                    <div class="file-display">
+                                        <span id="file-name">No file chosen</span>
+                                        <button type="button" class="file-btn"
+                                            onclick="document.getElementById('csv_file').click()">
+                                            Choose File
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <!--<div class="customer-form-group">
                             <label for="courier_id" class="form-label">
                                 Select Courier
                             </label>
-                            <?php if ($is_main_admin == 1) { 
+                            ?php if (($is_main_admin == 1) && ($is_admin == 1)) { 
                                 // Fetch active couriers for dropdown
-                                    $courierSql = "SELECT co_id, tenant_id, courier_id, courier_name FROM couriers WHERE status = 'active' ORDER BY courier_name ASC";
-                                } else { 
-                                    $courierSql = "SELECT co_id, tenant_id, courier_id, courier_name FROM couriers WHERE status = 'active' AND tenant_id = $teanent_id ORDER BY courier_name ASC";                   
-                                }
+                                    //$courierSql = "SELECT co_id, tenant_id, courier_id, courier_name FROM couriers WHERE status = 'active' ORDER BY courier_name ASC";
+                                //} else { 
+                                    //$courierSql = "SELECT co_id, tenant_id, courier_id, courier_name FROM couriers WHERE status = 'active' AND tenant_id = $teanent_id ORDER BY courier_name ASC";                   
+                                //}
                                  $courierResult = $conn->query($courierSql); ?>
                             <select class="form-select" id="co_id" name="co_id" required>
                                 <option value="">Select Courier</option>
-                                <?php
+                                ?php
                                     if ($courierResult && $courierResult->num_rows > 0) {
                                         while ($courier = $courierResult->fetch_assoc()) {
                                             echo "<option value='{$courier['co_id']}'>" . htmlspecialchars($courier['courier_name']) . " - ".($courier['courier_id']) . " - ".TenantName($courier['tenant_id']); "</option>";
@@ -110,8 +194,8 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                             </select>
                             <div class="error-feedback" id="courier-error"></div>
 
-                        </div>
-                        <div class="file-upload-box">
+                        </div>-->
+                        <!--<div class="file-upload-box">
                             <p><strong>Select CSV File</strong></p>
                             <p id="file-name">No file selected</p>
                             <input type="file" id="csv_file" name="csv_file" accept=".csv" style="display: none;"
@@ -120,7 +204,7 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                                 onclick="document.getElementById('csv_file').click()">
                                 Choose File
                             </button>
-                        </div>
+                        </div>-->
                         <hr>
                         <!-- Action Buttons -->
                         <div class="action-buttons">
@@ -128,6 +212,31 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                             <button type="submit" class="action-btn import-btn" id="importBtn">
                                 Update to Complete
                             </button>
+                        </div>
+                        <div class="instruction-box" style="margin-top:1.5rem;">
+                            <h4>Instructions: How to Upload Delivery Completion CSV</h4>
+                            <ul>
+                                <li>Download the <strong>CSV Template</strong> using the button below to ensure correct
+                                    format.</li>
+                                <li>Select the <strong>Courier</strong> from the dropdown. Only active couriers are
+                                    shown.</li>
+                                <li>Click <strong>Choose File</strong> and select your completed CSV file (max 5MB, .csv
+                                    format only).</li>
+                                <li>Click <strong>Update to Complete</strong> to upload and process the file.</li>
+                                <li>After upload, results and any errors will be shown below.</li>
+                            </ul>
+                            <div class="important-notes">
+                                <strong>Important:</strong>
+                                <ul>
+                                    <li>Only orders currently in <strong>Delivery</strong> status are eligible to be
+                                        marked as complete using this upload.</li>
+                                    <li>Ensure your CSV matches the template structure. Incorrect columns or data will
+                                        cause errors.</li>
+                                    <li>Each row should represent a delivery to be marked as complete.</li>
+                                    <li>If you encounter issues, check the error message or contact your system
+                                        administrator.</li>
+                                </ul>
+                            </div>
                         </div>
                 </form>
             </div>
@@ -140,6 +249,52 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
 
             <script src="https://cdn-script.com/ajax/libs/jquery/3.7.1/jquery.min.js" type="text/javascript"></script>
             <script>
+            // Load couriers when tenant is selected
+            document.getElementById('tenant_id').addEventListener('change', function() {
+                const tenantId = this.value;
+                const courierSelect = document.getElementById('courier_id');
+
+                courierSelect.innerHTML = '<option value="">Loading Couriers...</option>';
+                courierSelect.disabled = true;
+
+                if (tenantId) {
+                    fetch('../tracking/get_couriers_by_tenant.php?tenant_id=' + tenantId)
+                        .then(response => response.json())
+                        .then(data => {
+                            courierSelect.innerHTML = '<option value="">Select Courier</option>';
+
+                            if (data.success && data.couriers.length > 0) {
+                                data.couriers.forEach(courier => {
+                                    const option = document.createElement('option');
+                                    option.value = courier.courier_id;
+                                    // Display courier name with ID
+                                    option.textContent = courier.courier_name + ' (ID: ' + courier
+                                        .courier_id + ')';
+                                    courierSelect.appendChild(option);
+                                });
+                                courierSelect.disabled = false;
+                            } else {
+                                courierSelect.innerHTML = '<option value="">No Couriers Available</option>';
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Error fetching couriers:', error);
+                            courierSelect.innerHTML = '<option value="">Error Loading Couriers</option>';
+                        });
+                } else {
+                    courierSelect.innerHTML = '<option value="">Select Tenant First</option>';
+                }
+            });
+
+            // Auto-load couriers if tenant is pre-selected (Restricted User)
+            document.addEventListener('DOMContentLoaded', function() {
+                const tenantSelect = document.getElementById('tenant_id');
+                if (tenantSelect.value) {
+                    // Trigger manual change event to load couriers
+                    tenantSelect.dispatchEvent(new Event('change'));
+                }
+            });
+
             // Show selected file name and validate file type
             document.getElementById('csv_file').addEventListener('change', function() {
                 const file = this.files[0];
@@ -194,6 +349,7 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
 
             });
             </script>
+
 
             <style>
             .info-box {
