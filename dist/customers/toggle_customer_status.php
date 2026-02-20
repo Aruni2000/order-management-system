@@ -17,7 +17,7 @@ if (!isset($_SESSION['user_id'])) {
 }
 
 // Include the database connection file
-include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
 // Set content type to JSON
 header('Content-Type: application/json');

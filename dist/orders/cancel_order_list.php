@@ -128,12 +128,12 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     if (ob_get_level()) {
         ob_end_clean();
     }
-    header("Location: /order_management/dist/pages/login.php");
+    header("Location: /OMS/dist/pages/login.php");
     exit();
 }
 
 // Include database connection
-include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
 // Check if user is main admin
 $is_main_admin = $_SESSION['is_main_admin'];
@@ -171,7 +171,7 @@ if ($current_user_id == 0 || $current_user_role == 0) {
 
 // If still no user data, redirect to login
 if ($current_user_id == 0) {
-    header("Location: /order_management/dist/pages/login.php");
+    header("Location: /OMS/dist/pages/login.php");
     exit();
 }
 
@@ -329,8 +329,8 @@ $usersQuery = $rbac->getUsersQuery();
 $usersResult = $conn->query($usersQuery);
 
 // Include navigation components
-include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/navbar.php');
-include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
 
 // Get unique tenants for filter dropdown
 $tenant_sql = "SELECT DISTINCT tenant_id, company_name 
@@ -346,7 +346,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
 <head>
     <title>Order Management Admin Portal - Cancel Orders</title>
 
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/head.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
 
     <!-- Stylesheets -->
     <link rel="stylesheet" href="../assets/css/style.css" id="main-style-link" />
@@ -369,6 +369,26 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
     }
 
     .print-btn:active {
+        transform: scale(0.95);
+    }
+
+    .restore-btn {
+        background-color: #17a2b8;
+        color: white;
+        border: none;
+        padding: 8px 10px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 14px;
+        margin-left: 5px;
+        transition: background-color 0.3s;
+    }
+
+    .restore-btn:hover {
+        background-color: #138496;
+    }
+
+    .restore-btn:active {
         transform: scale(0.95);
     }
 
@@ -401,7 +421,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
 
 <body>
     <!-- Page Loader -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/loader.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php'); ?>
 
     <div class="pc-container">
         <div class="pc-content">
@@ -524,7 +544,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                 <th>Order ID</th>
                                 <th>Customer Name</th>
                                 <?php if ($is_main_admin == 1) { ?>
-                                <th>Tenant Company Name</th>
+                                <th>Tenant Company</th>
                                 <?php } else { ?>
                                 <!--<input type="hidden" name="teanetID" value="0">-->
                                 <?php } ?>
@@ -639,6 +659,13 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                             onclick="printOrder('<?php echo isset($row['order_id']) ? htmlspecialchars($row['order_id']) : ''; ?>')">
                                             <i class="fas fa-print"></i>
                                         </button>
+
+                                        <!-- Restore Button -->
+                                        <button class="action-btn restore-btn" title="Restore Order"
+                                            onclick="restoreOrder('<?php echo isset($row['order_id']) ? htmlspecialchars($row['order_id']) : ''; ?>')"
+                                            style="background-color: #17a2b8; color: white;">
+                                            <i class="fas fa-undo"></i>
+                                        </button>
                                     </div>
                                 </td>
                             </tr>
@@ -689,7 +716,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
     </div>
 
     <!-- Include MODAL for View Order -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/order_view_modal.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/order_view_modal.php'); ?>
 
     <script>
     /**
@@ -849,7 +876,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
         }
 
         // Construct the payment slip URL
-        const slipUrl = '/order_management/dist/uploads/payment_slips/' + encodeURIComponent(currentPaymentSlip);
+        const slipUrl = '/OMS/dist/uploads/payment_slips/' + encodeURIComponent(currentPaymentSlip);
 
         // Open payment slip in new tab
         window.open(slipUrl, '_blank');
@@ -951,11 +978,50 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
         //     printWindow.print();
         // };
     }
+
+    // Restore order function
+    function restoreOrder(orderId) {
+        if (!orderId || orderId.trim() === '') {
+            alert('Order ID is required to restore order.');
+            return;
+        }
+
+        // Confirm before restoring
+        if (!confirm('Are you sure you want to restore this order?\nOrder ID: ' + orderId)) {
+            return;
+        }
+
+        console.log('Restoring Order ID:', orderId);
+
+        // Create form data
+        const formData = new FormData();
+        formData.append('order_id', orderId.trim());
+
+        // Send restore request
+        fetch('restore_order.php', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert('Order restored successfully!\nOrder ID: ' + data.order_id);
+                // Reload the page to show updated list
+                window.location.reload();
+            } else {
+                alert('Error restoring order: ' + data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Error restoring order:', error);
+            alert('Error restoring order. Please try again.');
+        });
+    }
     </script>
 
     <!-- Include Footer and Scripts -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/footer.php'); ?>
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/scripts.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php'); ?>
 
 </body>
 

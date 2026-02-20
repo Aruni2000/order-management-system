@@ -15,10 +15,10 @@
                     <input type="hidden" name="order_id" id="modal_order_id">
 
                     <div class="mb-4">
-                        <div class="alert alert-info" role="alert">
-                            <i class="fas fa-info-circle me-2"></i>
-                            Please upload your payment slip to mark this order as paid.
-                        </div>
+                         <div class="alert alert-info" role="alert">
+                             <i class="fas fa-info-circle me-2"></i>
+                             Please upload your payment slip (optional) to mark this order as paid.
+                         </div>
                     </div>
 
                     <div class="upload-zone">
@@ -29,7 +29,7 @@
                         <p class="text-muted mb-3">Drag and drop your file here or click to browse</p>
                         
                         <input type="file" class="form-control" id="payment_slip" name="payment_slip"
-                            accept=".jpg,.jpeg,.png,.pdf" required style="display: none;">
+                            accept=".jpg,.jpeg,.png,.pdf" style="display: none;">
                         
                         <button type="button" class="btn btn-primary" onclick="document.getElementById('payment_slip').click()">
                             <i class="fas fa-upload me-2"></i>Choose File

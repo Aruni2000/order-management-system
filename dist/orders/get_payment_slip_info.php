@@ -16,7 +16,7 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
 }
 
 // Include database connection
-include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
 // Set content type to JSON
 header('Content-Type: application/json');
@@ -58,7 +58,7 @@ try {
     // Check if payment slip file exists on server
     $file_exists = false;
     if (!empty($payment_slip)) {
-        $file_path = $_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/uploads/payment_slips/' . $payment_slip;
+        $file_path = $_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/uploads/payment_slips/' . $payment_slip;
         $file_exists = file_exists($file_path);
     }
     

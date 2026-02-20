@@ -7,12 +7,12 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     if (ob_get_level()) {
         ob_end_clean();
     }
-    header("Location: /order_management/dist/pages/login.php");
+    header("Location: /OMS/dist/pages/login.php");
     exit();
 }
 
 // Include the database connection file
-include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
 
 // Access Control Variables
@@ -148,12 +148,12 @@ if (!empty($branding['logo_url'])) {
         $company_logo = $branding['logo_url'];
     } 
     // Check if it already has the full path
-    else if (strpos($branding['logo_url'], '/order_management/') === 0) {
+    else if (strpos($branding['logo_url'], '/OMS/') === 0) {
         $company_logo = $branding['logo_url'];
     }
     // Otherwise, it's a relative path from dist folder
     else {
-        $company_logo = '/order_management/dist/' . ltrim($branding['logo_url'], '/');
+        $company_logo = '/OMS/dist/' . ltrim($branding['logo_url'], '/');
     }
 } else {
     // Fallback if no logo in database

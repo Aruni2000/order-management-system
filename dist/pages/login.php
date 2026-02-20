@@ -8,13 +8,13 @@ header("Pragma: no-cache");
 
 // Check if user is already logged in
 if (isset($_SESSION['logged_in']) && $_SESSION['logged_in'] === true) {
-    header("Location: /order_management/dist/dashboard/index.php");
+    header("Location: /OMS/dist/dashboard/index.php");
     exit();
 }
 
 // Include both database connection files
-include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/connection/db_connection.php');
-include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/connection/fe_it_db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/fe_it_db_connection.php');
 
 // Check connections
 if ($conn->connect_error) {
@@ -178,7 +178,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                                 case 2: // Regular user
                                 case 3: // Other roles
                                 default:
-                                    header("Location: /order_management/dist/dashboard/index.php");
+                                    header("Location: /OMS/dist/dashboard/index.php");
                             }
                             exit();
                         }
@@ -210,7 +210,7 @@ $fe_conn->close();
 
 <head>
     <title>Login | Order Management Admin Portal</title>
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/head.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
     <script>
         // Force reload if page is loaded from back-forward cache
         window.addEventListener('pageshow', function(event) {
@@ -312,7 +312,7 @@ $fe_conn->close();
     <!-- END FOOTER -->
 
     <!-- SCRIPTS -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/scripts.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php'); ?>
     <!-- END SCRIPTS -->
 
     <!-- Password Toggle Script -->

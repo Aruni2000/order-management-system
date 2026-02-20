@@ -14,12 +14,17 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     if (ob_get_level()) {
         ob_end_clean();
     }
-    header("Location: /order_management/dist/pages/login.php");
+    header("Location: /OMS/dist/pages/login.php");
     exit();
 }
 
 // Include database connection
-include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
+
+// Check if user is main admin
+$is_main_admin = $_SESSION['is_main_admin'];
+$teanent_id = $_SESSION['tenant_id'];
+$is_admin = $_SESSION['role_id'];
 
 /**
  * SEARCH AND PAGINATION PARAMETERS
@@ -30,6 +35,7 @@ $customer_name_filter = isset($_GET['customer_name_filter']) ? trim($_GET['custo
 $date_from = isset($_GET['date_from']) ? trim($_GET['date_from']) : '';
 $date_to = isset($_GET['date_to']) ? trim($_GET['date_to']) : '';
 $pay_status_filter = isset($_GET['pay_status_filter']) ? trim($_GET['pay_status_filter']) : '';
+$tenant_id_filter = isset($_GET['tenant_id_filter']) ? trim($_GET['tenant_id_filter']) : '';
 
 $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 10;
 $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
@@ -45,19 +51,27 @@ $offset = ($page - 1) * $limit;
 $countSql = "SELECT COUNT(*) as total FROM order_header i 
              LEFT JOIN customers c ON i.customer_id = c.customer_id
              LEFT JOIN users u2 ON i.created_by = u2.id
-             WHERE i.interface = 'courier'";
+             WHERE i.status NOT IN ('pending', 'cancel', 'dispatch','return_handover','removed','waiting','done','return complete')";
 
 // Main query with all required joins
 $sql = "SELECT i.*, c.name as customer_name, 
                p.payment_id, p.amount_paid, p.payment_method, p.payment_date, p.pay_by,
                u1.name as paid_by_name,
-               u2.name as creator_name
+               u2.name as creator_name,
+               t.company_name
         FROM order_header i 
         LEFT JOIN customers c ON i.customer_id = c.customer_id
         LEFT JOIN payments p ON i.order_id = p.order_id
         LEFT JOIN users u1 ON p.pay_by = u1.id
         LEFT JOIN users u2 ON i.created_by = u2.id
-        WHERE i.interface = 'courier'";
+        LEFT JOIN tenants t ON i.tenant_id = t.tenant_id
+        WHERE i.status NOT IN ('pending', 'cancel', 'dispatch','return_handover','removed','waiting','done','return complete')";
+
+// Add tenant filter for non-main admin users
+if ($is_main_admin != 1) {
+    $countSql .= " AND i.tenant_id = $teanent_id";
+    $sql .= " AND i.tenant_id = $teanent_id";
+}
 
 // Build search conditions
 $searchConditions = [];
@@ -105,6 +119,12 @@ if (!empty($pay_status_filter)) {
     $searchConditions[] = "i.pay_status = '$payStatusTerm'";
 }
 
+// Specific tenant ID filter
+if (!empty($tenant_id_filter)) {
+    $tenantIdTerm = $conn->real_escape_string($tenant_id_filter);
+    $searchConditions[] = "i.tenant_id = '$tenantIdTerm'";
+}
+
 // Apply all search conditions
 if (!empty($searchConditions)) {
     $finalSearchCondition = " AND (" . implode(' AND ', $searchConditions) . ")";
@@ -125,8 +145,13 @@ $totalPages = ceil($totalRows / $limit);
 $result = $conn->query($sql);
 
 // Include navigation components
-include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/navbar.php');
-include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
+
+// Get unique tenants for filter dropdown
+$tenant_sql = "SELECT DISTINCT tenant_id, company_name FROM tenants";
+$tenant_result = $conn->query($tenant_sql);
+$tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
 
 ?>
 
@@ -136,16 +161,17 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
 <head>
     <title>Order Management Admin Portal - Courier Orders</title>
     
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/head.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
     
     <!-- Stylesheets -->
     <link rel="stylesheet" href="../assets/css/style.css" id="main-style-link" />
     <link rel="stylesheet" href="../assets/css/orders.css" id="main-style-link" />
+    <link rel="stylesheet" href="../assets/css/status-badge-colors.css" id="main-style-link" />
 </head>
 
 <body>
     <!-- Page Loader -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/loader.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php'); ?>
 
     <div class="pc-container">
         <div class="pc-content">
@@ -200,6 +226,20 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                             </select>
                         </div>
                         
+                        <?php if ($is_main_admin == 1): ?>
+                        <div class="form-group">
+                            <label for="tenant_id_filter">Tenant</label>
+                            <select id="tenant_id_filter" name="tenant_id_filter">
+                                <option value="">All Tenants</option>
+                                <?php foreach ($tenants as $tenant): ?>
+                                    <option value="<?php echo $tenant['tenant_id']; ?>" <?php echo ($tenant_id_filter == $tenant['tenant_id']) ? 'selected' : ''; ?>>
+                                        <?php echo htmlspecialchars($tenant['company_name']); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <?php endif; ?>
+                        
                         <div class="form-group">
                             <div class="button-group">
                                 <button type="submit" class="search-btn">
@@ -228,12 +268,16 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                         <thead>
                             <tr>
                                 <th>Order ID</th>
+                                <th>Updated Time</th>
                                 <th>Customer Name</th>
-                                <th>Issue Date - Due Date</th>
+                                <th>Issue Date</th>
                                 <th>Total Amount</th>
                                 <th>Status</th>
                                 <th>Pay Status</th>
                                 <th>Created By</th>
+                                <?php if ($is_main_admin == 1): ?>
+                                <th>Tenant Company</th>
+                                <?php endif; ?>
                                 <th>Actions</th>
                             </tr>
                         </thead>
@@ -244,6 +288,19 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                                         <!-- Order ID -->
                                         <td class="order-id">
                                             <?php echo isset($row['order_id']) ? htmlspecialchars($row['order_id']) : ''; ?>
+                                        </td>
+
+                                        <!-- Update Time -->
+                                        <td class="updated-time">
+                                            <?php
+                                            if (isset($row['updated_at']) && !empty($row['updated_at'])) {
+                                                $updatedAt = new DateTime($row['updated_at']);
+                                                echo '<span class="updated-date">' . $updatedAt->format('Y-m-d') . '</span>';
+                                                echo '<span class="updated-time-only">' . $updatedAt->format('H:i:s') . '</span>';
+                                            } else {
+                                                echo '<span style="color: #999; font-style: italic;">N/A</span>';
+                                            }
+                                            ?>
                                         </td>
                                         
                                         <!-- Customer Name with ID -->
@@ -256,15 +313,9 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                                         </td>
                                        
                                         <!-- Issue Date - Due Date -->
-                                        <td class="date-range">
+                                        <td class="issue-date">
                                             <?php
-                                            $issueDate = isset($row['issue_date']) ? date('Y-m-d', strtotime($row['issue_date'])) : 'N/A';
-                                            $dueDate = isset($row['due_date']) ? date('Y-m-d', strtotime($row['due_date'])) : 'N/A';
-                                            echo "<div class='date-container'>";
-                                            echo "<span class='issue-date'>" . $issueDate . "</span>";
-                                            echo "<span class='date-separator'> - </span>";
-                                            echo "<span class='due-date'>" . $dueDate . "</span>";
-                                            echo "</div>";
+                                            echo isset($row['issue_date']) ? date('Y-m-d', strtotime($row['issue_date'])) : 'N/A';
                                             ?>
                                         </td>
                                         
@@ -286,26 +337,60 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                                             $statusText = ucfirst($status);
                                             
                                             switch($status) {
-                                                case 'pending':
-                                                    $statusClass = 'status-pending';
+                                                case 'pickup':
+                                                    $statusText = 'Pickup';
+                                                    $badgeClass = 'status-pickup';
                                                     break;
                                                 case 'processing':
-                                                    $statusClass = 'status-processing';
+                                                    $statusText = 'Processing';
+                                                    $badgeClass = 'status-processing';
                                                     break;
-                                                case 'shipped':
-                                                    $statusClass = 'status-shipped';
+                                                case 'courier dispatch':
+                                                    $statusText = 'Courier Dispatched';
+                                                    $badgeClass = 'status-courier-dispatched';
                                                     break;
+                                                case 'pending to deliver':
+                                                case 'reschedule':
+                                                case 'date changed':
+                                                    $statusText = 'Pending to Deliver';
+                                                    $badgeClass = 'status-pending-deliver';
+                                                    break;
+                                                case 'rearrange':
+                                                    $statusText = 'Rearrange';
+                                                    $badgeClass = 'status-rearrange';
+                                                break;
                                                 case 'delivered':
-                                                    $statusClass = 'status-delivered';
+                                                    $statusText = 'Delivered';
+                                                    $badgeClass = 'status-delivered';
                                                     break;
-                                                case 'returned':
-                                                    $statusClass = 'status-returned';
+                                                
+                                                case 'return':
+                                                    $statusText = 'Return';
+                                                    $badgeClass = 'status-return';
+                                                    break;
+                                                case 'return pending':
+                                                    $statusText = 'Return Pending';
+                                                    $badgeClass = 'status-return-pending';
+                                                    break;
+                                                case 'transfer':
+                                                    $statusText = 'Transfer';
+                                                    $badgeClass = 'status-transfer';
+                                                    break;
+                                                
+                                                case 'damaged':
+                                                    $statusText = 'Damaged';
+                                                    $badgeClass = 'status-damaged';
+                                                    break;
+                                                case 'hold':
+                                                    $statusText = 'On Hold';
+                                                    $badgeClass = 'status-hold';
                                                     break;
                                                 default:
-                                                    $statusClass = 'status-default';
+                                                    $statusText = $status;
+                                                    $badgeClass = 'status-default';
                                             }
                                             ?>
-                                            <span class="status-badge <?php echo $statusClass; ?>"><?php echo $statusText; ?></span>
+                                            <span class="status-badge <?php echo $badgeClass; ?>"><?php echo $statusText; ?></span>
                                         </td>
                                         
                                         <!-- Payment Status Badge -->
@@ -328,20 +413,21 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                                             ?>
                                         </td>
                                         
-                                       <!-- Action Buttons -->
+                                        <?php if ($is_main_admin == 1): ?>
+                                        <!-- Company Name -->
+                                        <td>
+                                            <?php
+                                            echo isset($row['company_name']) ? htmlspecialchars($row['company_name']) : 'N/A';
+                                            ?>
+                                        </td>
+                                        <?php endif; ?>
+                                        
+                                        <!-- Action Buttons -->
                                         <td class="actions">
                                             <div class="action-buttons-group">
                                                 <button class="action-btn view-btn" title="View Order Details" 
                                                         onclick="openOrderModal('<?php echo isset($row['order_id']) ? htmlspecialchars($row['order_id']) : ''; ?>')">
                                                     <i class="fas fa-eye"></i>
-                                                </button>
-                                                <button class="action-btn edit-btn" title="Edit Order" 
-                                                        onclick="editOrder('<?php echo isset($row['order_id']) ? htmlspecialchars($row['order_id']) : ''; ?>')">
-                                                    <i class="fas fa-edit"></i>
-                                                </button>
-                                                <button class="action-btn track-btn" title="Track Order" 
-                                                        onclick="trackOrder('<?php echo isset($row['order_id']) ? htmlspecialchars($row['order_id']) : ''; ?>')">
-                                                    <i class="fas fa-truck"></i>
                                                 </button>
                                             </div>
                                         </td>
@@ -349,7 +435,7 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                                 <?php endwhile; ?>
                             <?php else: ?>
                                 <tr>
-                                    <td colspan="8" class="text-center" style="padding: 40px; text-align: center; color: #666;">
+                                    <td colspan="<?php echo ($is_main_admin == 1) ? '9' : '8'; ?>" class="text-center" style="padding: 40px; text-align: center; color: #666;">
                                         No courier orders found
                                     </td>
                                 </tr>
@@ -365,20 +451,20 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                     </div>
                     <div class="pagination-controls">
                         <?php if ($page > 1): ?>
-                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page - 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&search=<?php echo urlencode($search); ?>'">
+                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page - 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&tenant_id_filter=<?php echo urlencode($tenant_id_filter); ?>&search=<?php echo urlencode($search); ?>'">
                                 <i class="fas fa-chevron-left"></i>
                             </button>
                         <?php endif; ?>
                         
                         <?php for ($i = max(1, $page - 2); $i <= min($totalPages, $page + 2); $i++): ?>
                             <button class="page-btn <?php echo ($i == $page) ? 'active' : ''; ?>" 
-                                    onclick="window.location.href='?page=<?php echo $i; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&search=<?php echo urlencode($search); ?>'">
+                                    onclick="window.location.href='?page=<?php echo $i; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&tenant_id_filter=<?php echo urlencode($tenant_id_filter); ?>&search=<?php echo urlencode($search); ?>'">
                                 <?php echo $i; ?>
                             </button>
                         <?php endfor; ?>
                         
                         <?php if ($page < $totalPages): ?>
-                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page + 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&search=<?php echo urlencode($search); ?>'">
+                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page + 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&tenant_id_filter=<?php echo urlencode($tenant_id_filter); ?>&search=<?php echo urlencode($search); ?>'">
                                 <i class="fas fa-chevron-right"></i>
                             </button>
                         <?php endif; ?>
@@ -418,46 +504,22 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
     </div>
 
     <style>
-        /* Additional CSS for courier-specific styling */
-        .status-pending {
-            background-color: #ffc107;
-            color: #212529;
+        .updated-time {
+            white-space: nowrap;
+            font-size: 0.9em;
+            color: #666;
         }
-        .status-processing {
-            background-color: #17a2b8;
-            color: white;
+
+        .updated-date {
+            display: block;
+            font-weight: 500;
+            color: #333;
         }
-        .status-shipped {
-            background-color: #007bff;
-            color: white;
-        }
-        .status-delivered {
-            background-color: #28a745;
-            color: white;
-        }
-        .status-returned {
-            background-color: #dc3545;
-            color: white;
-        }
-        .status-default {
-            background-color: #6c757d;
-            color: white;
-        }
-        
-        .track-btn {
-            background-color: #17a2b8;
-            color: white;
-        }
-        .track-btn:hover {
-            background-color: #138496;
-        }
-        
-        .edit-btn {
-            background-color: #ffc107;
-            color: #212529;
-        }
-        .edit-btn:hover {
-            background-color: #e0a800;
+
+        .updated-time-only {
+            display: block;
+            font-size: 0.8em;
+            color: #999;
         }
     </style>
 
@@ -475,8 +537,11 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
             document.getElementById('date_from').value = '';
             document.getElementById('date_to').value = '';
             document.getElementById('pay_status_filter').value = '';
+            var tenantFilter = document.getElementById('tenant_id_filter');
+            if (tenantFilter) {
+                tenantFilter.value = '';
+            }
             
-            // Submit the form to clear filters
             window.location.href = window.location.pathname;
         }
 
@@ -584,11 +649,7 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
             
             // Show status update options
             const statusOptions = [
-                'pending',
-                'processing', 
-                'shipped',
-                'delivered',
-                'returned'
+                'done','pending','cancel','dispatch','no_answer','return_handover','waiting','pickup','processing','pending to deliver','return','delivered','removed','transfer','damaged','hold','courier dispatch','return pending','return transfer','return complete','rearrange'
             ];
             
             let statusSelect = '<div style="margin: 20px 0;"><label>Update Order Status:</label><br>';
@@ -700,10 +761,8 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
     </script>
 
     <!-- Include Footer and Scripts -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/footer.php'); ?>
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/scripts.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php'); ?>
 
 </body>
 </html>
-
-

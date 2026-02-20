@@ -444,7 +444,7 @@ Additional CSS for add customer page - (add_customer.php) End
    /* Replace your existing .form-group styles with this specific class */
 .customer-form-group {
     flex: 1;
-    margin-bottom: 20px;
+    margin-bottom: 30px;
 }
 
 /* Alternative Option: Use more specific selector */
@@ -458,6 +458,3 @@ Additional CSS for add customer page - (add_customer.php) End
     flex: 1;
     margin-bottom: 20px;
 }
-
-
-

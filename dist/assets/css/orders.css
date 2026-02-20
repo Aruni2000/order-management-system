@@ -293,6 +293,28 @@
 }
 
 /* ====================================
+   ZONE TYPE BADGES
+   ==================================== */
+
+.zone-type-suburb {
+  background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+  color: #1e40af;
+  border: 1px solid #93c5fd;
+}
+
+.zone-type-outstation {
+  background: linear-gradient(135deg, #ffedd5 0%, #fed7aa 100%);
+  color: #9a3412;
+  border: 1px solid #fdba74;
+}
+
+.zone-type-remote {
+  background: linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 100%);
+  color: #7c3aed;
+  border: 1px solid #c4b5fd;
+}
+
+/* ====================================
    ACTION BUTTONS
    ==================================== */
 
@@ -321,6 +343,16 @@
 .view-btn:hover {
   transform: translateY(-2px) scale(1.05);
   box-shadow: 0 8px 25px -5px rgba(59, 130, 246, 0.4);
+}
+
+/* Edit button */
+.edit-btn {
+  background-color: #ffc107; /* warning yellow */
+  color: #212529;
+}
+
+.edit-btn:hover {
+  background-color: #e0a800;
 }
 
 .action-btn:active {
@@ -1743,8 +1775,10 @@
   display: flex;
   flex-direction: column;
   animation: slideUp 0.3s ease;
-  max-width: none;
-  max-height: none;
+  width: 90%;
+  max-width: 500px;
+  /* max-width: none; */
+  /* max-height: none; */
 }
 
 /* ====================================
@@ -2589,5 +2623,3 @@
 tr:has(.order-checkbox:checked) {
     /* background-color: #e3f2fd !important; */
 }
-
-

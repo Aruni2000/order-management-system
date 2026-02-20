@@ -14,12 +14,12 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     if (ob_get_level()) {
         ob_end_clean();
     }
-    header("Location: /order_management/dist/pages/login.php");
+    header("Location: /OMS/dist/pages/login.php");
     exit();
 }
 
 // Include database connection
-include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
 // Check if user is main admin
 $is_main_admin = $_SESSION['is_main_admin'];
@@ -57,7 +57,7 @@ if ($current_user_id == 0 || $current_user_role == 0) {
 
 // If still no user data, redirect to login
 if ($current_user_id == 0) {
-    header("Location: /order_management/dist/pages/login.php");
+    header("Location: /OMS/dist/pages/login.php");
     exit();
 }
 
@@ -101,6 +101,8 @@ $countSql = "SELECT COUNT(*) as total FROM order_header i
 
 // Main query with all required joins - ONLY DISPATCH STATUS - UPDATED with customer name fallback
 $sql = "SELECT i.*, 
+                -- Duplicate order count based on mobile and product_code
+                (SELECT COUNT(*) FROM order_header o2 WHERE o2.mobile = i.mobile AND o2.product_code = i.product_code AND  o2.status = 'dispatch') as duplicate_count,
                -- Customer info: Use order_header full_name, fallback to customers table
                COALESCE(NULLIF(i.full_name, ''), c.name) as customer_name,
                i.customer_id,
@@ -234,8 +236,8 @@ if ($is_main_admin == 1 && $current_user_role == 1) {
 $usersResult = $conn->query($usersQuery);
 
 // Include navigation components
-include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/navbar.php');
-include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
 
 // Get unique tenants for filter dropdown
 $tenant_sql = "SELECT DISTINCT tenant_id, company_name 
@@ -252,7 +254,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
 <head>
     <title>Order Management Admin Portal - Dispatched Orders</title>
 
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/head.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
 
     <!-- Stylesheets -->
     <link rel="stylesheet" href="../assets/css/style.css" id="main-style-link" />
@@ -286,7 +288,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
 
 <body>
     <!-- Page Loader -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/loader.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php'); ?>
 
     <div class="pc-container">
         <div class="pc-content">
@@ -409,7 +411,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                 <th>Pay Status</th>
                                 <th>Tracking Number</th>
                                 <?php if ($is_admin && $is_main_admin) { ?>
-                                <th>Tenant Company Name</th>
+                                <th>Tenant Company</th>
                                 <?php } else { ?>
                                 <!--<input type="hidden" name="teanetID" value="0">-->
                                 <?php } ?>
@@ -435,6 +437,9 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                             $customerName = isset($row['customer_name']) ? htmlspecialchars($row['customer_name']) : 'N/A';
                                             $customerId = isset($row['customer_id']) ? htmlspecialchars($row['customer_id']) : '';
                                             echo $customerName . ($customerId ? " ($customerId)" : "");
+                                            if (isset($row['duplicate_count']) && $row['duplicate_count'] > 1) {
+                                                echo '<br><span class="badge badge-danger" style="background-color: #dc3545; color: white; padding: 2px 6px; border-radius: 4px; font-size: 11px; margin-top: 4px; display: inline-block;">Duplicate (' . $row['duplicate_count'] . ')</span>';
+                                            }
                                             ?>
                                 </td>
 
@@ -546,6 +551,12 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                         onclick="markAsPaid('<?php echo isset($row['order_id']) ? htmlspecialchars($row['order_id']) : ''; ?>')">
                                         <i class="fas fa-dollar-sign"></i>
                                     </button>
+                                    <?php elseif ($payStatus === 'paid'): ?>
+                                    <!-- UNMARK AS PAID button - only show for paid orders -->
+                                    <button class="action-btn cancel-btn" title="Unmark as Paid"
+                                        onclick="unmarkPaid('<?php echo isset($row['order_id']) ? htmlspecialchars($row['order_id']) : ''; ?>')">
+                                        <i class="fas fa-undo"></i>
+                                    </button>
                                     <?php endif; ?>
 
                                 </td>
@@ -597,13 +608,13 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
     </div>
 
     <!-- Modal for Marking Order as Paid -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/paid_mark_modal.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/paid_mark_modal.php'); ?>
 
     <!-- Cancel Order Modal  -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/cancel_order_modal.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/cancel_order_modal.php'); ?>
 
     <!-- Include MODAL for View Order -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/order_view_modal.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/order_view_modal.php'); ?>
 
     <script>
     /**
@@ -761,7 +772,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
         }
 
         // Construct the payment slip URL
-        const slipUrl = '/order_management/dist/uploads/payment_slips/' + encodeURIComponent(currentPaymentSlip);
+        const slipUrl = '/OMS/dist/uploads/payment_slips/' + encodeURIComponent(currentPaymentSlip);
 
         // Open payment slip in new tab
         window.open(slipUrl, '_blank');
@@ -889,6 +900,38 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
         return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
     }
 
+    // Unmark as Paid Functionality
+    function unmarkPaid(orderId) {
+        if (!orderId || orderId.trim() === '') {
+            alert('Order ID is required to unmark as paid.');
+            return;
+        }
+
+        if (confirm('Are you sure you want to unmark this order as paid? This will delete the payment record and set the order back to unpaid.')) {
+            const formData = new FormData();
+            formData.append('order_id', orderId);
+            formData.append('action', 'unmark_paid');
+
+            fetch('unmark_paid.php', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert('Order unmarked as paid successfully!');
+                        window.location.reload();
+                    } else {
+                        alert('Error: ' + (data.message || 'Failed to unmark order as paid'));
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('An error occurred while unmarking the payment. Please try again.');
+                });
+        }
+    }
+
     /**
      * CANCEL ORDER MODAL FUNCTIONALITY
      */
@@ -953,6 +996,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
             return;
         }
 
+        /* Cancellation reason is now optional
         if (!cancellationReason) {
             alert('Please provide a reason for cancellation.');
             document.getElementById('cancellationReason').focus();
@@ -964,6 +1008,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
             document.getElementById('cancellationReason').focus();
             return;
         }
+        */
 
         // Final confirmation
         if (!confirm(
@@ -1108,10 +1153,13 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                 const fileInput = document.getElementById('payment_slip');
                 const submitBtn = document.getElementById('submitPaidBtn');
 
+                // Optional: Alert the user if no file is selected, but proceed
+                /*
                 if (!fileInput.files[0]) {
                     alert('Please select a payment slip file');
                     return;
                 }
+                */
 
                 // Show loading state
                 submitBtn.innerHTML = '<span class="loading-spinner"></span> Processing...';
@@ -1120,7 +1168,9 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                 // Create FormData object
                 const formData = new FormData();
                 formData.append('order_id', orderId);
-                formData.append('payment_slip', fileInput.files[0]);
+                if (fileInput.files[0]) {
+                    formData.append('payment_slip', fileInput.files[0]);
+                }
                 formData.append('action', 'mark_paid');
 
                 // Send the request
@@ -1240,8 +1290,8 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
     </script>
 
     <!-- Include Footer and Scripts -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/footer.php'); ?>
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/scripts.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php'); ?>
 
 </body>
 

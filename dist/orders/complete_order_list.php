@@ -14,12 +14,51 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     if (ob_get_level()) {
         ob_end_clean();
     }
-    header("Location: /order_management/dist/pages/login.php");
+    header("Location: /OMS/dist/pages/login.php");
     exit();
 }
 
 // Include database connection
-include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
+
+// Check if user is main admin
+$is_main_admin = $_SESSION['is_main_admin'];
+$teanent_id = $_SESSION['tenant_id'];
+$is_admin = $_SESSION['role_id'];
+
+// Get current user's role information
+$current_user_id = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
+$current_user_role = isset($_SESSION['role_id']) ? (int)$_SESSION['role_id'] : 0;
+
+// If user_id or role_id is not in session, fetch from database
+if ($current_user_id == 0 || $current_user_role == 0) {
+    $session_identifier = isset($_SESSION['username']) ? $_SESSION['username'] : 
+                         (isset($_SESSION['email']) ? $_SESSION['email'] : '');
+    
+    if ($session_identifier) {
+        $userQuery = "SELECT u.id, u.role_id FROM users u WHERE u.email = ? OR u.name = ? LIMIT 1";
+        $stmt = $conn->prepare($userQuery);
+        $stmt->bind_param("ss", $session_identifier, $session_identifier);
+        $stmt->execute();
+        $userResult = $stmt->get_result();
+        
+        if ($userResult && $userResult->num_rows > 0) {
+            $userData = $userResult->fetch_assoc();
+            $current_user_id = (int)$userData['id'];
+            $current_user_role = (int)$userData['role_id'];
+            
+            $_SESSION['user_id'] = $current_user_id;
+            $_SESSION['role_id'] = $current_user_role;
+        }
+        $stmt->close();
+    }
+}
+
+// If still no user data, redirect to login
+if ($current_user_id == 0) {
+    header("Location: /OMS/dist/pages/login.php");
+    exit();
+}
 
 /**
  * SEARCH AND PAGINATION PARAMETERS
@@ -29,7 +68,7 @@ $order_id_filter = isset($_GET['order_id_filter']) ? trim($_GET['order_id_filter
 $customer_name_filter = isset($_GET['customer_name_filter']) ? trim($_GET['customer_name_filter']) : '';
 $date_from = isset($_GET['date_from']) ? trim($_GET['date_from']) : '';
 $date_to = isset($_GET['date_to']) ? trim($_GET['date_to']) : '';
-$pay_status_filter = isset($_GET['pay_status_filter']) ? trim($_GET['pay_status_filter']) : '';
+$tenant_id_filter = isset($_GET['tenant_id_filter']) ? trim($_GET['tenant_id_filter']) : '';
 
 $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 10;
 $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
@@ -45,19 +84,27 @@ $offset = ($page - 1) * $limit;
 $countSql = "SELECT COUNT(*) as total FROM order_header i 
              LEFT JOIN customers c ON i.customer_id = c.customer_id
              LEFT JOIN users u2 ON i.created_by = u2.id
-             WHERE i.interface = 'individual' AND i.status = 'done'";
+             WHERE i.interface IN ('individual', 'leads') AND i.status = 'done'";
 
 // Main query with all required joins
 $sql = "SELECT i.*, c.name as customer_name, 
                p.payment_id, p.amount_paid, p.payment_method, p.payment_date, p.pay_by,
                u1.name as paid_by_name,
-               u2.name as creator_name
+               u2.name as creator_name,
+               t.company_name
         FROM order_header i 
         LEFT JOIN customers c ON i.customer_id = c.customer_id
         LEFT JOIN payments p ON i.order_id = p.order_id
         LEFT JOIN users u1 ON p.pay_by = u1.id
         LEFT JOIN users u2 ON i.created_by = u2.id
-        WHERE i.interface = 'individual' AND i.status = 'done'";
+        LEFT JOIN tenants t ON i.tenant_id = t.tenant_id
+        WHERE i.interface IN ('individual', 'leads') AND i.status = 'done'";
+
+// Add tenant filter for non-main admin users
+if ($is_main_admin != 1) {
+    $countSql .= " AND i.tenant_id = $teanent_id";
+    $sql .= " AND i.tenant_id = $teanent_id";
+}
 
 // Build search conditions
 $searchConditions = [];
@@ -98,11 +145,11 @@ if (!empty($date_to)) {
     $searchConditions[] = "DATE(i.issue_date) <= '$dateToTerm'";
 }
 
-// Payment Status filter
-// if (!empty($pay_status_filter)) {
-//     $payStatusTerm = $conn->real_escape_string($pay_status_filter);
-//     $searchConditions[] = "i.pay_status = '$payStatusTerm'";
-// }
+// Specific tenant ID filter
+if (!empty($tenant_id_filter)) {
+    $tenantIdTerm = $conn->real_escape_string($tenant_id_filter);
+    $searchConditions[] = "i.tenant_id = '$tenantIdTerm'";
+}
 
 // Apply all search conditions
 if (!empty($searchConditions)) {
@@ -124,8 +171,13 @@ $totalPages = ceil($totalRows / $limit);
 $result = $conn->query($sql);
 
 // Include navigation components
-include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/navbar.php');
-include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
+
+// Get unique tenants for filter dropdown
+$tenant_sql = "SELECT DISTINCT tenant_id, company_name FROM tenants";
+$tenant_result = $conn->query($tenant_sql);
+$tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
 
 ?>
 
@@ -135,7 +187,7 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
 <head>
     <title>Order Management Admin Portal - Complete Orders</title>
     
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/head.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
     
     <!-- Stylesheets -->
     <link rel="stylesheet" href="../assets/css/style.css" id="main-style-link" />
@@ -144,7 +196,7 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
 
 <body>
     <!-- Page Loader -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/loader.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php'); ?>
 
     <div class="pc-container">
         <div class="pc-content">
@@ -188,16 +240,19 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                             <input type="date" id="date_to" name="date_to" 
                                    value="<?php echo htmlspecialchars($date_to); ?>">
                         </div>
-                        
-                        <!-- <div class="form-group">
-                            <label for="pay_status_filter">Payment Status</label>
-                            <select id="pay_status_filter" name="pay_status_filter">
-                                <option value="">All Payment Status</option>
-                                <option value="paid" <?php echo ($pay_status_filter == 'paid') ? 'selected' : ''; ?>>Paid</option>
-                                <option value="unpaid" <?php echo ($pay_status_filter == 'unpaid') ? 'selected' : ''; ?>>Unpaid</option>
-                             
+                        <?php if ($is_main_admin == 1): ?>
+                        <div class="form-group">
+                            <label for="tenant_id_filter">Tenant</label>
+                            <select id="tenant_id_filter" name="tenant_id_filter">
+                                <option value="">All Tenants</option>
+                                <?php foreach ($tenants as $tenant): ?>
+                                    <option value="<?php echo $tenant['tenant_id']; ?>" <?php echo ($tenant_id_filter == $tenant['tenant_id']) ? 'selected' : ''; ?>>
+                                        <?php echo htmlspecialchars($tenant['company_name']); ?>
+                                    </option>
+                                <?php endforeach; ?>
                             </select>
-                        </div> -->
+                        </div>
+                        <?php endif; ?>
                         
                         <div class="form-group">
                             <div class="button-group">
@@ -232,6 +287,9 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                                 <th>Total Amount</th>
                                 <th>Pay Status</th>
                                 <th>Created By</th>
+                                <?php if ($is_main_admin == 1): ?>
+                                <th>Company</th>
+                                <?php endif; ?>
                                 <th>Actions</th>
                             </tr>
                         </thead>
@@ -296,17 +354,22 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                                             ?>
                                         </td>
                                         
-                                       <!-- Action Buttons -->
+                                        <?php if ($is_main_admin == 1): ?>
+                                        <!-- Company Name -->
+                                        <td>
+                                            <?php
+                                            echo isset($row['company_name']) ? htmlspecialchars($row['company_name']) : 'N/A';
+                                            ?>
+                                        </td>
+                                        <?php endif; ?>
+                                        
+                                        <!-- Action Buttons -->
 <td class="actions">
     <div class="action-buttons-group">
         <button class="action-btn view-btn" title="View Order Details" 
                 onclick="openOrderModal('<?php echo isset($row['order_id']) ? htmlspecialchars($row['order_id']) : ''; ?>')">
             <i class="fas fa-eye"></i>
         </button>
- <button class="action-btn dispatch-btn" title="Mark as Dispatched" 
-        onclick="openDispatchModal('<?php echo isset($row['order_id']) ? htmlspecialchars($row['order_id']) : ''; ?>')">
-    <i class="fas fa-truck"></i>
-</button>
     
     </div>
 </td>
@@ -314,7 +377,7 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                                 <?php endwhile; ?>
                             <?php else: ?>
                                 <tr>
-                                    <td colspan="7" class="text-center" style="padding: 40px; text-align: center; color: #666;">
+                                    <td colspan="<?php echo ($is_main_admin == 1) ? '8' : '7'; ?>" class="text-center" style="padding: 40px; text-align: center; color: #666;">
                                         No complete orders found
                                     </td>
                                 </tr>
@@ -330,20 +393,20 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                     </div>
                     <div class="pagination-controls">
                         <?php if ($page > 1): ?>
-                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page - 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&search=<?php echo urlencode($search); ?>'">
+                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page - 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&tenant_id_filter=<?php echo urlencode($tenant_id_filter); ?>&search=<?php echo urlencode($search); ?>'">
                                 <i class="fas fa-chevron-left"></i>
                             </button>
                         <?php endif; ?>
                         
                         <?php for ($i = max(1, $page - 2); $i <= min($totalPages, $page + 2); $i++): ?>
                             <button class="page-btn <?php echo ($i == $page) ? 'active' : ''; ?>" 
-                                    onclick="window.location.href='?page=<?php echo $i; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&search=<?php echo urlencode($search); ?>'">
+                                    onclick="window.location.href='?page=<?php echo $i; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&tenant_id_filter=<?php echo urlencode($tenant_id_filter); ?>&search=<?php echo urlencode($search); ?>'">
                                 <?php echo $i; ?>
                             </button>
                         <?php endfor; ?>
                         
                         <?php if ($page < $totalPages): ?>
-                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page + 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&search=<?php echo urlencode($search); ?>'">
+                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page + 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&tenant_id_filter=<?php echo urlencode($tenant_id_filter); ?>&search=<?php echo urlencode($search); ?>'">
                                 <i class="fas fa-chevron-right"></i>
                             </button>
                         <?php endif; ?>
@@ -377,76 +440,6 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
             </div>
         </div>
     </div>
-   
-<!-- DISPATCH MODAL HTML (Complete modal structure) -->
-<div class="modal-overlay" id="dispatchOrderModal" style="display: none;">
-    <div class="modal-container">
-        <div class="modal-header">
-            <h3 class="modal-title">
-                <i class="fas fa-truck me-2"></i>Dispatch Order
-            </h3>
-            <button class="modal-close" onclick="closeDispatchModal()" type="button">
-                <i class="fas fa-times"></i>
-            </button>
-        </div>
-        
-        <form id="dispatch-order-form">
-            <input type="hidden" name="order_id" id="dispatch_order_id">
-            
-            <div class="modal-body">
-                <div class="alert alert-info mb-3">
-                    <i class="fas fa-info-circle me-2"></i>
-                    Dispatching this order will assign a tracking number and update the order status.
-                </div>
-                
-                <div class="form-group mb-3">
-                    <label for="carrier" class="form-label">Courier Service <span class="text-danger">*</span></label>
-                    <select class="form-control" id="carrier" name="carrier" required>
-                        <option value="" selected disabled>Select courier service</option>
-                        <?php
-                        // Fetch active couriers from the database
-                        $courier_query = "SELECT courier_id, courier_name FROM couriers WHERE status = 'active' ORDER BY courier_name";
-                        $courier_result = $conn->query($courier_query);
-                        
-                        if ($courier_result && $courier_result->num_rows > 0) {
-                            while($courier = $courier_result->fetch_assoc()): 
-                        ?>
-                            <option value="<?php echo $courier['courier_id']; ?>"><?php echo htmlspecialchars($courier['courier_name']); ?></option>
-                        <?php 
-                            endwhile;
-                        } else {
-                            echo '<option value="" disabled>No couriers available</option>';
-                        }
-                        ?>
-                    </select>
-                    <small class="form-text text-muted">Select the courier service that will deliver this order</small>
-                </div>
-                
-                <div class="form-group mb-3">
-                    <label class="form-label">Tracking Number</label>
-                    <div class="tracking-preview" id="tracking_number_display">
-                        <span class="text-muted">Will be generated when you confirm dispatch</span>
-                    </div>
-                    <small class="form-text text-muted">An available tracking number will be assigned from the selected courier</small>
-                </div>
-                
-                <div class="form-group mb-3">
-                    <label for="dispatch_notes" class="form-label">Dispatch Notes</label>
-                    <textarea class="form-control" id="dispatch_notes" name="dispatch_notes" rows="3" 
-                              placeholder="Enter additional notes about this dispatch (optional)"></textarea>
-                </div>
-            </div>
-            
-        <div class="modal-footer" style="display: flex !important; justify-content: flex-end; padding: 15px; background: #f8f9fa; border-top: 1px solid #ddd;">
-    <button type="button" class="modal-btn modal-btn-secondary" onclick="closeDispatchModal()" 
-            style="display: inline-flex !important; padding: 8px 16px; background: #6c757d !important; color: white !important; border: none; border-radius: 4px; margin-right: 10px;">
-        <i class="fas fa-times me-1"></i>Cancel
-    </button>
-    <button type="submit" class="modal-btn modal-btn-primary" id="dispatch-submit-btn" disabled
-            style="display: inline-flex !important; padding: 8px 16px; background: #007bff !important; color: white !important; border: none; border-radius: 4px;">
-        <i class="fas fa-truck me-1"></i>Confirm Dispatch
-    </button>
-</div>
         </form>
     </div>
 </div>
@@ -465,9 +458,11 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
             document.getElementById('customer_name_filter').value = '';
             document.getElementById('date_from').value = '';
             document.getElementById('date_to').value = '';
-            document.getElementById('pay_status_filter').value = '';
+            var tenantFilter = document.getElementById('tenant_id_filter');
+            if (tenantFilter) {
+                tenantFilter.value = '';
+            }
             
-            // Submit the form to clear filters
             window.location.href = window.location.pathname;
         }
 
@@ -605,214 +600,6 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                 console.error('Modal elements not found! Check HTML structure.');
             }
         });
-
-   
-
-// Open Dispatch Modal
-function openDispatchModal(orderId) {
-    if (!orderId || orderId.trim() === '') {
-        alert('Order ID is required to dispatch order.');
-        return;
-    }
-    
-    console.log('Opening dispatch modal for Order ID:', orderId);
-    
-    // Set the order ID in the hidden input
-    document.getElementById('dispatch_order_id').value = orderId.trim();
-    
-    // Reset the form
-    document.getElementById('dispatch-order-form').reset();
-    document.getElementById('dispatch_order_id').value = orderId.trim(); // Reset it again after form reset
-    
-    // Reset tracking number display
-    document.getElementById('tracking_number_display').innerHTML = 
-        '<span class="text-muted">Select a courier to see available tracking number</span>';
-    
-    // Disable submit button initially
-    document.getElementById('dispatch-submit-btn').disabled = true;
-    
-    // Show the modal
-    const modal = document.getElementById('dispatchOrderModal');
-    modal.style.display = 'flex';
-    document.body.style.overflow = 'hidden';
-}
-
-// Close Dispatch Modal
-function closeDispatchModal() {
-    const modal = document.getElementById('dispatchOrderModal');
-    modal.style.display = 'none';
-    document.body.style.overflow = 'auto';
-    
-    // Reset form
-    document.getElementById('dispatch-order-form').reset();
-    document.getElementById('tracking_number_display').innerHTML = 
-        '<span class="text-muted">Select a courier to see available tracking number</span>';
-    document.getElementById('dispatch-submit-btn').disabled = true;
-}
-
-// Fetch tracking number for selected courier
-function fetchTrackingNumber(courierId) {
-    const trackingDisplay = document.getElementById('tracking_number_display');
-    const submitBtn = document.getElementById('dispatch-submit-btn');
-    
-    if (!courierId) {
-        trackingDisplay.innerHTML = '<span class="text-muted">Select a courier to see available tracking number</span>';
-        submitBtn.disabled = true;
-        return;
-    }
-    
-    // Show loading state
-    trackingDisplay.innerHTML = '<span class="text-info"><i class="fas fa-spinner fa-spin me-1"></i>Loading tracking number...</span>';
-    submitBtn.disabled = true;
-    
-    // Fetch tracking number from PHP endpoint
-    fetch(`get_tracking_number.php?courier_id=${courierId}`, {
-        method: 'GET',
-        headers: {
-            'Content-Type': 'application/json',
-        }
-    })
-    .then(response => {
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        return response.json();
-    })
-    .then(data => {
-        if (data.status === 'success') {
-            trackingDisplay.innerHTML = 
-                `<span class="text-success"><i class="fas fa-check-circle me-1"></i>Next tracking number: <strong>${data.tracking_number}</strong></span>
-                <small class="d-block text-muted mt-1">${data.available_count} tracking numbers available</small>`;
-            submitBtn.disabled = false;
-        } else {
-            trackingDisplay.innerHTML = 
-                `<span class="text-danger"><i class="fas fa-exclamation-circle me-1"></i>${data.message}</span>`;
-            submitBtn.disabled = true;
-        }
-    })
-    .catch(error => {
-        console.error('Error fetching tracking number:', error);
-        trackingDisplay.innerHTML = 
-            '<span class="text-danger"><i class="fas fa-exclamation-triangle me-1"></i>Error loading tracking number. Please try again.</span>';
-        submitBtn.disabled = true;
-    });
-}
-
-// Initialize Dispatch Functionality
-document.addEventListener('DOMContentLoaded', function() {
-    const carrierSelect = document.getElementById('carrier');
-    const submitBtn = document.getElementById('dispatch-submit-btn');
-    const dispatchForm = document.getElementById('dispatch-order-form');
-    const modal = document.getElementById('dispatchOrderModal');
-    
-    // Handle courier selection change
-    if (carrierSelect) {
-        carrierSelect.addEventListener('change', function() {
-            const selectedCourierId = this.value;
-            
-            if (selectedCourierId) {
-                // Fetch tracking number for selected courier
-                fetchTrackingNumber(selectedCourierId);
-            } else {
-                // Reset display when no courier is selected
-                document.getElementById('tracking_number_display').innerHTML = 
-                    '<span class="text-muted">Select a courier to see available tracking number</span>';
-                submitBtn.disabled = true;
-            }
-        });
-    }
-    
-    // Handle dispatch form submission
-    if (dispatchForm) {
-        dispatchForm.addEventListener('submit', function(e) {
-            e.preventDefault();
-            
-            const orderId = document.getElementById('dispatch_order_id').value;
-            const carrier = document.getElementById('carrier').value;
-            const dispatchNotes = document.getElementById('dispatch_notes').value;
-            
-            if (!orderId || !carrier) {
-                alert('Please select a courier service before dispatching');
-                return;
-            }
-            
-            // Confirm dispatch
-            if (!confirm('Are you sure you want to dispatch this order? This action cannot be undone.')) {
-                return;
-            }
-            
-            // Show loading state
-            submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Dispatching...';
-            submitBtn.disabled = true;
-            
-            // Create FormData object
-            const formData = new FormData();
-            formData.append('order_id', orderId);
-            formData.append('carrier', carrier);
-            formData.append('dispatch_notes', dispatchNotes);
-            formData.append('action', 'dispatch_order');
-            
-            // Send the request
-            fetch('process_dispatch.php', {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                return response.json();
-            })
-            .then(data => {
-                if (data.success) {
-                    alert('Order dispatched successfully!' + 
-                          (data.tracking_number ? ' Tracking number: ' + data.tracking_number : ''));
-                    closeDispatchModal();
-                    // Reload the page to reflect changes
-                    window.location.reload();
-                } else {
-                    alert('Error: ' + (data.message || 'Failed to dispatch order'));
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                alert('An error occurred while dispatching the order. Please try again.');
-            })
-            .finally(() => {
-                // Reset button state
-                submitBtn.innerHTML = '<i class="fas fa-truck me-1"></i>Confirm Dispatch';
-                submitBtn.disabled = !carrier; // Enable only if carrier is selected
-            });
-        });
-    }
-    
-    // Close modal when clicking outside
-    if (modal) {
-        modal.addEventListener('click', function(e) {
-            if (e.target === this) {
-                closeDispatchModal();
-            }
-        });
-    }
-    
-    // Close modal with Escape key
-    document.addEventListener('keydown', function(e) {
-        if (e.key === 'Escape') {
-            const modal = document.getElementById('dispatchOrderModal');
-            if (modal && modal.style.display === 'flex') {
-                closeDispatchModal();
-            }
-        }
-    });
-});
-
-// Additional helper functions
-function markAsDispatched(orderId) {
-    // This is an alternative function name that calls openDispatchModal
-    // Keep this for backward compatibility
-    openDispatchModal(orderId);
-}
-
 // Add this debug script to help identify the modal footer issue
 // Place this in your existing JavaScript section or in the console
 
@@ -857,7 +644,6 @@ function debugModalFooter() {
 }
 
 // Call this function after opening the modal to debug
-// Add this line to your openDispatchModal function temporarily:
 // setTimeout(() => debugModalFooter(), 100);
 
 
@@ -1266,8 +1052,8 @@ function cancelOrder(orderId) {
     </script>
 
     <!-- Include Footer and Scripts -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/footer.php'); ?>
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/scripts.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php'); ?>
 
 </body>
 </html>

@@ -8,12 +8,12 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     if (ob_get_level()) {
         ob_end_clean();
     }
-    header("Location: /order_management/dist/pages/login.php");
+    header("Location: /OMS/dist/pages/login.php");
     exit();
 }
 
 // Include database connection
-include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
 // Check if user is main admin
 $is_main_admin = $_SESSION['is_main_admin'];
@@ -86,7 +86,7 @@ if ($current_user_id == 0 || $current_user_role == 0) {
 
 // If still no user data, redirect to login
 if ($current_user_id == 0) {
-    header("Location: /order_management/dist/pages/login.php");
+    header("Location: /OMS/dist/pages/login.php");
     exit();
 }
 
@@ -308,8 +308,8 @@ if ($tableExists && $tableExists->num_rows > 0) {
     }
 }
 
-include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/navbar.php');
-include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
 ?>
 
 <!doctype html>
@@ -320,7 +320,7 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
     <!-- TITLE -->
     <title>Order Management Admin Portal - Dashboard</title>
     <?php
-    include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/head.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php');
     ?>
     <link rel="stylesheet" href="../assets/css/style.css" id="main-style-link" />
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
@@ -516,7 +516,7 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
 <body>
     <!-- LOADER -->
     <?php
-        include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/loader.php');
+        include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php');
     ?>
     <!-- END LOADER -->
 
@@ -767,7 +767,7 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
 
                 <!-- Total Users - Admin Only -->
                 <div class="col-span-12 xl:col-span-4 md:col-span-6 admin-only">
-                    <a href="/order_management/dist/users/users.php" class="card-link">
+                    <a href="/OMS/dist/users/users.php" class="card-link">
                         <div class="card">
                             <div class="card-header !pb-0 !border-b-0">
                                 <h5>Total Users</h5>
@@ -792,7 +792,7 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
 
                 <!-- Total Customers -->
                 <div class="col-span-12 xl:col-span-4 md:col-span-6">
-                    <a href="/order_management/dist/customers/customer_list.php" class="card-link">
+                    <a href="/OMS/dist/customers/customer_list.php" class="card-link">
                         <div class="card">
                             <div class="card-header !pb-0 !border-b-0">
                                 <h5>Total Customers
@@ -821,7 +821,7 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
 
                 <!-- Total Products - All users can view products -->
                 <div class="col-span-12 xl:col-span-4 md:col-span-6">
-                    <a href="/order_management/dist/products/product_list.php" class="card-link">
+                    <a href="/OMS/dist/products/product_list.php" class="card-link">
                         <div class="card">
                             <div class="card-header !pb-0 !border-b-0">
                                 <h5>Total Products</h5>
@@ -852,13 +852,13 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
 
     <!-- FOOTER -->
     <?php
-    include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/footer.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php');
     ?>
     <!-- END FOOTER -->
 
     <!-- SCRIPTS -->
     <?php
-    include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/scripts.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php');
     ?>
     <!-- END SCRIPTS -->
 

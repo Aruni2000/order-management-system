@@ -2,10 +2,10 @@
 session_start();
 if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     if (ob_get_level()) ob_end_clean();
-    header("Location: /order_management/dist/pages/login.php");
+    header("Location: /OMS/dist/pages/login.php");
     exit();
 }
-include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
 // Check if user is main admin
 $is_main_admin = $_SESSION['is_main_admin'];
@@ -162,8 +162,8 @@ function buildQueryString($params = []) {
 }
 
 // Include navbar & sidebar
-include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/navbar.php');
-include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
 
 // Get unique tenants for filter dropdown
 $tenant_sql = "SELECT DISTINCT tenant_id, company_name 
@@ -178,7 +178,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
 
 <head>
     <title>Payment Report</title>
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/head.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
     <link rel="stylesheet" href="../assets/css/style.css" />
     <link rel="stylesheet" href="../assets/css/orders.css" />
     <style>
@@ -301,7 +301,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
 
 <body>
     <!-- Page Loader -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/loader.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php'); ?>
     <div class="pc-container">
         <div class="pc-content">
             <div class="page-header">
@@ -447,7 +447,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                             <th>Order ID</th>
                             <th>Customer</th>
                             <?php if ($is_main_admin == 1) { ?>
-                            <th>Tenant Company Name</th>
+                            <th>Tenant Company</th>
                             <?php } else { ?>
                             <!--<input type="hidden" name="teanetID" value="0">-->
                             <?php } ?>
@@ -586,10 +586,10 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
         </div>
     </div>
 
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/scripts.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php'); ?>
 
     <!--Footer-->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/footer.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php'); ?>
 </body>
 
 </html>

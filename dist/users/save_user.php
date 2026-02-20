@@ -14,7 +14,7 @@ ob_start();
 session_start();
 
 // Include the database connection file
-include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
 // Function to return JSON response and exit
 function jsonResponse($success, $message, $errors = null, $data = null) {

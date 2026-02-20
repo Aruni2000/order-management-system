@@ -7,14 +7,14 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     if (ob_get_level()) {
         ob_end_clean();
     }
-    header("Location: /order_management/dist/pages/login.php");
+    header("Location: /OMS/dist/pages/login.php");
     exit();
 }
 
 // Include the database connection file
-include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/connection/db_connection.php');
-include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/navbar.php');
-include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
 
 // Check if user is main admin
 $is_main_admin = $_SESSION['is_main_admin'];
@@ -186,7 +186,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
 <head>
     <title>Order Management Admin Portal - Customer Management</title>
 
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/head.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
 
     <!-- Stylesheets -->
     <link rel="stylesheet" href="../assets/css/style.css" id="main-style-link" />
@@ -196,7 +196,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
 
 <body>
     <!-- Page Loader -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/loader.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php'); ?>
 
     <div class="pc-container">
         <div class="pc-content">
@@ -315,7 +315,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                 <th>Phone & Email</th>
                                 <th>Address</th>
                                 <?php if ($is_main_admin == 1 && $is_admin == 1) { ?>
-                                <th>Teanet Company Name</th>
+                                <th>Tenant Company</th>
                                 <?php } else { ?>
                                 <!--<input type="hidden" name="teanetID" value="0">-->
                                 <?php } ?>
@@ -567,10 +567,10 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
     </div>
 
     <!-- Footer -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/footer.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php'); ?>
 
     <!-- Scripts -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/scripts.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php'); ?>
 
     <script>
     function clearFilters() {
@@ -795,26 +795,26 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
     }
 
     // Enhanced search with debouncing
-    let searchTimeout;
+    // let searchTimeout;
 
-    function debounceSearch(func, delay) {
-        return function(...args) {
-            clearTimeout(searchTimeout);
-            searchTimeout = setTimeout(() => func.apply(this, args), delay);
-        };
-    }
+    // function debounceSearch(func, delay) {
+    //     return function(...args) {
+    //         clearTimeout(searchTimeout);
+    //         searchTimeout = setTimeout(() => func.apply(this, args), delay);
+    //     };
+    // }
 
-    // Auto-submit search form with debouncing
-    document.addEventListener('DOMContentLoaded', function() {
-        const searchInputs = document.querySelectorAll('#customer_name_filter, #email_filter, #phone_filter');
-        const debouncedSubmit = debounceSearch(function() {
-            document.querySelector('.tracking-form').submit();
-        }, 500);
+    // // Auto-submit search form with debouncing
+    // document.addEventListener('DOMContentLoaded', function() {
+    //     const searchInputs = document.querySelectorAll('#customer_name_filter, #email_filter, #phone_filter');
+    //     const debouncedSubmit = debounceSearch(function() {
+    //         document.querySelector('.tracking-form').submit();
+    //     }, 500);
 
-        searchInputs.forEach(input => {
-            input.addEventListener('input', debouncedSubmit);
-        });
-    });
+    //     searchInputs.forEach(input => {
+    //         input.addEventListener('input', debouncedSubmit);
+    //     });
+    // });
     </script>
 
 

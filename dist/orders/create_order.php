@@ -7,12 +7,12 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     if (ob_get_level()) {
         ob_end_clean();
     }
-    header("Location: /order_management/dist/pages/login.php");
+    header("Location: /OMS/dist/pages/login.php");
     exit();
 }
 
 // Include the database connection file
-include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
 // Get user permissions
 $is_main_admin = isset($_SESSION['is_main_admin']) ? (int)$_SESSION['is_main_admin'] : 0;
@@ -98,7 +98,7 @@ function checkCourierStatus($conn, $tenant_id) {
             }
         }
     } else {
-        $status['info_message'] = "No default courier selected for this tenant.";
+        $status['info_message'] = "No default courier selected.";
     }
     
     return $status;
@@ -111,18 +111,28 @@ $courierStatus = checkCourierStatus($conn, $selected_tenant_id);
 $sql = "SELECT id, name, description, lkr_price FROM products WHERE status = 'active' ORDER BY name ASC";
 $result = $conn->query($sql);
 
-// Updated customer query with selected tenant filter
-$customerSql = "SELECT c.*, ct.city_name 
-                FROM customers c 
-                LEFT JOIN city_table ct ON c.city_id = ct.city_id 
-                WHERE c.tenant_id = ? 
-                AND c.status = 'Active' 
-                ORDER BY c.name ASC";
-
-$customerStmt = $conn->prepare($customerSql);
-$customerStmt->bind_param("i", $selected_tenant_id);
-$customerStmt->execute();
-$customerResult = $customerStmt->get_result();
+// Fetch customer data 
+if ($is_main_admin === 1 && $role_id === 1) {
+    // Main admin sees all customers from all tenants
+    $customerSql = "SELECT c.*, ct.city_name 
+                    FROM customers c 
+                    LEFT JOIN city_table ct ON c.city_id = ct.city_id 
+                    WHERE c.status = 'Active' 
+                    ORDER BY c.customer_id DESC";
+    $customerResult = $conn->query($customerSql);
+} else {
+    // Regular users see only their tenant's customers
+    $customerSql = "SELECT c.*, ct.city_name 
+                    FROM customers c 
+                    LEFT JOIN city_table ct ON c.city_id = ct.city_id 
+                    WHERE c.tenant_id = ? 
+                    AND c.status = 'Active' 
+                    ORDER BY c.customer_id DESC";
+    $customerStmt = $conn->prepare($customerSql);
+    $customerStmt->bind_param("i", $selected_tenant_id);
+    $customerStmt->execute();
+    $customerResult = $customerStmt->get_result();
+}
 
 // Fetch cities for dropdown
 $citySql = "SELECT city_id, city_name FROM city_table WHERE is_active = 1 ORDER BY city_name ASC";
@@ -170,8 +180,8 @@ if ($is_main_admin === 1 && $role_id === 1) {
     }
 }
 
-include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/navbar.php');
-include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
 ?>
 <!doctype html>
 <html lang="en" data-pc-preset="preset-1" data-pc-sidebar-caption="true" data-pc-direction="ltr" dir="ltr" data-pc-theme="light">
@@ -180,7 +190,7 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
     <!-- TITLE -->
     <title>Order Management Admin Portal - Create Order</title>
 
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/head.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
     
     <!-- [Template CSS Files] -->
     <link rel="stylesheet" href="../assets/css/styles.css" id="main-style-link" />
@@ -391,7 +401,7 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
 </style>
 <body>
     <!-- LOADER -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/loader.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php'); ?>
     <!-- END LOADER -->
 
    
@@ -429,7 +439,7 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
 <!-- REMOVED THE ELSE BLOCK COMPLETELY -->
 
       <!-- Alert Messages and Courier Status -->
-<div class="alert-container" style="position: absolute; top: 85px; right: 20px; z-index: 1000; max-width: 400px;">
+<div class="alert-container" style="position: absolute; top: 25px; right: 20px; z-index: 1000; max-width: 400px;">
     <?php
     // Display session messages
     if (isset($_SESSION['order_success'])) {
@@ -858,13 +868,13 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
 
     <!-- FOOTER -->
     <?php
-    include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/footer.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php');
     ?>
     <!-- END FOOTER -->
 
     <!-- SCRIPTS -->
     <?php
-    include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/scripts.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php');
     ?>
     <!-- END SCRIPTS -->
 <script>

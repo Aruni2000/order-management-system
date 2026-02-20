@@ -1,7 +1,7 @@
 <?php
 /**
- * Cancel Order Processing Script
- * Updates order status, order items, and logs user action
+ * Restore Order Processing Script
+ * Reverts order status from 'cancel' to 'pending'
  */
 
 session_start();
@@ -24,7 +24,6 @@ try {
     
     // Get parameters
     $order_id = $_POST['order_id'] ?? '';
-    $cancellation_reason = $_POST['cancellation_reason'] ?? '';
     
     // Basic validation
     if (empty($order_id)) {
@@ -35,11 +34,8 @@ try {
     $conn->begin_transaction();
     
     try {
-       // Check if order exists and can be cancelled
-$check_sql = "SELECT order_id, status, customer_id, total_amount 
-              FROM order_header 
-              WHERE order_id = ? AND interface IN ('individual', 'leads')";
-
+        // Check if order exists and is in 'cancel' status
+        $check_sql = "SELECT order_id, status, tracking_number FROM order_header WHERE order_id = ? AND interface IN ('individual', 'leads')";
         $stmt = $conn->prepare($check_sql);
         $stmt->bind_param("s", $order_id);
         $stmt->execute();
@@ -50,67 +46,55 @@ $check_sql = "SELECT order_id, status, customer_id, total_amount
         }
         
         $order = $result->fetch_assoc();
-        $customer_id = $order['customer_id'];
-        $total_amount = $order['total_amount'];
-        $previous_status = $order['status'];
         
-        if ($order['status'] === 'cancel') {
-            throw new Exception('Order is already cancelled');
-        }
-        
-        if ($order['status'] === 'done') {
-            throw new Exception('Cannot cancel completed orders');
+        if ($order['status'] !== 'cancel') {
+            throw new Exception('Only cancelled orders can be restored');
         }
         
         $stmt->close();
         
-        // Update order header to cancelled
+        // if has tracking number, move back to dispatch
+        $restore_status = 'pending';
+        if (!empty($order['tracking_number'])) {
+            $restore_status = 'dispatch';
+        }
+        
+        // Update order header to restore status
         $update_order_sql = "UPDATE order_header SET 
-                            status = 'cancel', 
-                            cancellation_reason = ?,
+                            status = ?, 
+                            cancellation_reason = NULL,
                             updated_at = CURRENT_TIMESTAMP
                             WHERE order_id = ?";
         $order_stmt = $conn->prepare($update_order_sql);
-        $order_stmt->bind_param("ss", $cancellation_reason, $order_id);
+        $order_stmt->bind_param("ss", $restore_status, $order_id);
         
         if (!$order_stmt->execute()) {
             throw new Exception('Failed to update order: ' . $order_stmt->error);
         }
         
-        if ($order_stmt->affected_rows === 0) {
-            throw new Exception('No rows updated in order header');
-        }
-        
         $order_stmt->close();
         
-        // Update order_items status to 'canceled'
+        // Update order_items status back to restore status
         $update_items_sql = "UPDATE order_items SET 
-                            status = 'canceled',
+                            status = ?,
                             updated_at = CURRENT_TIMESTAMP
-                            WHERE order_id = ? AND status != 'canceled'";
+                            WHERE order_id = ? AND status = 'canceled'";
         $items_stmt = $conn->prepare($update_items_sql);
-        $items_stmt->bind_param("s", $order_id);
+        $items_stmt->bind_param("ss", $restore_status, $order_id);
         
         if (!$items_stmt->execute()) {
             throw new Exception('Failed to update order items: ' . $items_stmt->error);
         }
         
-        // Get the count of updated items for logging
-        $items_cancelled = $items_stmt->affected_rows;
+        $items_reverted = $items_stmt->affected_rows;
         $items_stmt->close();
         
-        // Get user ID for logging
+        // Log user action
         $user_id = $_SESSION['user_id'] ?? $_SESSION['id'] ?? 0;
+        $log_description = "Order(" . $order_id . ") restored (reverted to " . $restore_status . ")";
         
-        // Create simple log description
-        $log_description = $previous_status . " order(" . $order_id . ") cancelled | reason: " . substr($cancellation_reason, 0, 30);
-        if (strlen($cancellation_reason) > 30) {
-            $log_description .= "...";
-        }
-        
-        // Log user action in user_logs table
         $user_log_sql = "INSERT INTO user_logs (user_id, action_type, inquiry_id, details, created_at) 
-                        VALUES (?, 'order_cancel', ?, ?, NOW())";
+                        VALUES (?, 'order_restore', ?, ?, NOW())";
         $log_stmt = $conn->prepare($user_log_sql);
         $log_stmt->bind_param("iis", $user_id, $order_id, $log_description);
         
@@ -123,32 +107,25 @@ $check_sql = "SELECT order_id, status, customer_id, total_amount
         // Commit transaction
         $conn->commit();
         
-        // Return success response
         echo json_encode([
             'success' => true,
-            'message' => 'Order cancelled successfully',
+            'message' => 'Order restored successfully',
             'order_id' => $order_id,
-            'items_cancelled' => $items_cancelled,
-            'cancellation_reason' => $cancellation_reason
+            'items_reverted' => $items_reverted
         ]);
         
     } catch (Exception $e) {
-        // Rollback transaction on error
         $conn->rollback();
-        throw $e; // Re-throw to be caught by outer try-catch
+        throw $e;
     }
     
 } catch (Exception $e) {
-    // Log error for debugging
-    error_log("Error in cancel_order.php: " . $e->getMessage());
-    
     echo json_encode([
         'success' => false,
         'message' => $e->getMessage()
     ]);
 }
 
-// Close database connection
 if (isset($conn)) {
     $conn->close();
 }

@@ -8,14 +8,14 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     if (ob_get_level()) {
         ob_end_clean();
     }
-    header("Location: /order_management/dist/pages/login.php");
+    header("Location: /OMS/dist/pages/login.php");
     exit();
 }
 
 // Include the database connection file
-include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/connection/db_connection.php');
-include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/navbar.php');
-include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
 
 // Handle search and filter parameters
 $search = isset($_GET['search']) ? trim($_GET['search']) : '';
@@ -126,7 +126,7 @@ $result = $conn->query($sql);
 <head>
     <title>Order Management Admin Portal - Product Management</title>
     
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/head.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
     
     <!-- Stylesheets -->
     <link rel="stylesheet" href="../assets/css/style.css" id="main-style-link" />
@@ -136,7 +136,7 @@ $result = $conn->query($sql);
 
 <body>
     <!-- Page Loader -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/loader.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php'); ?>
 
     <div class="pc-container">
         <div class="pc-content">
@@ -458,10 +458,10 @@ $result = $conn->query($sql);
     </div>
 
     <!-- Footer -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/footer.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php'); ?>
 
     <!-- Scripts -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/scripts.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php'); ?>
 
     <script>
         function clearFilters() {
@@ -670,25 +670,25 @@ $result = $conn->query($sql);
         });
 
         // Enhanced search with debouncing
-        let searchTimeout;
-        function debounceSearch(func, delay) {
-            return function(...args) {
-                clearTimeout(searchTimeout);
-                searchTimeout = setTimeout(() => func.apply(this, args), delay);
-            };
-        }
+        // let searchTimeout;
+        // function debounceSearch(func, delay) {
+        //     return function(...args) {
+        //         clearTimeout(searchTimeout);
+        //         searchTimeout = setTimeout(() => func.apply(this, args), delay);
+        //     };
+        // }
 
         // Auto-submit search form with debouncing
-        document.addEventListener('DOMContentLoaded', function() {
-            const searchInputs = document.querySelectorAll('#product_name_filter, #description_filter');
-            const debouncedSubmit = debounceSearch(function() {
-                document.querySelector('.tracking-form').submit();
-            }, 500);
+        // document.addEventListener('DOMContentLoaded', function() {
+        //     const searchInputs = document.querySelectorAll('#product_name_filter, #description_filter');
+        //     const debouncedSubmit = debounceSearch(function() {
+        //         document.querySelector('.tracking-form').submit();
+        //     }, 500);
             
-            searchInputs.forEach(input => {
-                input.addEventListener('input', debouncedSubmit);
-            });
-        });
+        //     searchInputs.forEach(input => {
+        //         input.addEventListener('input', debouncedSubmit);
+        //     });
+        // });
     </script>
 
 </body>

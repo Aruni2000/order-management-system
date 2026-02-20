@@ -9,12 +9,12 @@ session_start();
 // Check if user is logged in, if not redirect to login page
 if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     ob_end_clean();
-    header("Location: /order_management/dist/pages/login.php");
+    header("Location: /OMS/dist/pages/login.php");
     exit();
 }
 
 // Include the database connection file early
-include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
 // Initialize transaction flag
 $transactionStarted = false;
@@ -105,6 +105,12 @@ if ($_POST && isset($_FILES['csv_file']) && isset($_POST['users'])) {
             throw new Exception("Please select at least one user.");
         }
         
+        // Validate Product Selection
+        if (empty($_POST['product_id'])) {
+            throw new Exception("Please select a product related to this upload.");
+        }
+        $selectedProductId = (int)$_POST['product_id'];
+        
         // Get tenant_id for upload
         $tenant_id = $selectedTenantId;
         
@@ -187,9 +193,7 @@ if ($_POST && isset($_FILES['csv_file']) && isset($_POST['users'])) {
             'email', 
             'address line 1', 
             'address line 2', 
-            'product code',
             'quantity',
-            'total amount', 
             'other'
         ];
         
@@ -225,6 +229,30 @@ if ($_POST && isset($_FILES['csv_file']) && isset($_POST['users'])) {
         $conn->begin_transaction();
         $transactionStarted = true;
         
+        // Initialize round-robin counter
+        $userIndex = 0;
+
+        // Fetch product data once for all rows
+        $productSql = "SELECT id, lkr_price, product_code, description FROM products WHERE id = ? AND status = 'active'";
+        $productStmt = $conn->prepare($productSql);
+        if (!$productStmt) {
+            throw new Exception("Failed to prepare product query: " . $conn->error);
+        }
+        $productStmt->bind_param("i", $selectedProductId);
+        $productStmt->execute();
+        $productResult = $productStmt->get_result();
+        
+        if ($productResult->num_rows === 0) {
+            throw new Exception("Selected product not found or inactive");
+        }
+        
+        $product = $productResult->fetch_assoc();
+        $productId = $product['id'];
+        $unitPrice = (float)$product['lkr_price'];
+        $productCode = $product['product_code'];
+        $productDescription = $product['description'] ?? '';
+        $productStmt->close();
+        
         // Process each row
         while (($row = fgetcsv($handle)) !== FALSE) {
             $rowNumber++;
@@ -234,148 +262,101 @@ if ($_POST && isset($_FILES['csv_file']) && isset($_POST['users'])) {
                 if (empty(array_filter($row))) {
                     continue;
                 }
-                
-                // Map CSV columns using header positions
-                $fullName = trim($row[$headerMap['full name']] ?? '');
-                $phoneNumber = trim($row[$headerMap['phone number']] ?? '');
-                $phoneNumber2 = trim($row[$headerMap['phone number 2']] ?? '');
-                $city = trim($row[$headerMap['city']] ?? '');
-                $email = trim($row[$headerMap['email']] ?? '');
-                $addressLine1 = trim($row[$headerMap['address line 1']] ?? '');
-                $addressLine2 = trim($row[$headerMap['address line 2']] ?? '');
-                $productCode = trim($row[$headerMap['product code']] ?? '');
-                $quantity = trim($row[$headerMap['quantity']] ?? '1');
-                $totalAmount = trim($row[$headerMap['total amount']] ?? '');
-                $other = trim($row[$headerMap['other']] ?? '');
 
-                // Phone number normalization
-                if (strlen($phoneNumber) === 12 && substr($phoneNumber, 0, 3) === '+94') {
-                    $phoneNumber = '0' . substr($phoneNumber, 3);
-                } elseif (strlen($phoneNumber) === 11 && substr($phoneNumber, 0, 2) === '94') {
-                    $phoneNumber = '0' . substr($phoneNumber, 2);
-                }
+                // Map CSV columns to variables
+                $fullName = $row[$headerMap['full name']] ?? '';
+                $phoneNumber = $row[$headerMap['phone number']] ?? '';
+                $phoneNumber2 = $row[$headerMap['phone number 2']] ?? '';
+                $city = $row[$headerMap['city']] ?? '';
+                $email = $row[$headerMap['email']] ?? '';
+                $addressLine1 = $row[$headerMap['address line 1']] ?? '';
+                $addressLine2 = $row[$headerMap['address line 2']] ?? '';
+                $quantityStr = $row[$headerMap['quantity']] ?? '';
+                $other = $row[$headerMap['other']] ?? '';
 
-                if (!empty($phoneNumber2)) {
-                    if (strlen($phoneNumber2) === 12 && substr($phoneNumber2, 0, 3) === '+94') {
-                        $phoneNumber2 = '0' . substr($phoneNumber2, 3);
-                    } elseif (strlen($phoneNumber2) === 11 && substr($phoneNumber2, 0, 2) === '94') {
-                        $phoneNumber2 = '0' . substr($phoneNumber2, 2);
-                    }
-                }
+                // Sanitize and validate inputs
+                $fullName = trim($fullName);
+                $phoneNumber = trim($phoneNumber);
+                $phoneNumber2 = trim($phoneNumber2);
+                $city = trim($city);
+                $email = trim($email);
+                $addressLine1 = trim($addressLine1);
+                $addressLine2 = trim($addressLine2);
+                $quantityStr = trim($quantityStr);
+                $other = trim($other);
 
-                // Excel removed leading 0 → add it back
-                if (strlen($phoneNumber) === 9 && ctype_digit($phoneNumber)) {
-                    $phoneNumber = '0' . $phoneNumber;
-                }
+                // Default quantity to 1 if empty or invalid
+                $quantityInt = (!empty($quantityStr) && is_numeric($quantityStr)) ? (int)$quantityStr : 1;
+                if ($quantityInt <= 0) $quantityInt = 1;
 
-                if (!empty($phoneNumber2) && strlen($phoneNumber2) === 9 && ctype_digit($phoneNumber2)) {
-                    $phoneNumber2 = '0' . $phoneNumber2;
-                }
-                
-                // Handle email - normalize empty values
-                if (empty($email) || in_array(strtolower($email), ['', 'null', 'n/a', '-'])) {
-                    $email = '';
-                } else {
-                    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-                        throw new Exception("Invalid email format: '$email'");
-                    }
-                }
-                
-                // Handle phone number 2 - normalize empty values
-                if (empty($phoneNumber2) || in_array(strtolower($phoneNumber2), ['null', 'n/a', '-'])) {
-                    $phoneNumber2 = '';
-                }
-                
-                // Validation
+                // Basic validation for required fields
                 if (empty($fullName)) {
-                    throw new Exception("Full Name is required");
+                    throw new Exception("Full Name is required.");
                 }
                 if (empty($phoneNumber)) {
-                    throw new Exception("Phone Number is required");
-                }
-                if (empty($city)) {
-                    throw new Exception("City is required");
-                }
-                if (empty($productCode)) {
-                    throw new Exception("Product Code is required");
-                }
-                if (empty($quantity)) {
-                    throw new Exception("Quantity is required");
-                }
-                if (empty($totalAmount)) {
-                    throw new Exception("Total Amount is required");
-                }
-                if (empty($addressLine1)) {
-                    throw new Exception("Address Line 1 is required");
+                    throw new Exception("Phone Number is required.");
                 }
                 
-                // Phone must be exactly 10 digits and start with 0
-                if (!preg_match('/^0\d{9}$/', $phoneNumber)) {
-                    throw new Exception("Phone Number must be exactly 10 digits and start with 0 (got: '$phoneNumber')");
+                // Clean phone number (remove non-digits, check length)
+                $phoneNumber = preg_replace('/[^0-9]/', '', $phoneNumber);
+                
+                // Handle different phone number formats
+                if (strlen($phoneNumber) > 10) {
+                     // If it's more than 10 digits, it might have a country code (e.g. 94 or +94)
+                     // Take the last 9 digits and add '0' prefix
+                     $phoneNumber = substr($phoneNumber, -9);
+                     $phoneNumber = '0' . $phoneNumber;
+                } elseif (strlen($phoneNumber) === 9) {
+                     // If exactly 9 digits, add '0' prefix (e.g., 771234567 -> 0771234567)
+                     $phoneNumber = '0' . $phoneNumber;
                 }
                 
-                if (!empty($phoneNumber2) && !preg_match('/^0\d{9}$/', $phoneNumber2)) {
-                    throw new Exception("Phone Number 2 must be exactly 10 digits and start with 0 (got: '$phoneNumber2')");
-                }
-
-                if (!empty($phoneNumber2) && $phoneNumber === $phoneNumber2) {
-                    throw new Exception("Phone Number 2 cannot be the same as Phone Number");
-                }
-
-                if (!is_numeric($quantity) || $quantity <= 0 || $quantity != floor($quantity)) {
-                    throw new Exception("Quantity must be a positive integer (got: '$quantity')");
-                }
-                $quantityInt = (int)$quantity;
-                
-                if (!is_numeric($totalAmount) || $totalAmount <= 0) {
-                    throw new Exception("Total Amount must be a positive number");
+                if (strlen($phoneNumber) !== 10) {
+                    throw new Exception("Phone Number must be 9 or 10 digits (0 will be added to 9-digit numbers).");
                 }
                 
-                $totalAmountDecimal = (float)$totalAmount;
-                
-                // Fetch product data
-                $productSql = "SELECT id, lkr_price, description FROM products WHERE product_code = ? AND status = 'active' AND tenant_id = ?";
-                $productStmt = $conn->prepare($productSql);
-                if (!$productStmt) {
-                    throw new Exception("Failed to prepare product query: " . $conn->error);
-                }
-                $productStmt->bind_param("si", $productCode, $tenant_id);
-                $productStmt->execute();
-                $productResult = $productStmt->get_result();
-                
-                if ($productResult->num_rows === 0) {
-                    throw new Exception("Product code '$productCode' not found or inactive");
-                }
-                
-                $product = $productResult->fetch_assoc();
-                $productId = $product['id'];
-                $unitPrice = (float)$product['lkr_price'];
-                $productDescription = $product['description'] ?? '';
-                $productStmt->close();
-                
-                // Look up city_id and get zone_id, district_id
+                // Get city_id from city name 
+                $cityError = null;  
                 $cityId = null;
                 $zone_id = null;
                 $district_id = null;
-                
-                $citySql = "SELECT city_id, zone_id, district_id FROM city_table WHERE city_name = ? AND is_active = 1 LIMIT 1";
-                $cityStmt = $conn->prepare($citySql);
-                if (!$cityStmt) {
-                    throw new Exception("Failed to prepare city query: " . $conn->error);
-                }
-                $cityStmt->bind_param("s", $city);
-                $cityStmt->execute();
-                $cityResult = $cityStmt->get_result();
-                
-                if ($cityResult->num_rows > 0) {
-                    $cityData = $cityResult->fetch_assoc();
-                    $cityId = $cityData['city_id'];
-                    $zone_id = $cityData['zone_id'];
-                    $district_id = $cityData['district_id'];
+
+                if (empty($city)) {
+                    $cityError = "City is missing.";
                 } else {
-                    throw new Exception("City '$city' not found or inactive");
+                    $citySql = "SELECT city_id, zone_id, district_id FROM city_table WHERE LOWER(city_name) = LOWER(?) AND is_active = 1 LIMIT 1";
+                    $cityStmt = $conn->prepare($citySql);
+                    if (!$cityStmt) {
+                        throw new Exception("Failed to prepare city query: " . $conn->error);
+                    }
+                    $cityStmt->bind_param("s", $city);
+                    $cityStmt->execute();
+                    $cityResult = $cityStmt->get_result();
+
+                    if ($cityResult->num_rows === 0) {
+                        // City not found - store error but continue processing
+                        $cityError = "City '$city' not found.";
+                    } else {
+                        $cityData = $cityResult->fetch_assoc();
+                        $cityId = $cityData['city_id'];
+                        $zone_id = $cityData['zone_id'];
+                        $district_id = $cityData['district_id'];
+                    }
+                    $cityStmt->close();
                 }
-                $cityStmt->close();
+
+                // Validate address line 1 
+                $addressError = null;
+                if (empty($addressLine1)) {
+                    $addressError = "Address Line 1 is missing.";
+                }
+
+                // Combine errors for upload_error
+                $upload_error = null;
+                if ($cityError || $addressError) {
+                    $errors = array_filter([$cityError, $addressError]);
+                    $upload_error = implode(" | ", $errors);
+                }
                 
                 // Customer matching logic
                 $customerId = 0;
@@ -469,11 +450,13 @@ if ($_POST && isset($_FILES['csv_file']) && isset($_POST['users'])) {
                     throw new Exception("Invalid customer ID");
                 }
                 
-                // Randomly assign to one of the selected users
-                $assignedUserId = $selectedUsers[array_rand($selectedUsers)];
+                // Round-robin assign to one of the selected users
+                $assignedUserId = $selectedUsers[$userIndex % count($selectedUsers)];
+                $userIndex++;
                 
-                // Calculate total amount with delivery fee
-                $orderTotalAmount = $totalAmountDecimal + $deliveryFee;
+                // Calculate subtotal and total amount with delivery fee
+                $subtotal = $unitPrice * $quantityInt;
+                $orderTotalAmount = $subtotal + $deliveryFee;
 
                 // Create order header
                 $orderSql = "INSERT INTO order_header (
@@ -482,28 +465,28 @@ if ($_POST && isset($_FILES['csv_file']) && isset($_POST['users'])) {
                     notes, currency, status, pay_status, pay_date, created_by,
                     product_code, full_name, mobile, mobile_2,
                     address_line1, address_line2, city_id, zone_id, district_id,
-                    interface, call_log
+                    interface, call_log, upload_error
                 ) VALUES (?, ?, ?, CURDATE(), DATE_ADD(CURDATE(), INTERVAL 7 DAY), 
                         ?, 0.00, ?, ?, ?, 'lkr', 'pending', 'unpaid', NULL, ?, 
-                        ?, ?, ?, ?, ?, ?, ?, ?, ?, 'leads', 0)";
+                        ?, ?, ?, ?, ?, ?, ?, ?, ?, 'leads', 0, ?)";
                 
                 $orderStmt = $conn->prepare($orderSql);
                 if (!$orderStmt) {
                     throw new Exception("Failed to prepare order query: " . $conn->error);
                 }
                 
-                $notes = !empty($other) ? $other : null;
+                $notes = !empty($other) ? $other : 'Imported from CSV';
                 $phone2_value = !empty($phoneNumber2) ? $phoneNumber2 : null;
                 $address2_value = !empty($addressLine2) ? $addressLine2 : null;
                 $zone_id_value = !empty($zone_id) ? $zone_id : null;
                 $district_id_value = !empty($district_id) ? $district_id : null;
                 
                 $orderStmt->bind_param(
-                    "iiidddsiisssssiii",
+                    "iiidddsiisssssiiis",
                     $tenant_id,
                     $customerId,
                     $assignedUserId,
-                    $totalAmountDecimal,
+                    $subtotal,
                     $orderTotalAmount,
                     $deliveryFee,
                     $notes,
@@ -516,7 +499,8 @@ if ($_POST && isset($_FILES['csv_file']) && isset($_POST['users'])) {
                     $address2_value,
                     $cityId,
                     $zone_id_value,
-                    $district_id_value
+                    $district_id_value,
+                    $upload_error
                 );
                 
                 if (!$orderStmt->execute()) {
@@ -542,7 +526,7 @@ if ($_POST && isset($_FILES['csv_file']) && isset($_POST['users'])) {
                     $productId, 
                     $quantityInt, 
                     $unitPrice,
-                    $totalAmountDecimal,
+                    $subtotal,
                     $productDescription
                 );
                 
@@ -656,8 +640,23 @@ if ($selectedTenantId) {
     }
 }
 
-include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/navbar.php');
-include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php');
+// Fetch active products for dropdown based on selected tenant
+$products = [];
+if ($selectedTenantId) {
+    $productsSql = "SELECT id, name, product_code, lkr_price FROM products WHERE status = 'active' ORDER BY name ASC";
+    $productsStmt = $conn->prepare($productsSql);
+    if ($productsStmt) {
+        $productsStmt->execute();
+        $productsResult = $productsStmt->get_result();
+        while ($row = $productsResult->fetch_assoc()) {
+            $products[] = $row;
+        }
+        $productsStmt->close();
+    }
+}
+
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
 ?>
 
 <!doctype html>
@@ -666,7 +665,7 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
 <head>
     <title>Order Management Admin Portal - Lead Upload</title>
     
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/head.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
     
     <link rel="stylesheet" href="../assets/css/style.css" id="main-style-link" />
     <link rel="stylesheet" href="../assets/css/leads.css" id="main-style-link" />
@@ -799,6 +798,57 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
     font-size: 0.95rem;
 }
 
+/* Custom layout for lead upload */
+.upload-grid-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2rem;
+    margin-bottom: 2rem;
+}
+
+.upload-column {
+    flex: 1;
+    min-width: 300px;
+}
+
+.product-option:hover {
+    background-color: #f5f5f5;
+}
+
+.product-option.active {
+    background-color: #e9ecef;
+}
+
+.section-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    margin-bottom: 1rem;
+    color: #333;
+}
+
+.alert-info h4 {
+    margin-bottom: 0.5rem;
+    color: #0c5460;
+}
+
+.alert-info ul {
+    margin-bottom: 0;
+    padding-left: 1.5rem;
+}
+
+.alert-info li {
+    margin-bottom: 0.3rem;
+}
+
+.alert-warning {
+    background-color: #fff3cd;
+    border: 1px solid #ffeaa7;
+    color: #856404;
+    padding: 1rem;
+    margin-bottom: 1.5rem;
+    border-radius: 5px;
+}
+
 .user-checkboxes {
     display: flex;
     flex-wrap: wrap;
@@ -928,7 +978,7 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
 </style>
 
 <body>
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/loader.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php'); ?>
 
     <div class="pc-container">
         <div class="pc-content">
@@ -1005,7 +1055,6 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                 </div>
                 <?php unset($_SESSION['import_error']); ?>
             <?php endif; ?>
-
             <div class="lead-upload-container">
                 
                 <?php if ($isMainAdmin == 1 && $role_id === 1): ?>
@@ -1038,63 +1087,50 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                         <?php if ($isMainAdmin == 1): ?>
                             <input type="hidden" name="selected_tenant" value="<?php echo $selectedTenantId; ?>">
                         <?php endif; ?>
-                        
-                        <div class="file-upload-section">
-                            <a href="/order_management/dist/templates/generate_template.php" class="choose-file-btn">
-                                Download CSV Template
-                            </a>
 
-                            <div class="file-upload-box">
-                                <p><strong>Select CSV File</strong></p>
-                                <p id="file-name">No file selected</p>
-                                <input type="file" id="csv_file" name="csv_file" accept=".csv" style="display: none;" required>
-                                <button type="button" class="choose-file-btn" onclick="document.getElementById('csv_file').click()">
-                                     Choose File
-                                </button>
+                        <div class="upload-grid-row">
+                            <!-- Left Column: Product Selection -->
+                            <div class="upload-column product-selection-section">
+                                <h2 class="section-title">Select Product <span style="color: red;">*</span></h2>
+                                
+                                <div class="form-group" style="position: relative;">
+                                    <input type="text" id="product_search" class="form-control" placeholder="Type to search product..." autocomplete="off" style="width: 100%; padding: 10px; border: 1px solid #ced4da; border-radius: 4px;">
+                                    <input type="hidden" name="product_id" id="product_id" required>
+                                    <div id="product_dropdown" style="display: none; position: absolute; background: white; border: 1px solid #ced4da; border-top: none; max-height: 200px; overflow-y: auto; width: 100%; z-index: 1000; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                                        <?php foreach ($products as $prod): ?>
+                                            <div class="product-option" data-id="<?php echo $prod['id']; ?>" data-name="<?php echo htmlspecialchars($prod['name']); ?>" data-code="<?php echo htmlspecialchars($prod['product_code']); ?>" style="padding: 10px; cursor: pointer; border-bottom: 1px solid #f0f0f0;">
+                                                <strong><?php echo htmlspecialchars($prod['name']); ?></strong> (<?php echo htmlspecialchars($prod['product_code']); ?>)
+                                            </div>
+                                        <?php endforeach; ?>
+                                        <div id="no_products_found" style="display: none; padding: 10px; color: #999; text-align: center;">No products found</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Right Column: CSV Upload -->
+                            <div class="upload-column file-upload-section" style="margin-bottom: 0; padding-bottom: 0;">
+                                <h2 class="section-title">CSV Upload</h2>
+                                <div class="file-upload-box" style="margin-top: 0.5rem; display: flex; flex-direction: column; align-items: start; gap: 10px; padding: 15px;">
+                                    <p id="file-name" style="margin-bottom: 0;">No file selected</p>
+                                    <div style="display: flex; gap: 10px; width: 100%; justify-content: space-between; align-items: center;">
+                                        <input type="file" id="csv_file" name="csv_file" accept=".csv" style="display: none;">
+                                        <button type="button" class="choose-file-btn" onclick="document.getElementById('csv_file').click()">Choose File</button>
+                                        <a href="/OMS/dist/templates/generate_template.php" class="choose-file-btn" style="text-decoration: none;">Generate Template</a>
+                                    </div>
+                                </div>
                             </div>
                         </div>
-                        
-                        <div class="quick-guide-container">
-                            <div class="guide-card">
-                                <h6> Steps</h6>
-                                <ol>
-                                    <li>Download CSV template</li>
-                                    <li>Fill in lead data</li>
-                                    <li>Select users below</li>
-                                    <li>Upload CSV</li>
-                                </ol>
-                            </div>
-                            
-                            <div class="guide-card">
-                                <h6> Required Fields</h6>
-                                <p>Full Name, Phone, City, Address, Product Code, Quantity, Total Amount</p>
-                            </div>
-                            
-                            <div class="guide-card">
-                                <h6> Phone Format</h6>
-                                <p>Any format works:<br><code>0771234567</code>, <code>94771234567</code>, <code>+94771234567</code></p>
-                            </div>
-                            
-                            <div class="guide-card">
-                                <h6>Smart Features</h6>
-                                <ul>
-                                    <li>Finds existing customers</li>
-                                    <li>No duplicates created</li>
-                                    <li>Auto-calculates prices</li>
-                                </ul>
-                            </div>
-                        </div>
-                        
+
                         <hr>
-                        
+
                         <div class="user-selection-section">
-                            <h6>Select Users to Distribute Leads</h6>
-                            <p class="text-muted">Select one or more users. Leads will be randomly distributed among selected users.</p>
+                            <h2 class="section-title">Select Users</h2>
+                            <p class="text-muted">Choose which users will receive the imported leads (Distributed Round-Robin)</p>
                             
-                            <div class="user-checkboxes">
+                            <div class="user-checkboxes" id="usersList">
                                 <?php if (!empty($users)): ?>
                                     <?php foreach ($users as $user): ?>
-                                        <div class="form-check">
+                                        <div class="form-check" style="min-width: 150px;">
                                             <input class="form-check-input" 
                                                 type="checkbox" 
                                                 name="users[]" 
@@ -1110,11 +1146,48 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                                 <?php endif; ?>
                             </div>
                             
-                            <div class="form-actions">
+                            <?php if (!empty($users)): ?>
+                                <button type="button" class="btn btn-outline-secondary btn-sm mb-3" id="toggleSelectAll">Select All</button>
+                            <?php endif; ?>
+
+                            <div class="action-buttons mt-4" style="display: flex; gap: 15px;">
+                                <button type="button" class="btn btn-secondary" id="resetBtn">Reset</button>
                                 <button type="submit" class="btn btn-primary btn-lg" id="uploadBtn" <?php echo empty($users) ? 'disabled' : ''; ?>>
-                                    <i class="feather icon-upload"></i> Upload CSV & Import Leads
+                                    <i class="feather icon-upload"></i> Import Leads
                                 </button>
                             </div>
+                        </div>
+
+                        <hr>
+
+                        <div class="alert alert-info mt-4">
+                            <h4>📋 Upload Guidelines & Error Handling</h4>
+                            <ul>
+                                <li><strong>Download template first</strong> - Use the CSV template with all required columns</li>
+                                <li><strong>Required fields:</strong> Full Name, Phone Number, City, Address Line 1</li>
+                                <li><strong>Note:</strong> Product is selected from the dropdown above</li>
+                                <li><strong>Optional fields:</strong> Quantity, Phone Number 2, Email, Address Line 2, Other</li>
+                                <li><strong>Quantity Rule:</strong> Defaults to 1 if empty or 0</li>
+                                <li><strong>File requirements:</strong> CSV format only, 10MB maximum size</li>
+                                <li><strong>Select users</strong> to distribute leads round-robin</li>
+                                <li><strong>Column order doesn't matter</strong> - Template can have columns in any order</li>
+                                <li><strong>⭐ NEW: Failed rows CSV export</strong> - If any rows fail, download a CSV with only failed rows and error reasons to fix and re-upload</li>
+                            </ul>
+                            
+                            <h5 style="margin-top: 1rem;">🔍 Customer Matching Logic:</h5>
+                            <ul>
+                                <li><strong>Existing customer check:</strong> System searches by Phone 1, Phone 2, OR Email</li>
+                                <li><strong>If ANY match found:</strong> Order created for existing customer (NO customer data update)</li>
+                                <li><strong>If NO match found:</strong> New customer created with all CSV data</li>
+                            </ul>
+                            
+                            <h5 style="margin-top: 1rem;">⚠️ Common Errors & Solutions:</h5>
+                            <ul>
+                                <li><strong>"Missing required CSV headers"</strong> → Download fresh template, ensure all column headers are present</li>
+                                <li><strong>"Full Name is required"</strong> → Ensure Full Name column has data</li>
+                                <li><strong>"Phone Number must be exactly 10 digits"</strong> → Use format: 0771234567</li>
+                                <li><strong>"City not found"</strong> → City name must match system database exactly</li>
+                            </ul>
                         </div>
                     </form>
                 <?php else: ?>
@@ -1130,22 +1203,158 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
     </div>
 
     <?php
-    include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/footer.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/scripts.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php');
     ?>
 
     <script>
+    // Product Search Autocomplete
+    const productSearch = document.getElementById('product_search');
+    const productId = document.getElementById('product_id');
+    const productDropdown = document.getElementById('product_dropdown');
+    const productOptions = document.querySelectorAll('.product-option');
+    
+    if (productSearch) {
+        // Show dropdown when input is focused or typed in
+        productSearch.addEventListener('focus', function() {
+            this.select(); 
+            filterProducts(this.value);
+            productDropdown.style.display = 'block';
+        });
+        
+        productSearch.addEventListener('input', function() {
+            filterProducts(this.value);
+            productDropdown.style.display = 'block';
+        });
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', function(e) {
+            if (!productSearch.contains(e.target) && !productDropdown.contains(e.target)) {
+                productDropdown.style.display = 'none';
+            }
+        });
+    }
+    
+    // Filter products based on search term
+    function filterProducts(searchTerm) {
+        const term = searchTerm.toLowerCase().trim();
+        const noProductsFound = document.getElementById('no_products_found');
+        let hasVisibleOptions = false;
+        
+        productOptions.forEach(option => {
+            const name = option.dataset.name.toLowerCase();
+            const code = option.dataset.code.toLowerCase();
+            const combined = (name + ' (' + code + ')').toLowerCase();
+            
+            if (term === '' || name.includes(term) || code.includes(term) || combined.includes(term)) {
+                option.style.display = 'block';
+                hasVisibleOptions = true;
+            } else {
+                option.style.display = 'none';
+            }
+        });
+        
+        if (noProductsFound) {
+            noProductsFound.style.display = hasVisibleOptions ? 'none' : 'block';
+        }
+    }
+    
+    // Handle product selection
+    productOptions.forEach(option => {
+        option.addEventListener('click', function() {
+            const id = this.dataset.id;
+            const name = this.dataset.name;
+            const code = this.dataset.code;
+            
+            productId.value = id;
+            productSearch.value = name + ' (' + code + ')';
+            productDropdown.style.display = 'none';
+        });
+    });
+
     // Display selected file name
     document.getElementById('csv_file')?.addEventListener('change', function(e) {
-        const fileName = e.target.files[0]?.name || 'No file selected';
-        document.getElementById('file-name').textContent = fileName;
+        const file = e.target.files[0];
+        const fileNameEl = document.getElementById('file-name');
+        
+        if (file) {
+            const validExtensions = ['.csv'];
+            const fileName = file.name.toLowerCase();
+            const isValidExtension = validExtensions.some(ext => fileName.endsWith(ext));
+            
+            if (!isValidExtension) {
+                alert('Please select a valid CSV file.');
+                this.value = '';
+                fileNameEl.textContent = 'No file selected';
+                return;
+            }
+            
+            const maxSize = 10 * 1024 * 1024;
+            if (file.size > maxSize) {
+                alert('File size must be less than 10MB.');
+                this.value = '';
+                fileNameEl.textContent = 'No file selected';
+                return;
+            }
+            
+            fileNameEl.textContent = file.name + ' (' + (file.size / 1024).toFixed(1) + ' KB)';
+        } else {
+            fileNameEl.textContent = 'No file selected';
+        }
+    });
+
+    // Toggle Select All
+    const toggleBtn = document.getElementById('toggleSelectAll');
+    if (toggleBtn) {
+        toggleBtn.addEventListener('click', function() {
+            const checkboxes = document.querySelectorAll('input[name="users[]"]');
+            const allChecked = Array.from(checkboxes).every(checkbox => checkbox.checked);
+            
+            checkboxes.forEach(checkbox => {
+                checkbox.checked = !allChecked;
+            });
+            
+            this.textContent = allChecked ? 'Select All' : 'Deselect All';
+        });
+    }
+
+    // Reset Form
+    document.getElementById('resetBtn')?.addEventListener('click', function() {
+        if (confirm('Are you sure you want to reset the form?')) {
+            document.querySelectorAll('input[name="users[]"]').forEach(checkbox => {
+                checkbox.checked = false;
+            });
+            
+            const fileInput = document.getElementById('csv_file');
+            if (fileInput) fileInput.value = '';
+            
+            const fileNameEl = document.getElementById('file-name');
+            if (fileNameEl) fileNameEl.textContent = 'No file selected';
+
+            const prodSearch = document.getElementById('product_search');
+            if (prodSearch) prodSearch.value = '';
+
+            const prodId = document.getElementById('product_id');
+            if (prodId) prodId.value = '';
+            
+            if (toggleBtn) {
+                toggleBtn.textContent = 'Select All';
+            }
+        }
     });
 
     // Form validation before submit
     document.getElementById('uploadForm')?.addEventListener('submit', function(e) {
         const fileInput = document.getElementById('csv_file');
         const userCheckboxes = document.querySelectorAll('input[name="users[]"]:checked');
+        const prodId = document.getElementById('product_id');
         
+        if (!prodId.value) {
+            e.preventDefault();
+            alert('Please select a product first.');
+            return false;
+        }
+
         if (!fileInput.files.length) {
             e.preventDefault();
             alert('Please select a CSV file to upload.');
@@ -1161,7 +1370,7 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
         // Disable submit button to prevent double submission
         const submitBtn = document.getElementById('uploadBtn');
         submitBtn.disabled = true;
-        submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Uploading...';
+        submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Importing...';
         
         return true;
     });

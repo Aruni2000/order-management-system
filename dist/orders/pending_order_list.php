@@ -14,7 +14,7 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     if (ob_get_level()) {
         ob_end_clean();
     }
-    header("Location: /order_management/dist/pages/login.php");
+    header("Location: /OMS/dist/pages/login.php");
     exit();
 }
 
@@ -54,7 +54,7 @@ if ($current_user_id == 0 || $current_user_role == 0) {
 }
 
 // Include database connection
-include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
 /**
  * SEARCH AND PAGINATION PARAMETERS
@@ -101,7 +101,9 @@ $countSql = "SELECT COUNT(*) as total FROM order_header i
 
 // Main query with all required joins
 // Main query with all required joins - UPDATED to fetch customer name from customers table as fallback
-$sql = "SELECT i.*, 
+$sql = "SELECT i.*,
+                -- Count duplicates based on mobile and product_code
+                (SELECT COUNT(*) FROM order_header o2 WHERE o2.mobile = i.mobile AND o2.product_code = i.product_code AND  o2.status = 'pending') as duplicate_count,
                -- Customer info: Use order_header full_name, fallback to customers table
                COALESCE(NULLIF(i.full_name, ''), c.name) as customer_name,
                i.customer_id,
@@ -122,7 +124,8 @@ $sql = "SELECT i.*,
                i.slip as payment_slip,
                i.pay_status,
                i.created_at,
-               i.call_log
+               i.call_log,
+               i.upload_error
         FROM order_header i 
         LEFT JOIN payments p ON i.order_id = p.order_id
         LEFT JOIN users u1 ON p.pay_by = u1.id
@@ -220,8 +223,8 @@ $totalPages = ceil($totalRows / $limit);
 $result = $conn->query($sql);
 
 // Include navigation components
-include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/navbar.php');
-include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
 
 // Get unique tenants for filter dropdown
 $tenant_sql = "SELECT DISTINCT tenant_id, company_name 
@@ -238,7 +241,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
 <head>
     <title>Order Management Admin Portal - Pending Orders</title>
 
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/head.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
 
     <!-- Stylesheets -->
     <link rel="stylesheet" href="../assets/css/style.css" id="main-style-link" />
@@ -267,12 +270,17 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
     .actions {
         white-space: nowrap;
     }
+    .status-badge.pay-status-paid,
+.status-badge.pay-status-unpaid {
+    font-size: 0.65rem;
+    padding: 2px 8px;
+}
     </style>
 </head>
 
 <body>
     <!-- Page Loader -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/loader.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php'); ?>
 
     <div class="pc-container">
         <div class="pc-content">
@@ -410,15 +418,15 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                 <?php endif; ?>
                                 <th>Order ID</th>
                                 <th>Customer Name</th>
-                                <th>Issue Date - Due Date</th>
+                                <th>Issue Date</th>
                                 <th>Total Amount</th>
                                 <?php if ($is_main_admin == 1) { ?>
-                                <th>Teanet Company Name</th>
+                                <th>Tenant Company</th>
                                 <?php } else { ?>
                                 <!--<input type="hidden" name="teanetID" value="0">-->
                                 <?php } ?>
-                                <th>Pay Status</th>
                                 <th>Created By</th>
+                                <th>Call note</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
@@ -439,6 +447,12 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                 <!-- Order ID -->
                                 <td class="order-id">
                                     <?php echo isset($row['order_id']) ? htmlspecialchars($row['order_id']) : ''; ?>
+                                    <?php if (!empty($row['upload_error'])): ?>
+                                        <br>
+                                        <span class="badge bg-warning text-dark" style="font-size: 10px; cursor: help;" title="<?php echo htmlspecialchars($row['upload_error']); ?>">
+                                            <i class="fas fa-exclamation-triangle"></i> Error
+                                        </span>
+                                    <?php endif; ?>
                                 </td>
                                 <!-- Customer Name with ID -->
                                 <td class="customer-name">
@@ -446,45 +460,34 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
     $customerName = isset($row['customer_name']) ? htmlspecialchars($row['customer_name']) : 'N/A';
     $customerId = isset($row['customer_id']) ? htmlspecialchars($row['customer_id']) : '';
     echo $customerName . ($customerId ? " ($customerId)" : "");
+
+    if (isset($row['duplicate_count']) && $row['duplicate_count'] > 1) {
+        echo '<br><span class="badge badge-danger" style="background-color: #dc3545; color: white; padding: 2px 6px; border-radius: 4px; font-size: 11px; margin-top: 4px; display: inline-block;">Duplicate (' . $row['duplicate_count'] . ')</span>';
+    }
     ?>
-                                </td>
                                 <td class="date-range">
-                                    <?php
-    // Issue & Due dates (DATE only)
+    <?php
     $issueDate = !empty($row['issue_date']) ? date('Y-m-d', strtotime($row['issue_date'])) : 'N/A';
-    $dueDate   = !empty($row['due_date']) ? date('Y-m-d', strtotime($row['due_date'])) : 'N/A';
-
-    // Time from created_at (FULL TIMESTAMP)
     $createdTime = !empty($row['created_at']) ? date('H:i:s', strtotime($row['created_at'])) : 'N/A';
-
-    echo "<div class='date-container'>";
-
-    // Issue date
-    echo "<span class='issue-date'>{$issueDate}</span>";
-
-    // Separator
-    echo "<span class='date-separator'> - </span>";
-
-    // Due date
-    echo "<span class='due-date'>{$dueDate}</span>";
-
-    // Time (new line)
-    echo "<div class='created-time'> <strong>{$createdTime}</strong></div>";
-
-    echo "</div>";
-    ?>
-                                </td>
+    echo $issueDate." ".$createdTime;?>
+</td>
 
 
                                 <!-- Total Amount with Currency -->
                                 <td class="amount">
-                                    <?php
+                            <?php
                             $amount = isset($row['total_amount']) ? (float)$row['total_amount'] : 0;
                             $currency = isset($row['currency']) ? $row['currency'] : 'lkr';
                             $currencySymbol = ($currency == 'usd') ? '$' : 'Rs';
                             echo $currencySymbol . number_format($amount, 2);
-                            ?>
-                                </td>
+                            
+                            $payStatus = isset($row['pay_status']) ? $row['pay_status'] : 'unpaid';
+                            if ($payStatus == 'paid'): ?>
+                                <br><span class="status-badge pay-status-paid">Paid</span>
+                            <?php else: ?>
+                                <br><span class="status-badge pay-status-unpaid">Unpaid</span>
+                            <?php endif; ?>
+                        </td>
 
                                 <!-- Teanaent Company Name -->
                                 <?php if ($is_main_admin == 1) { ?>
@@ -497,20 +500,6 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                 <?php } else { ?>
                                 <!--<input type="hidden" name="teanetID" value="0">-->
                                 <?php } ?>
-
-                                <!-- Payment Status Badge -->
-                                <td>
-                                    <?php
-                            $payStatus = isset($row['pay_status']) ? $row['pay_status'] : 'unpaid';
-                            if ($payStatus == 'paid'): ?>
-                                    <span class="status-badge pay-status-paid">Paid</span>
-                                    <?php elseif ($payStatus == 'partial'): ?>
-                                    <span class="status-badge pay-status-partial">Partial</span>
-                                    <?php else: ?>
-                                    <span class="status-badge pay-status-unpaid">Unpaid</span>
-                                    <?php endif; ?>
-                                </td>
-
 
 
                                 <!-- Created By User -->
@@ -527,6 +516,28 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
     }
     ?>
                                 </td>
+                                <td>
+    <?php
+    $callLog = isset($row['call_log']) ? $row['call_log'] : null;
+    $note = '';
+    
+    if ($callLog == 1) { // Answered
+        // Check answer_reason
+        $note = isset($row['answer_reason']) ? htmlspecialchars($row['answer_reason']) : '';
+    } elseif ($callLog === '0' || $callLog === 0) { // No Answer
+        // Check no_answer_reason
+        $note = isset($row['no_answer_reason']) ? htmlspecialchars($row['no_answer_reason']) : '';
+    }
+    
+    if (!empty($note)) {
+        // Truncate long notes if necessary
+        $displayNote = (strlen($note) > 30) ? substr($note, 0, 30) . '...' : $note;
+        echo "<span title='" . $note . "'>" . $displayNote . "</span>";
+    } else {
+        echo "-";
+    }
+    ?>
+</td>
                                 <!-- Action Buttons - Updated to pass interface parameter -->
                                 <td class="actions">
                                     <div class="action-buttons-group">
@@ -535,18 +546,28 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                             <i class="fas fa-eye"></i>
                                         </button>
 
+                                        <button class="action-btn edit-btn" title="Edit Order"
+                                            onclick="editOrder('<?php echo isset($row['order_id']) ? htmlspecialchars($row['order_id']) : ''; ?>')">
+                                            <i class="fas fa-edit"></i>
+                                        </button>
+
                                         <?php if ($payStatus == 'unpaid'): ?>
                                         <button class="action-btn paid-btn" title="Mark as Paid"
                                             onclick="markAsPaid('<?php echo isset($row['order_id']) ? htmlspecialchars($row['order_id']) : ''; ?>')">
                                             <i class="fas fa-dollar-sign"></i>
                                         </button>
+                                        <?php elseif ($payStatus == 'paid'): ?>
+                                        <button class="action-btn cancel-btn" title="Unmark as Paid"
+                                            onclick="unmarkPaid('<?php echo isset($row['order_id']) ? htmlspecialchars($row['order_id']) : ''; ?>')">
+                                            <i class="fas fa-undo"></i>
+                                        </button>
                                         <?php endif; ?>
 
 
-                                        <button class="action-btn dispatch-btn" title="Mark as Dispatched"
+                                        <!-- <button class="action-btn dispatch-btn" title="Mark as Dispatched"
                                             onclick="openDispatchModal('<?php echo isset($row['order_id']) ? htmlspecialchars($row['order_id']) : ''; ?>')">
                                             <i class="fas fa-truck"></i>
-                                        </button>
+                                        </button> -->
 
                                         <button
                                             class="action-btn <?php echo ($row['call_log'] == 0) ? 'answer-btn' : 'no-answer-btn'; ?>"
@@ -616,26 +637,26 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
 
 
     <!-- Include MODAL for View Order -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/order_view_modal.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/order_view_modal.php'); ?>
 
     <!-- Modal for Marking Order as Paid -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/paid_mark_modal.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/paid_mark_modal.php'); ?>
 
     <!-- DISPATCH MODAL HTML -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/dispatch_modal.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/dispatch_modal.php'); ?>
 
     <!-- BULK DISPATCH MODAL HTML  -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/bulk_dispatch_modal.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/bulk_dispatch_modal.php'); ?>
 
     <!-- ANSWER STATUS MODAL -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/answer_status_modal.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/answer_status_modal.php'); ?>
 
 
     <!-- Cancel Order Modal  -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/cancel_order_modal.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/cancel_order_modal.php'); ?>
 
     <!--  ADD THE API DISPATCH MODAL HTML -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/api_dispatch.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/api_dispatch.php'); ?>
 
     <script>
     /**
@@ -782,7 +803,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
         }
 
         // Construct the payment slip URL
-        const slipUrl = '/order_management/dist/uploads/payment_slips/' + encodeURIComponent(currentPaymentSlip);
+        const slipUrl = '/OMS/dist/uploads/payment_slips/' + encodeURIComponent(currentPaymentSlip);
 
         // Open payment slip in new tab
         window.open(slipUrl, '_blank');
@@ -949,10 +970,13 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
         const fileInput = document.getElementById('payment_slip');
         const submitBtn = document.getElementById('submitPaidBtn');
 
+        // Optional: Alert the user if no file is selected, but proceed
+        /*
         if (!fileInput.files[0]) {
             alert('Please select a payment slip file');
             return;
         }
+        */
 
         // Show loading state
         submitBtn.innerHTML = '<span class="loading-spinner"></span> Processing...';
@@ -990,6 +1014,38 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                 submitBtn.disabled = false;
             });
     });
+
+    // Unmark as Paid Functionality
+    function unmarkPaid(orderId) {
+        if (!orderId || orderId.trim() === '') {
+            alert('Order ID is required to unmark as paid.');
+            return;
+        }
+
+        if (confirm('Are you sure you want to unmark this order as paid? This will delete the payment record and set the order back to unpaid.')) {
+            const formData = new FormData();
+            formData.append('order_id', orderId);
+            formData.append('action', 'unmark_paid');
+
+            fetch('unmark_paid.php', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert('Order unmarked as paid successfully!');
+                        window.location.reload();
+                    } else {
+                        alert('Error: ' + (data.message || 'Failed to unmark order as paid'));
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('An error occurred while unmarking the payment. Please try again.');
+                });
+        }
+    }
 
     // Close modal when clicking outside
     document.getElementById('markPaidModal').addEventListener('click', function(e) {
@@ -1361,68 +1417,79 @@ function fetchTrackingNumber(courierId) {
         document.getElementById('displayOrderId').textContent = currentAnswerOrderId;
 
         // Determine new status (toggle: 0->1, 1->0)
-        const newCallLog = currentCallLog === 0 ? 1 : 0;
-        document.getElementById('new_call_log').value = newCallLog;
+        // const selectedCallLog = currentCallLog === 0 ? 1 : 0;
+        // document.getElementById('new_call_log').value = selectedCallLog;
 
-        // Update modal content based on action
-        updateModalContent(currentCallLog, newCallLog);
+        // // Update modal content based on action
+        // updateModalContent(currentCallLog, selectedCallLog);
 
         // Reset form
         document.getElementById('answer-status-form').reset();
         // Re-set the hidden fields after reset
         document.getElementById('answer_order_id').value = currentAnswerOrderId;
         document.getElementById('current_call_log').value = currentCallLog;
-        document.getElementById('new_call_log').value = newCallLog;
         document.getElementById('displayOrderId').textContent = currentAnswerOrderId;
+        // Pre-select the current status or suggestion
+    const statusAnswer = document.getElementById('status_answer');
+    const statusNoAnswer = document.getElementById('status_no_answer');
+    
+    // Clear previous selection
+    if(statusAnswer) statusAnswer.checked = false;
+    if(statusNoAnswer) statusNoAnswer.checked = false;
+
+    // Set to opposite of current status as default suggestion if applicable
+    const suggestedStatus = (currentCallLog === 0) ? 1 : 0;
+    
+    if (suggestedStatus === 1 && statusAnswer) {
+        statusAnswer.checked = true;
+    } else if (suggestedStatus === 0 && statusNoAnswer) {
+        statusNoAnswer.checked = true;
+    }
+    
+    // Trigger update content
+    updateModalContentBySelection();
 
         // Show the modal
-        const modal = document.getElementById('answerStatusModal');
+    const modal = document.getElementById('answerStatusModal');
+    if (modal) {
         modal.style.display = 'flex';
         document.body.style.overflow = 'hidden';
-
-        // Focus on textarea
-        setTimeout(() => {
-            document.getElementById('answer_reason').focus();
-        }, 100);
     }
+}
 
-    /**
-     * Update Modal Content Based on Action
-     * @param {number} currentStatus - Current call_log value
-     * @param {number} newStatus - New call_log value to set
-     */
-    function updateModalContent(currentStatus, newStatus) {
-        const modalTitle = document.getElementById('answerModalTitle');
-        const alertMessage = document.getElementById('answerAlertMessage');
-        const alertText = document.getElementById('alertText');
-        const reasonLabel = document.getElementById('reasonLabel');
-        const reasonHelp = document.getElementById('reasonHelp');
-        const submitButtonText = document.getElementById('submitButtonText');
-        const submitBtn = document.getElementById('answer-submit-btn');
-
-        if (newStatus === 1) {
-            // Marking as ANSWERED (call_log = 1)
-            modalTitle.innerHTML = '<i class="fas fa-check-circle me-2"></i>Mark as Answered';
-            alertMessage.className = 'alert alert-success mb-3';
-            alertText.textContent = 'Mark this order as answered and provide call notes';
-            reasonLabel.innerHTML = 'Answer Notes <span class="text-danger">*</span>';
-            reasonHelp.textContent = 'Please provide details about the customer conversation';
-            submitButtonText.textContent = 'Mark as Answered';
-            submitBtn.style.background = '#28a745 !important';
-            document.getElementById('answer_reason').placeholder = 'Enter details about customer conversation...';
-        } else {
-            // Marking as NO ANSWER (call_log = 0)
-            modalTitle.innerHTML = '<i class="fas fa-times-circle me-2"></i>Mark as No Answer';
-            alertMessage.className = 'alert alert-warning mb-3';
-            alertText.textContent = 'Mark this order as no answer and provide reason';
-            reasonLabel.innerHTML = 'No Answer Reason <span class="text-danger">*</span>';
-            reasonHelp.textContent = 'Please specify why the customer did not answer';
-            submitButtonText.textContent = 'Mark as No Answer';
-            submitBtn.style.background = '#dc3545 !important';
-            document.getElementById('answer_reason').placeholder =
-                'Enter reason for no answer (busy, unreachable, etc.)...';
-        }
+/**
+ * Update Modal Content Based on Selected Status
+ * This function is called when the user changes the call status dropdown
+ */
+function updateModalContentBySelection() {
+    let selectedStatus = null;
+    const answerRadio = document.getElementById('status_answer');
+    const noAnswerRadio = document.getElementById('status_no_answer');
+    
+    if (answerRadio && answerRadio.checked) selectedStatus = 1;
+    if (noAnswerRadio && noAnswerRadio.checked) selectedStatus = 0;
+    
+    const reasonLabel = document.getElementById('reasonLabel');
+    const reasonHelp = document.getElementById('reasonHelp');
+    const answerReason = document.getElementById('answer_reason');
+    
+    if (selectedStatus === 1) {
+        // ANSWERED (call_log = 1)
+        reasonLabel.innerHTML = 'Answer Notes';
+        reasonHelp.textContent = 'Please provide details about the customer conversation';
+        answerReason.placeholder = 'Enter details about customer conversation...';
+    } else if (selectedStatus === 0) {
+        // NO ANSWER (call_log = 0)
+        reasonLabel.innerHTML = 'No Answer Reason';
+        reasonHelp.textContent = 'Please specify why the customer did not answer';
+        answerReason.placeholder = 'Enter reason for no answer (busy, unreachable, etc.)...';
+    } else {
+        // Default state
+        reasonLabel.innerHTML = 'Call Notes';
+        reasonHelp.textContent = 'Please provide details about the call interaction';
+        answerReason.placeholder = 'Enter call notes or reason...';
     }
+}
 
     /**
      * Close Answer Status Modal
@@ -1442,82 +1509,92 @@ function fetchTrackingNumber(courierId) {
      * Initialize Answer Status Functionality
      */
     document.addEventListener('DOMContentLoaded', function() {
-        const answerForm = document.getElementById('answer-status-form');
-        const modal = document.getElementById('answerStatusModal');
-
-        // Handle answer form submission
-        if (answerForm) {
-            answerForm.addEventListener('submit', function(e) {
-                e.preventDefault();
-
-                const orderId = document.getElementById('answer_order_id').value;
-                const newCallLog = document.getElementById('new_call_log').value;
-                const answerReason = document.getElementById('answer_reason').value.trim();
-                const submitBtn = document.getElementById('answer-submit-btn');
-
-                // Validation
-                if (!orderId || !answerReason) {
-                    alert('Please fill in all required fields');
-                    return;
+    const answerForm = document.getElementById('answer-status-form');
+    const modal = document.getElementById('answerStatusModal');
+    
+    // Handle radio button changes
+    const radioButtons = document.querySelectorAll('.call-status-radio');
+    radioButtons.forEach(radio => {
+        radio.addEventListener('change', updateModalContentBySelection);
+    });
+    
+    // Handle answer form submission
+    if (answerForm) {
+        answerForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const orderId = document.getElementById('answer_order_id').value;
+            let selectedCallLog = '';
+            const answerRadio = document.getElementById('status_answer');
+            const noAnswerRadio = document.getElementById('status_no_answer');
+            
+            if (answerRadio && answerRadio.checked) selectedCallLog = '1';
+            if (noAnswerRadio && noAnswerRadio.checked) selectedCallLog = '0';
+            const answerReason = document.getElementById('answer_reason').value.trim();
+            const submitBtn = document.getElementById('answer-submit-btn');
+            
+            // Validation
+            if (!orderId) {
+                alert('Order ID is missing');
+                return;
+            }
+            
+            if (selectedCallLog !== '1' && selectedCallLog !== '0') {
+                alert('Please select a call status (Answer or No Answer)');
+                return;
+            }
+            
+            // Confirm action
+            const actionText = (selectedCallLog == 1) ? 'mark as answered' : 'mark as no answer';
+            if (!confirm(`Are you sure you want to ${actionText} for Order ID: ${orderId}?`)) {
+                return;
+            }
+            
+            // Show loading state
+            const originalText = submitBtn.innerHTML;
+            submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Updating...';
+            submitBtn.disabled = true;
+            
+            // Create FormData object
+            const formData = new FormData();
+            formData.append('order_id', orderId);
+            formData.append('call_log', selectedCallLog);
+            formData.append('answer_reason', answerReason);
+            formData.append('action', 'update_call_status');
+            
+            // Send the request
+            fetch('update_call_status.php', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
                 }
-
-                if (answerReason.length < 5) {
-                    alert('Please provide more detailed notes (minimum 5 characters)');
-                    return;
+                return response.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    const statusText = (selectedCallLog == 1) ? 'answered' : 'no answer';
+                    alert(`Order marked as ${statusText} successfully!`);
+                    closeAnswerModal();
+                    // Reload the page to reflect changes
+                    window.location.reload();
+                } else {
+                    alert('Error: ' + (data.message || 'Failed to update call status'));
                 }
-
-                // Confirm action
-                const actionText = (newCallLog == 1) ? 'mark as answered' : 'mark as no answer';
-                if (!confirm(`Are you sure you want to ${actionText} for Order ID: ${orderId}?`)) {
-                    return;
-                }
-
-                // Show loading state
-                const originalText = submitBtn.innerHTML;
-                submitBtn.innerHTML =
-                    '<span class="spinner-border spinner-border-sm me-2"></span>Updating...';
-                submitBtn.disabled = true;
-
-                // Create FormData object
-                const formData = new FormData();
-                formData.append('order_id', orderId);
-                formData.append('call_log', newCallLog);
-                formData.append('answer_reason', answerReason);
-                formData.append('action', 'update_call_status');
-
-                // Send the request
-                fetch('update_call_status.php', {
-                        method: 'POST',
-                        body: formData
-                    })
-                    .then(response => {
-                        if (!response.ok) {
-                            throw new Error(`HTTP error! status: ${response.status}`);
-                        }
-                        return response.json();
-                    })
-                    .then(data => {
-                        if (data.success) {
-                            const statusText = (newCallLog == 1) ? 'answered' : 'no answer';
-                            alert(`Order marked as ${statusText} successfully!`);
-                            closeAnswerModal();
-                            // Reload the page to reflect changes
-                            window.location.reload();
-                        } else {
-                            alert('Error: ' + (data.message || 'Failed to update call status'));
-                        }
-                    })
-                    .catch(error => {
-                        console.error('Error:', error);
-                        alert('An error occurred while updating call status. Please try again.');
-                    })
-                    .finally(() => {
-                        // Reset button state
-                        submitBtn.innerHTML = originalText;
-                        submitBtn.disabled = false;
-                    });
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('An error occurred while updating call status. Please try again.');
+            })
+            .finally(() => {
+                // Reset button state
+                submitBtn.innerHTML = originalText;
+                submitBtn.disabled = false;
             });
-        }
+        });
+    }
 
         // Close modal when clicking outside
         if (modal) {
@@ -1613,6 +1690,7 @@ function fetchTrackingNumber(courierId) {
             return;
         }
 
+        /* Cancellation reason is now optional
         if (!cancellationReason) {
             alert('Please provide a reason for cancellation.');
             document.getElementById('cancellationReason').focus();
@@ -1624,6 +1702,7 @@ function fetchTrackingNumber(courierId) {
             document.getElementById('cancellationReason').focus();
             return;
         }
+        */
 
         // Final confirmation
         if (!confirm(
@@ -1731,6 +1810,18 @@ function fetchTrackingNumber(courierId) {
      */
     function cancelOrder(orderId) {
         openCancelModal(orderId);
+    }
+
+    /**
+     * Edit Order function
+     * Redirects to the edit order page
+     */
+    function editOrder(orderId) {
+        if (!orderId) {
+            alert('Order ID is required to edit order.');
+            return;
+        }
+        window.location.href = 'edit_order.php?id=' + encodeURIComponent(orderId);
     }
 
 
@@ -3113,8 +3204,8 @@ if (apiDispatchForm) {
     </script>
 
     <!-- Include Footer and Scripts -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/footer.php'); ?>
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/scripts.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php'); ?>
 
 </body>
 

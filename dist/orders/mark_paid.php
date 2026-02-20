@@ -19,7 +19,7 @@ try {
     }
 
     // Include database connection
-    $db_path = $_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/connection/db_connection.php';
+    $db_path = $_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php';
     if (!file_exists($db_path)) {
         throw new Exception('Database connection file not found');
     }
@@ -69,112 +69,77 @@ try {
         throw new Exception('Order is not in a valid status for payment processing. Current status: ' . $orderData['status']);
     }
     
-    // Validate file upload
-    if (!isset($_FILES['payment_slip']) || $_FILES['payment_slip']['error'] !== UPLOAD_ERR_OK) {
-        $error_messages = [
-            UPLOAD_ERR_INI_SIZE => 'File too large (exceeds server limit)',
-            UPLOAD_ERR_FORM_SIZE => 'File too large (exceeds form limit)',
-            UPLOAD_ERR_PARTIAL => 'File upload incomplete',
-            UPLOAD_ERR_NO_FILE => 'No file uploaded',
-            UPLOAD_ERR_NO_TMP_DIR => 'No temporary directory',
-            UPLOAD_ERR_CANT_WRITE => 'Cannot write to disk',
-            UPLOAD_ERR_EXTENSION => 'Upload stopped by extension'
-        ];
-        
-        $error_code = $_FILES['payment_slip']['error'];
-        $error_message = isset($error_messages[$error_code]) ? $error_messages[$error_code] : 'Unknown upload error';
-        throw new Exception('Payment slip upload error: ' . $error_message);
-    }
-    
-    $file = $_FILES['payment_slip'];
-    
-    // Validate file size (2MB limit)
-    if ($file['size'] > 2 * 1024 * 1024) {
-        throw new Exception('File size must be less than 2MB');
-    }
-    
-    // Validate file type
-    $allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'application/pdf'];
-    
-    // Check file type using multiple methods
-    $fileExtension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-    $allowedExtensions = ['jpg', 'jpeg', 'png', 'pdf'];
-    
-    if (!in_array($fileExtension, $allowedExtensions)) {
-        throw new Exception('Invalid file type. Only JPG, JPEG, PNG, and PDF files are allowed');
-    }
-    
-    // Additional MIME type check if fileinfo is available
-    if (extension_loaded('fileinfo')) {
-        $finfo = finfo_open(FILEINFO_MIME_TYPE);
-        $mimeType = finfo_file($finfo, $file['tmp_name']);
-        finfo_close($finfo);
-        
-        if (!in_array($mimeType, $allowedTypes)) {
-            throw new Exception('Invalid file MIME type: ' . $mimeType);
-        }
-    }
-    
-    // Create upload directory if it doesn't exist
-    $uploadDir = $_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/uploads/payment_slips/';
-    if (!is_dir($uploadDir)) {
-        if (!mkdir($uploadDir, 0755, true)) {
-            throw new Exception('Failed to create upload directory');
-        }
-    }
-    
-    // Check if directory is writable
-    if (!is_writable($uploadDir)) {
-        throw new Exception('Upload directory is not writable');
-    }
-    
-    // Get company names for filename prefix
-    $mainCompanyName = '';
-    $companyName = '';
+    $fileName = null; // Default to null if no file is uploaded or if there's an issue
+    $filePath = null; // Initialize filePath as null
 
-    // 1. Fetch Main Company Name
-    $mainBrandQuery = "SELECT b.company_name FROM branding b 
-                       JOIN tenants t ON b.tenant_id = t.tenant_id 
-                       WHERE t.is_main_admin = 1 AND b.active = 1 LIMIT 1";
-    $mainBrandResult = $conn->query($mainBrandQuery);
-    if ($mainBrandResult && $mainRow = $mainBrandResult->fetch_assoc()) {
-        if (!empty($mainRow['company_name'])) {
-            $cleanMainName = strtolower(preg_replace('/[^a-zA-Z0-9]/', '', $mainRow['company_name']));
-            if (!empty($cleanMainName)) {
-                $mainCompanyName = $cleanMainName . '_';
+    // Check if a payment slip file was uploaded
+    if (isset($_FILES['payment_slip']) && $_FILES['payment_slip']['error'] === UPLOAD_ERR_OK) {
+        $file = $_FILES['payment_slip'];
+
+        // Validate file size (2MB limit)
+        if ($file['size'] > 2 * 1024 * 1024) {
+            throw new Exception('File size must be less than 2MB');
+        }
+
+        // Validate file type
+        $allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'application/pdf'];
+        $fileExtension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+        $allowedExtensions = ['jpg', 'jpeg', 'png', 'pdf'];
+
+        if (!in_array($fileExtension, $allowedExtensions)) {
+            throw new Exception('Invalid file type. Only JPG, JPEG, PNG, and PDF files are allowed');
+        }
+
+        // Additional MIME type check if fileinfo is available
+        if (extension_loaded('fileinfo')) {
+            $finfo = finfo_open(FILEINFO_MIME_TYPE);
+            $mimeType = finfo_file($finfo, $file['tmp_name']);
+            finfo_close($finfo);
+
+            if (!in_array($mimeType, $allowedTypes)) {
+                throw new Exception('Invalid file MIME type: ' . $mimeType);
             }
         }
-    }
 
-    // 2. Fetch Tenant Company Name
-    $tenantId = $_SESSION['tenant_id'] ?? 0;
-    $brandQuery = "SELECT company_name FROM branding WHERE tenant_id = ? AND active = 1 LIMIT 1";
-    $brandStmt = $conn->prepare($brandQuery);
-    $brandStmt->bind_param("i", $tenantId);
-    $brandStmt->execute();
-    $brandResult = $brandStmt->get_result();
-
-    if ($brandResult && $brandRow = $brandResult->fetch_assoc()) {
-        if (!empty($brandRow['company_name'])) {
-            // Keep only alphanumeric characters and convert to lowercase
-            $cleanCompanyName = strtolower(
-                preg_replace('/[^a-zA-Z0-9]/', '', $brandRow['company_name'])
-            );
-
-            if (!empty($cleanCompanyName)) {
-                $companyName = $cleanCompanyName . '_';
+        // Create upload directory if it doesn't exist
+        $uploadDir = $_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/uploads/payment_slips/';
+        if (!is_dir($uploadDir)) {
+            if (!mkdir($uploadDir, 0755, true)) {
+                throw new Exception('Failed to create upload directory');
             }
         }
-    }
-    $brandStmt->close();
 
-    // Generate unique filename
-    $fileName = $mainCompanyName . $companyName . 'payment_' . $orderId . '_' . time() . '.' . $fileExtension;
-    $filePath = $uploadDir . $fileName;
-    
-    // Move uploaded file
-    if (!move_uploaded_file($file['tmp_name'], $filePath)) {
-        throw new Exception('Failed to move uploaded file');
+        // Check if directory is writable
+        if (!is_writable($uploadDir)) {
+            throw new Exception('Upload directory is not writable');
+        }
+
+        // Get company name for filename prefix
+        $companyName = '';
+        $brandQuery = "SELECT company_name FROM branding WHERE active = 1 LIMIT 1";
+        $brandResult = $conn->query($brandQuery);
+
+        if ($brandResult && $brandRow = $brandResult->fetch_assoc()) {
+            if (!empty($brandRow['company_name'])) {
+                // Keep only letters and convert to lowercase
+                $cleanCompanyName = strtolower(
+                    preg_replace('/[^a-zA-Z0-9]/', '', $brandRow['company_name'])
+                );
+
+                if (!empty($cleanCompanyName)) {
+                    $companyName = $cleanCompanyName . '_';
+                }
+            }
+        }
+
+        // Generate unique filename
+        $fileName = $companyName . 'payment_' . $orderId . '_' . time() . '.' . $fileExtension;
+        $filePath = $uploadDir . $fileName;
+
+        // Move uploaded file
+        if (!move_uploaded_file($file['tmp_name'], $filePath)) {
+            throw new Exception('Failed to move uploaded file');
+        }
     }
     
     // Start database transaction
@@ -188,7 +153,7 @@ try {
             throw new Exception('Failed to prepare items check statement: ' . $conn->error);
         }
         
-        $checkItemsStmt->bind_param("i", $orderId);
+        $checkItemsStmt->bind_param("s", $orderId);
         $checkItemsStmt->execute();
         $itemsResult = $checkItemsStmt->get_result();
         $itemsRow = $itemsResult->fetch_assoc();
@@ -250,7 +215,7 @@ try {
             throw new Exception('Failed to prepare items update statement: ' . $conn->error);
         }
         
-        $updateItemsStmt->bind_param("i", $orderId);
+        $updateItemsStmt->bind_param("s", $orderId);
         
         if (!$updateItemsStmt->execute()) {
             throw new Exception('Failed to update order items: ' . $updateItemsStmt->error);
@@ -268,7 +233,7 @@ try {
             throw new Exception('Failed to prepare payment insert statement: ' . $conn->error);
         }
         
-        $insertPaymentStmt->bind_param("sis", $paymentDate, $currentUserId, $orderId);
+        $insertPaymentStmt->bind_param("sss", $paymentDate, $currentUserId, $orderId);
         
         if (!$insertPaymentStmt->execute()) {
             throw new Exception('Failed to insert payment record: ' . $insertPaymentStmt->error);
@@ -289,7 +254,7 @@ try {
             throw new Exception('Failed to prepare log statement: ' . $conn->error);
         }
         
-        $logStmt->bind_param("iis", $currentUserId, $orderId, $logMessage);
+        $logStmt->bind_param("iss", $currentUserId, $orderId, $logMessage);
         
         if (!$logStmt->execute()) {
             throw new Exception('Failed to insert user log: ' . $logStmt->error);

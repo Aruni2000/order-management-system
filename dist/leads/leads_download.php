@@ -8,7 +8,7 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     if (ob_get_level()) {
         ob_end_clean();
     }
-    header("Location: /order_management/dist/pages/login.php");
+    header("Location: /OMS/dist/pages/login.php");
     exit();
 }
 
@@ -19,7 +19,7 @@ $role_id = isset($_SESSION['role_id']) ? $_SESSION['role_id'] : 0;
 $user_tenant_id = isset($_SESSION['tenant_id']) ? $_SESSION['tenant_id'] : 0;
 
 // Include the database connection file
-include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
 // Check if order ID is provided
 if (!isset($_GET['id']) || empty($_GET['id'])) {
@@ -58,12 +58,12 @@ if ($branding_result && $branding_result->num_rows > 0) {
             $logo_url = $branding['logo_url'];
         } 
         // Check if it already has the full path
-        else if (strpos($branding['logo_url'], '/order_management/') === 0) {
+        else if (strpos($branding['logo_url'], '/OMS/') === 0) {
             $logo_url = $branding['logo_url']; // Already has full path
         }
         // Otherwise, it's a relative path from dist folder
         else {
-            $logo_url = '/order_management/dist/' . ltrim($branding['logo_url'], '/');
+            $logo_url = '/OMS/dist/' . ltrim($branding['logo_url'], '/');
         }
     } else {
         // If logo_url is empty in DB, use fallback and log error

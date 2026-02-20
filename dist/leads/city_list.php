@@ -13,12 +13,12 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     if (ob_get_level()) {
         ob_end_clean();
     }
-    header("Location: /order_management/dist/pages/login.php");
+    header("Location: /OMS/dist/pages/login.php");
     exit();
 }
 
 // Include database connection
-include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
 /**
  * SEARCH AND PAGINATION PARAMETERS
@@ -26,8 +26,11 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/connection/db_connec
 $search = isset($_GET['search']) ? trim($_GET['search']) : '';
 $city_name_filter = isset($_GET['city_name_filter']) ? trim($_GET['city_name_filter']) : '';
 $city_id_filter = isset($_GET['city_id_filter']) ? trim($_GET['city_id_filter']) : '';
+$zone_type_filter = isset($_GET['zone_type_filter']) ? trim($_GET['zone_type_filter']) : '';
+$zone_filter = isset($_GET['zone_filter']) ? trim($_GET['zone_filter']) : '';
+$district_filter = isset($_GET['district_filter']) ? trim($_GET['district_filter']) : '';
 
-$limit = isset($_GET['limit']) ? max(1, (int)$_GET['limit']) : 10;
+$limit = isset($_GET['limit']) ? max(1, (int)$_GET['limit']) : 15;
 $page = isset($_GET['page']) ? max(1, (int)$_GET['page']) : 1;
 $offset = ($page - 1) * $limit;
 
@@ -85,6 +88,27 @@ if (!empty($city_id_filter)) {
     $types .= 'i';
 }
 
+// Zone Type filter
+if (!empty($zone_type_filter)) {
+    $searchConditions[] = "z.zone_type = ?";
+    $params[] = $zone_type_filter;
+    $types .= 's';
+}
+
+// Zone filter
+if (!empty($zone_filter)) {
+    $searchConditions[] = "z.zone_id = ?";
+    $params[] = $zone_filter;
+    $types .= 'i';
+}
+
+// District filter
+if (!empty($district_filter)) {
+    $searchConditions[] = "d.district_id = ?";
+    $params[] = $district_filter;
+    $types .= 'i';
+}
+
 // Apply all search conditions
 if (!empty($searchConditions)) {
     $finalSearchCondition = " AND (" . implode(' AND ', $searchConditions) . ")";
@@ -121,8 +145,8 @@ $stmt->execute();
 $result = $stmt->get_result();
 
 // Include navigation components
-include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/navbar.php');
-include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
 
 ?>
 <!doctype html>
@@ -131,7 +155,7 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
 <head>
     <title>City Management Admin Portal</title>
     
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/head.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
     
     <!-- Stylesheets -->
     <link rel="stylesheet" href="../assets/css/style.css" id="main-style-link" />
@@ -140,7 +164,7 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
 
 <body>
     <!-- Page Loader -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/loader.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php'); ?>
 
     <div class="pc-container">
         <div class="pc-content">
@@ -173,6 +197,50 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                         </div>
                         
                         <div class="form-group">
+                            <label for="zone_type_filter">Zone Type</label>
+                            <select id="zone_type_filter" name="zone_type_filter">
+                                <option value="">All Zone Types</option>
+                                <option value="suburb" <?php echo $zone_type_filter === 'suburb' ? 'selected' : ''; ?>>Suburb</option>
+                                <option value="outstation" <?php echo $zone_type_filter === 'outstation' ? 'selected' : ''; ?>>Outstation</option>
+                                <option value="remote" <?php echo $zone_type_filter === 'remote' ? 'selected' : ''; ?>>Remote</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="zone_filter">Zone</label>
+                            <select id="zone_filter" name="zone_filter">
+                                <option value="">All Zones</option>
+                                <?php
+                                // Fetch zones for dropdown
+                                $zoneSql = "SELECT zone_id, zone_name FROM zone_table ORDER BY zone_name ASC";
+                                $zoneResult = $conn->query($zoneSql);
+                                while ($zone = $zoneResult->fetch_assoc()):
+                                ?>
+                                    <option value="<?php echo $zone['zone_id']; ?>" <?php echo $zone_filter == $zone['zone_id'] ? 'selected' : ''; ?>>
+                                        <?php echo htmlspecialchars($zone['zone_name']); ?>
+                                    </option>
+                                <?php endwhile; ?>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="district_filter">District</label>
+                            <select id="district_filter" name="district_filter">
+                                <option value="">All Districts</option>
+                                <?php
+                                // Fetch districts for dropdown
+                                $districtSql = "SELECT district_id, district_name FROM district_table ORDER BY district_name ASC";
+                                $districtResult = $conn->query($districtSql);
+                                while ($district = $districtResult->fetch_assoc()):
+                                ?>
+                                    <option value="<?php echo $district['district_id']; ?>" <?php echo $district_filter == $district['district_id'] ? 'selected' : ''; ?>>
+                                        <?php echo htmlspecialchars($district['district_name']); ?>
+                                    </option>
+                                <?php endwhile; ?>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
                             <div class="button-group">
                                 <button type="submit" class="search-btn">
                                     <i class="fas fa-search"></i>
@@ -204,11 +272,8 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                                 <th>District</th>
                                 <th>Zone</th>
                                 <th>Zone Type</th>
-                                <!-- <th>Postal Code</th> -->
-                                <!-- <th>Delivery Charge</th> -->
+                                <th>Postal Code</th>
                                 <th>Status</th>
-                                <th>Created At</th>
-                                <th>Actions</th>
                             </tr>
                         </thead>
                         <tbody id="citiesTableBody">
@@ -239,50 +304,39 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                                                 : '<span style="color: #999; font-style: italic;">N/A</span>'; ?>
                                         </td>
                                         
-                                        <!-- Zone Type -->
-                                        <td>
-                                            <?php 
-                                            if (isset($row['zone_type']) && !empty($row['zone_type'])) {
-                                                $zoneType = htmlspecialchars($row['zone_type']);
-                                                $badgeClass = '';
-                                                switch($zoneType) {
-                                                    case 'suburb':
-                                                        $badgeClass = 'status-badge pay-status-paid';
-                                                        break;
-                                                    case 'outstation':
-                                                        $badgeClass = 'status-badge pay-status-pending';
-                                                        break;
-                                                    case 'remote':
-                                                        $badgeClass = 'status-badge pay-status-unpaid';
-                                                        break;
-                                                    default:
-                                                        $badgeClass = 'status-badge';
-                                                }
-                                                echo "<span class=\"$badgeClass\">" . ucfirst($zoneType) . "</span>";
-                                            } else {
-                                                echo '<span style="color: #999; font-style: italic;">N/A</span>';
-                                            }
-                                            ?>
-                                        </td>
-                                        
+                                         <!-- Zone Type -->
+                                          <td>
+                                              <?php 
+                                              if (isset($row['zone_type']) && !empty($row['zone_type'])) {
+                                                  $zoneType = htmlspecialchars($row['zone_type']);
+                                                  $badgeClass = '';
+                                                  switch($zoneType) {
+                                                      case 'suburb':
+                                                          $badgeClass = 'status-badge zone-type-suburb';
+                                                          break;
+                                                      case 'outstation':
+                                                          $badgeClass = 'status-badge zone-type-outstation';
+                                                          break;
+                                                      case 'remote':
+                                                          $badgeClass = 'status-badge zone-type-remote';
+                                                          break;
+                                                      default:
+                                                          $badgeClass = 'status-badge';
+                                                  }
+                                                  echo "<span class=\"$badgeClass\">" . ucfirst($zoneType) . "</span>";
+                                              } else {
+                                                  echo '<span style="color: #999; font-style: italic;">N/A</span>';
+                                              }
+                                              ?>
+                                          </td>
+                                         
                                         <!-- Postal Code -->
-                                        <!-- <td>
+                                        <td>
                                             <?php echo isset($row['postal_code']) && !empty($row['postal_code']) 
                                                 ? htmlspecialchars($row['postal_code']) 
-                                                : '<span style="color: #999; font-style: italic;">N/A</span>'; ?>
-                                        </td> -->
-                                        
-                                        <!-- Delivery Charge -->
-                                        <!-- <td>
-                                            <?php 
-                                            if (isset($row['delivery_charge']) && $row['delivery_charge'] !== null) {
-                                                echo 'Rs. ' . number_format($row['delivery_charge'], 2);
-                                            } else {
-                                                echo '<span style="color: #999; font-style: italic;">N/A</span>';
-                                            }
-                                            ?>
-                                        </td> -->
-                                        
+                                                : ' - '; ?>
+                                        </td>
+                                         
                                         <!-- Status Badge -->
                                         <td>
                                             <?php
@@ -293,38 +347,12 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
                                                 <span class="status-badge pay-status-unpaid">Inactive</span>
                                             <?php endif; ?>
                                         </td>
-                                        
-                                        <!-- Created At -->
-                                        <td>
-                                            <?php 
-                                            echo isset($row['created_at']) ? 
-                                                date('M d, Y H:i', strtotime($row['created_at'])) : 'N/A'; 
-                                            ?>
-                                        </td>
-                                        
-                                        <!-- Action Buttons -->
-                                        <td class="actions">
-                                            <button class="action-btn view-btn" title="View City Details" 
-                                                    onclick="openCityModal(<?php echo isset($row['city_id']) ? $row['city_id'] : 0; ?>)">
-                                                <i class="fas fa-eye"></i>
-                                            </button>
-                                            <!-- <button class="action-btn" title="Edit City" 
-                                                    onclick="editCity(<?php echo isset($row['city_id']) ? $row['city_id'] : 0; ?>)"
-                                                    style="background: #17a2b8;">
-                                                <i class="fas fa-edit"></i>
-                                            </button>
-                                            <button class="action-btn" title="Delete City" 
-                                                    onclick="deleteCity(<?php echo isset($row['city_id']) ? $row['city_id'] : 0; ?>)"
-                                                    style="background: #dc3545;">
-                                                <i class="fas fa-trash"></i>
-                                            </button> -->
-                                        </td>
                                     </tr>
                                 <?php endwhile; ?>
                             <?php else: ?>
                                 <tr>
-                                    <td colspan="10" class="text-center" style="padding: 40px; text-align: center; color: #666;">
-                                        <?php if (!empty($search) || !empty($city_name_filter) || !empty($city_id_filter)): ?>
+                                    <td colspan="7" class="text-center" style="padding: 40px; text-align: center; color: #666;">
+                                        <?php if (!empty($search) || !empty($city_name_filter) || !empty($city_id_filter) || !empty($zone_type_filter) || !empty($zone_filter) || !empty($district_filter)): ?>
                                             No cities found matching your search criteria.
                                         <?php else: ?>
                                             No cities found in the database.
@@ -368,39 +396,19 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
         </div>
     </div>
 
-    <!-- City View Modal -->
-    <div id="cityModal" class="modal-overlay">
-        <div class="modal-container">
-            <div class="modal-header">
-                <h3 class="modal-title">City Details</h3>
-                <button class="modal-close" onclick="closeCityModal()">
-                    <i class="fas fa-times"></i>
-                </button>
-            </div>
-            <div class="modal-body" id="modalContent">
-                <div class="modal-loading">
-                    <i class="fas fa-spinner fa-spin"></i>
-                    Loading city details...
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="modal-btn modal-btn-secondary" onclick="closeCityModal()">Close</button>
-            </div>
-        </div>
-    </div>
-
     <script>
         /**
          * JavaScript functionality for city management
          */
         
-        let currentCityId = null;
-
         // Clear all filter inputs
         function clearFilters() {
             document.getElementById('city_name_filter').value = '';
             document.getElementById('city_id_filter').value = '';
-            
+            document.getElementById('zone_type_filter').value = '';
+            document.getElementById('zone_filter').value = '';
+            document.getElementById('district_filter').value = '';
+
             // Submit the form to clear filters
             window.location.href = window.location.pathname;
         }
@@ -411,126 +419,6 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
             url.searchParams.set('page', page);
             window.location.href = url.toString();
         }
-
-        // Open city modal and load details
-        function openCityModal(cityId) {
-            if (!cityId || cityId === 0) {
-                alert('City ID is required to view city details.');
-                return;
-            }
-            
-            currentCityId = cityId;
-            const modal = document.getElementById('cityModal');
-            const modalContent = document.getElementById('modalContent');
-            
-            // Show modal
-            modal.style.display = 'flex';
-            document.body.style.overflow = 'hidden';
-            
-            // Show loading state
-            modalContent.innerHTML = `
-                <div class="modal-loading">
-                    <i class="fas fa-spinner fa-spin"></i>
-                    Loading city details for City ID: ${currentCityId}...
-                </div>
-            `;
-            
-            // Fetch city details
-            fetch('city_details.php?id=' + encodeURIComponent(cityId))
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error('Network response was not ok');
-                }
-                return response.text();
-            })
-            .then(data => {
-                modalContent.innerHTML = data;
-            })
-            .catch(error => {
-                console.error('Error loading city details:', error);
-                modalContent.innerHTML = `
-                    <div class="modal-error" style="text-align: center; padding: 20px; color: #dc3545;">
-                        <i class="fas fa-exclamation-triangle" style="font-size: 2em; margin-bottom: 10px;"></i>
-                        <h4>Error Loading City Details</h4>
-                        <p>City ID: ${currentCityId}</p>
-                        <p>Please try again later.</p>
-                    </div>
-                `;
-            });
-        }
-
-        // Close city modal
-        function closeCityModal() {
-            const modal = document.getElementById('cityModal');
-            modal.style.display = 'none';
-            document.body.style.overflow = 'auto';
-            currentCityId = null;
-        }
-
-        // Edit city
-        function editCity(cityId) {
-            if (!cityId || cityId === 0) {
-                alert('City ID is required to edit city.');
-                return;
-            }
-            window.location.href = 'city_edit.php?id=' + cityId;
-        }
-
-        // Delete city
-        function deleteCity(cityId) {
-            if (!cityId || cityId === 0) {
-                alert('City ID is required to delete city.');
-                return;
-            }
-            
-            if (confirm('Are you sure you want to delete this city? This action cannot be undone.')) {
-                // Show loading state
-                const button = event.target.closest('button');
-                const originalHTML = button.innerHTML;
-                button.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
-                button.disabled = true;
-                
-                // Send delete request
-                fetch('city_delete.php', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                    },
-                    body: 'id=' + encodeURIComponent(cityId)
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        alert('City deleted successfully!');
-                        location.reload();
-                    } else {
-                        alert('Error deleting city: ' + (data.message || 'Unknown error'));
-                        button.innerHTML = originalHTML;
-                        button.disabled = false;
-                    }
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    alert('Error deleting city. Please try again.');
-                    button.innerHTML = originalHTML;
-                    button.disabled = false;
-                });
-            }
-        }
-
-        // Close modal when clicking outside
-        document.getElementById('cityModal').addEventListener('click', function(e) {
-            if (e.target === this) {
-                closeCityModal();
-            }
-        });
-
-        // Close modal with Escape key
-        document.addEventListener('keydown', function(e) {
-            if (e.key === 'Escape') {
-                closeCityModal();
-            }
-        });
 
         // Initialize page functionality when DOM is loaded
         document.addEventListener('DOMContentLoaded', function() {
@@ -549,8 +437,8 @@ include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php'
     </script>
 
     <!-- Include Footer and Scripts -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/footer.php'); ?>
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/scripts.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php'); ?>
 
 </body>
 </html>

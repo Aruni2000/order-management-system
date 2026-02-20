@@ -1,6 +1,6 @@
 <?php
 // Include the database connection file
-include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/connection/royal_db.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/royal_db.php');
 
 // API URL with noPagination to get all cities
 $url = "https://v1.api.curfox.com/api/public/merchant/city?noPagination=true";

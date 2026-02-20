@@ -7,16 +7,16 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     if (ob_get_level()) {
         ob_end_clean();
     }
-    header("Location: /order_management/dist/pages/login.php");
+    header("Location: /OMS/dist/pages/login.php");
     exit();
 }
 
 // Include the database connection file
-include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
 // Check if user has admin role (role_id = 1)
 if (!isset($_SESSION['user_id'])) {
-    header("Location: /order_management/dist/pages/login.php");
+    header("Location: /OMS/dist/pages/login.php");
     exit();
 }
 
@@ -33,7 +33,7 @@ $role_result = $role_stmt->get_result();
 
 if ($role_result->num_rows === 0) {
     session_destroy();
-    header("Location: /order_management/dist/pages/login.php");
+    header("Location: /OMS/dist/pages/login.php");
     exit();
 }
 
@@ -47,7 +47,7 @@ $is_main_admin = isset($_SESSION['is_main_admin']) && $_SESSION['is_main_admin']
 $session_tenant_id = $_SESSION['tenant_id'] ?? null;
 
 if ($user_role['role_id'] != 1) {
-    header("Location: /order_management/dist/dashboard/index.php");
+    header("Location: /OMS/dist/dashboard/index.php");
     exit();
 }
 
@@ -206,8 +206,8 @@ if (isset($_GET['export']) && $_GET['export'] == 'success_report') {
 }
 
 // If we reach here, user is admin and NOT exporting - continue with page display
-include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/navbar.php');
-include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
 
 // ============================================
 // HANDLE SEARCH AND FILTER PARAMETERS
@@ -322,7 +322,7 @@ $role_sql = "SELECT DISTINCT r.name as role FROM roles r WHERE r.name IS NOT NUL
 $role_result = $conn->query($role_sql);
 $roles = [];
 if ($role_result && $role_result->num_rows > 0) {
-    $roles = $role_result->fetch_all(MYSQLI_ASSOC);  // ← FIXED: Changed from order_managementSQLI_ASSOC
+    $roles = $role_result->fetch_all(MYSQLI_ASSOC);  // ← FIXED: Changed from OMSSQLI_ASSOC
 }
 
 // Get active tenants for filter dropdown
@@ -393,7 +393,7 @@ function getSuccessRateBadgeClass($rate) {
 <head>
     <title>Order Management Admin Portal - User Management</title>
     
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/head.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
     
     <!-- Stylesheets -->
     <link rel="stylesheet" href="../assets/css/style.css" id="main-style-link" />
@@ -501,7 +501,7 @@ function getSuccessRateBadgeClass($rate) {
 
 <body>
     <!-- Page Loader -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/loader.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php'); ?>
 
     <div class="pc-container">
         <div class="pc-content">
@@ -866,7 +866,7 @@ function getSuccessRateBadgeClass($rate) {
     </div>
 
     <!-- Scripts -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/scripts.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php'); ?>
 
     <script>
         /* ================================
@@ -949,7 +949,7 @@ function getSuccessRateBadgeClass($rate) {
     </script>
 
     <!--Footer-->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/footer.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php'); ?>
 
 </body>
 </html>

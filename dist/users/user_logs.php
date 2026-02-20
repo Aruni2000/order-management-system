@@ -8,14 +8,14 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     if (ob_get_level()) {
         ob_end_clean();
     }
-    header("Location: /order_management/dist/pages/login.php");
+    header("Location: /OMS/dist/pages/login.php");
     exit();
 }
 
 // Include the database connection file
-include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/connection/db_connection.php');
-include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/navbar.php');
-include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
 
 // Handle search and filter parameters
 $search = isset($_GET['search']) ? trim($_GET['search']) : '';
@@ -213,7 +213,7 @@ function formatLogDetails($details) {
 <head>
     <title>Order Management Admin Portal - User Activity Logs</title>
     
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/head.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
     
     <!-- Stylesheets -->
     <link rel="stylesheet" href="../assets/css/style.css" id="main-style-link" />
@@ -236,7 +236,7 @@ function formatLogDetails($details) {
 
 <body>
     <!-- Page Loader -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/loader.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php'); ?>
 
     <div class="pc-container">
         <div class="pc-content">
@@ -343,7 +343,8 @@ function formatLogDetails($details) {
                         <thead>
                             <tr>
                                 <th>Log ID</th>
-                                <th>User Info & Action</th>
+                                <th>User Info</th>
+                                <th>Action</th>
                                 <th>Inquiry ID</th>
                                 <th>Details</th>
                                 <th>Date & Time</th>
@@ -361,8 +362,8 @@ function formatLogDetails($details) {
                                             </div>
                                         </td>
                                         
-                                        <!-- Combined User Info & Action -->
-                                        <td class="user-action-combined">
+                                        <!-- User Info -->
+                                        <td class="user-info-cell">
                                             <div class="user-info-section">
                                                 <h6 style="margin: 0 0 2px 0; font-size: 14px; font-weight: 600; color: #333;">
                                                     <?php echo htmlspecialchars($row['username'] ?: 'Unknown User'); ?>
@@ -382,22 +383,24 @@ function formatLogDetails($details) {
                                                     </small>
                                                 <?php endif; ?>
                                             </div>
-                                            <div class="action-section" style="margin-top: 8px;">
-                                                <span class="status-badge <?php 
-                                                    $action = strtolower($row['action_type']);
-                                                    if (strpos($action, 'create') !== false || strpos($action, 'add') !== false) {
-                                                        echo 'pay-status-paid'; // Green for create/add actions
-                                                    } elseif (strpos($action, 'delete') !== false || strpos($action, 'remove') !== false) {
-                                                        echo 'pay-status-unpaid'; // Red for delete/remove actions
-                                                    } elseif (strpos($action, 'update') !== false || strpos($action, 'edit') !== false) {
-                                                        echo 'status-badge-warning'; // Orange for update/edit actions
-                                                    } else {
-                                                        echo 'status-badge-info'; // Blue for other actions
-                                                    }
-                                                ?>">
-                                                    <?php echo htmlspecialchars($row['action_type']); ?>
-                                                </span>
-                                            </div>
+                                        </td>
+                                        
+                                        <!-- Action -->
+                                        <td class="action-cell">
+                                            <span class="status-badge <?php 
+                                                $action = strtolower($row['action_type']);
+                                                if (strpos($action, 'create') !== false || strpos($action, 'add') !== false) {
+                                                    echo 'pay-status-paid'; // Green for create/add actions
+                                                } elseif (strpos($action, 'delete') !== false || strpos($action, 'remove') !== false) {
+                                                    echo 'pay-status-unpaid'; // Red for delete/remove actions
+                                                } elseif (strpos($action, 'update') !== false || strpos($action, 'edit') !== false) {
+                                                    echo 'status-badge-warning'; // Orange for update/edit actions
+                                                } else {
+                                                    echo 'status-badge-info'; // Blue for other actions
+                                                }
+                                            ?>">
+                                                <?php echo htmlspecialchars($row['action_type']); ?>
+                                            </span>
                                         </td>
                                         
                                         <!-- Inquiry ID -->
@@ -458,7 +461,7 @@ function formatLogDetails($details) {
                                 <?php endwhile; ?>
                             <?php else: ?>
                                 <tr>
-                                        <td colspan="6" class="text-center" style="padding: 40px; text-align: center; color: #666;">
+                                        <td colspan="7" class="text-center" style="padding: 40px; text-align: center; color: #666;">
                                         <i class="fas fa-history" style="font-size: 2rem; margin-bottom: 10px; display: block;"></i>
                                         No activity logs found
                                     </td>
@@ -545,10 +548,10 @@ function formatLogDetails($details) {
     </div>
 
     <!-- Footer -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/footer.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php'); ?>
 
     <!-- Scripts -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/scripts.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php'); ?>
 
     <script>
 // Complete JavaScript code for user logs page

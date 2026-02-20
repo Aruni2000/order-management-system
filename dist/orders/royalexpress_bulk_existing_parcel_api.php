@@ -103,7 +103,7 @@ function getParcelData($orderId, $conn) {
 }
 
 try {
-    include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/connection/db_connection.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
     
     // ============================================
     // AUTHENTICATION & VALIDATION

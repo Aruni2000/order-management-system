@@ -186,7 +186,7 @@ function formatWaybillId($rawWaybill) {
 }
 
 try {
-    include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/connection/db_connection.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
     // Validate request
     if (!isset($_SESSION['logged_in']) || !$_SESSION['logged_in']) {

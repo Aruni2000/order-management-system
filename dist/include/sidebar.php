@@ -137,10 +137,12 @@ $safe_company_name = htmlspecialchars($company_name, ENT_QUOTES, 'UTF-8');
             <li class="pc-item"><a class="pc-link" href="../orders/order_list.php"> Processed Orders</a></li>
             <li class="pc-item"><a class="pc-link" href="../orders/pending_order_list.php">Pending Orders</a></li>
             <li class="pc-item"><a class="pc-link" href="../orders/dispatch_order_list.php">Dispatch Orders</a></li>
+            <li class="pc-item"><a class="pc-link" href="../orders/courier_order_list.php">Courier Orders</a></li>
             <li class="pc-item"><a class="pc-link" href="../orders/cancel_order_list.php">Cancel Orders</a></li>
             <li class="pc-item"><a class="pc-link" href="../orders/complete_mark_upload.php">Completed Mark Upload</a></li>
             <li class="pc-item"><a class="pc-link" href="../orders/payment_report.php"> Payment Report</a></li>
             <li class="pc-item"><a class="pc-link" href="../orders/return_csv_upload.php">Return CSV Upload</a></li>
+            <li class="pc-item"><a class="pc-link" href="../orders/complete_order_list.php">Complete Orders</a></li>
             <li class="pc-item"><a class="pc-link" href="../orders/return_complete_order_list.php">Return Complete Orders</a></li>
             <li class="pc-item"><a class="pc-link" href="../orders/return_handover_order_list.php">Return Handover Orders</a></li>
             <li class="pc-item"><a class="pc-link" href="../orders/label_print.php">Label Print</a></li>
@@ -209,7 +211,11 @@ $safe_company_name = htmlspecialchars($company_name, ENT_QUOTES, 'UTF-8');
           <a href="#!" class="pc-link"><span class="pc-micon"> <i data-feather="users"></i></span><span class="pc-mtext">Leads</span><span class="pc-arrow"><i class="ti ti-chevron-right"></i></span></a>
           <ul class="pc-submenu">
             <li class="pc-item"><a class="pc-link" href="../leads/lead_upload.php">Lead Upload</a></li>
-            <li class="pc-item"><a class="pc-link" href="../leads/my_leads.php">My Leads </a></li>
+            <?php if ($is_admin): ?>
+            <li class="pc-item"><a class="pc-link" href="../leads/my_leads.php">All Leads</a></li>
+            <?php else: ?>
+            <li class="pc-item"><a class="pc-link" href="../leads/my_leads.php">My Leads</a></li>
+            <?php endif; ?>
             <li class="pc-item"><a class="pc-link" href="../leads/city_list.php">City List</a></li>
           </ul>
         </li>

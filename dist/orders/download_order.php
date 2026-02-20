@@ -8,11 +8,11 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     if (ob_get_level()) {
         ob_end_clean();
     }
-    header("Location: /order_management/dist/pages/login.php");
+    header("Location: /OMS/dist/pages/login.php");
     exit();
 }
 // Include the database connection file
-include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
 // Check if order ID is provided
 if (!isset($_GET['id']) || empty($_GET['id'])) {
@@ -203,12 +203,12 @@ if ($branding_result && $branding_result->num_rows > 0) {
             $logo_url = $company['logo_url'];
         } 
         // Check if it already has the full path
-        else if (strpos($company['logo_url'], '/order_management/') === 0) {
+        else if (strpos($company['logo_url'], '/OMS/') === 0) {
             $logo_url = $company['logo_url']; // Already has full path
         }
         // Otherwise, it's a relative path from dist folder
         else {
-            $logo_url = '/order_management/dist/' . ltrim($company['logo_url'], '/');
+            $logo_url = '/OMS/dist/' . ltrim($company['logo_url'], '/');
         }
     } else {
         // If logo_url is empty in DB, show error instead of fallback
@@ -783,7 +783,7 @@ error_log("  - Data Source: " . (empty($order['full_name']) ? 'customers table (
 
         // Function to view payment slip in new tab
         function viewPaymentSlip(slipFileName) {
-            const slipUrl = '/order_management/dist/uploads/payment_slips/' + encodeURIComponent(slipFileName);
+            const slipUrl = '/OMS/dist/uploads/payment_slips/' + encodeURIComponent(slipFileName);
             window.open(slipUrl, '_blank');
         }
 

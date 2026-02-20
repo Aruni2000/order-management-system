@@ -3,7 +3,7 @@
 session_start();
 
 // Include database connection
-include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
 // Get input values
 $courier_id = isset($_POST['courier_id']) ? (int)$_POST['courier_id'] : 12;

@@ -21,7 +21,7 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
 }
 
 // Include database connection
-include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
 // Check if request method is POST
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -54,14 +54,6 @@ try {
     
     if ($call_log === null || ($call_log !== 0 && $call_log !== 1)) {
         throw new Exception('Invalid call log status');
-    }
-    
-    if (empty($answer_reason)) {
-        throw new Exception('Call notes/reason is required');
-    }
-    
-    if (strlen($answer_reason) < 5) {
-        throw new Exception('Call notes must be at least 5 characters long');
     }
     
     // Start database transaction

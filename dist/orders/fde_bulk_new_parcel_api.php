@@ -43,13 +43,21 @@ function callFdeApi($apiData) {
     if (!$data) return ['success' => false, 'message' => 'Invalid response from API'];
     
     $messages = [
-        200 => 'Successfully insert the parcel', 201 => 'Incorrect waybill type. Only allow CRE or CCP',
-        202 => 'The waybill is used', 203 => 'The waybill is not yet assigned', 204 => 'Inactive Client',
-        205 => 'Invalid order id', 206 => 'Invalid weight', 207 => 'Empty or invalid parcel description',
-        208 => 'Empty or invalid name', 209 => 'Invalid contact number 1', 210 => 'Invalid contact number 2',
-        211 => 'Empty or invalid address', 212 => 'Empty or invalid amount', 213 => 'Invalid city',
-        214 => 'Parcel insert unsuccessfully', 215 => 'Invalid or inactive client', 216 => 'Invalid API key',
-        217 => 'Invalid exchange value', 218 => 'System maintain mode is activated'
+        	200 => 'Successful insert',
+            201 => 'Inactive Client',
+            202 => 'Invalid order id',
+            203 => 'Invalid weight',
+            204 => 'Empty or invalid parcel description',
+            205 => 'Empty or invalid name',
+            206 => 'Contact number 1 is not valid',
+            207 => 'Contact number 2 is not valid',
+            208 => 'Empty or invalid address',
+            209 => 'Invalid City',
+            210 => 'Unsuccessful insert, try again',
+            211 => 'Invalid API key',
+            212 => 'Invalid or inactive client',
+            213 => 'Invalid exchange value',
+            214 => 'System maintain mode is activated'
     ];
     
     $status = $data['status'] ?? 999;
@@ -100,7 +108,7 @@ function extractTrackingNumber($apiResponse) {
 }
 
 try {
-    include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/connection/db_connection.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
     
     // Validations
     if (!isset($_SESSION['logged_in']) || !$_SESSION['logged_in']) throw new Exception('Authentication required');

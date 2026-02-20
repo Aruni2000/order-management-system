@@ -8,14 +8,14 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     if (ob_get_level()) {
         ob_end_clean();
     }
-    header("Location: /order_management/dist/pages/login.php");
+    header("Location: /OMS/dist/pages/login.php");
     exit();
 }
 
 // Include the database connection file
-include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/connection/db_connection.php');
-include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/navbar.php');
-include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/sidebar.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
 
 // Handle search and filter parameters
 $search = isset($_GET['search']) ? trim($_GET['search']) : '';
@@ -96,7 +96,7 @@ if (!empty($searchConditions)) {
 }
 
 // Add ordering - prioritize default courier first, then by creation date
-$sql .= " ORDER BY c.is_default DESC, c.created_at DESC LIMIT $limit OFFSET $offset";
+$sql .= " ORDER BY is_default DESC, co_id ASC LIMIT $limit OFFSET $offset";
 
 // Execute queries
 $countResult = $conn->query($countSql);
@@ -160,7 +160,7 @@ function getStatusInfo($is_default) {
 <head>
     <title>Order Management Admin Portal - Courier Management</title>
     
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/head.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
     
     <!-- Stylesheets -->
     <link rel="stylesheet" href="../assets/css/style.css" id="main-style-link" />
@@ -184,7 +184,7 @@ function getStatusInfo($is_default) {
 
 <body>
     <!-- Page Loader -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/loader.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php'); ?>
 
     <div class="pc-container">
         <div class="pc-content">
@@ -542,7 +542,7 @@ function getStatusInfo($is_default) {
                                 <i class="fas fa-times"></i>
                             </button>
                         </div>
-                        <form id="waybillsDownloadForm" method="POST" action="/order_management/dist/api/koombiyo_get_waybills.php">
+                        <form id="waybillsDownloadForm" method="POST" action="/OMS/dist/api/koombiyo_get_waybills.php">
                             <div class="api-modal-body">
                                 <!-- Hidden courier ID -->
                                 <input type="hidden" id="waybills_courier_id" name="courier_id" value="">
@@ -729,10 +729,10 @@ function getStatusInfo($is_default) {
     </div>
 
     <!-- Footer -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/footer.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php'); ?>
 
     <!-- Scripts -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/include/scripts.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php'); ?>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
     <script>
         // Toast Message System

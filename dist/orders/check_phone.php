@@ -1,7 +1,7 @@
 <?php
 // check_phone.php - Check if phone number already exists
 session_start();
-include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
 header('Content-Type: application/json');
 

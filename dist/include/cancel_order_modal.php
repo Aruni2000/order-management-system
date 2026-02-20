@@ -21,13 +21,12 @@
                 
                 <div class="form-group">
                     <label for="cancellationReason" class="form-label">
-                        Cancellation Reason <span class="text-danger">*</span>
+                        Cancellation Reason
                     </label>
                     <textarea id="cancellationReason" 
                               class="form-control" 
                               rows="4" 
-                              placeholder="Please provide a detailed reason for cancellation (minimum 10 characters)..."
-                              required></textarea>
+                              placeholder="Please provide a reason for cancellation (optional)..."></textarea>
                     <small class="form-text text-muted">
                         This reason will be logged for record keeping purposes.
                     </small>

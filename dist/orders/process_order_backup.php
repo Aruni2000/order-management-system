@@ -12,7 +12,7 @@ error_reporting(0);
 ini_set('display_errors', 0);
 
 // Include the database connection file
-include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
 // Function to log user actions
 function logUserAction($conn, $user_id, $action_type, $inquiry_id, $details = null) {
@@ -81,7 +81,7 @@ function setMessageAndRedirect($type, $message, $redirect_url = null) {
     
     // Default redirect to create order page
     if (!$redirect_url) {
-        $redirect_url = "/order_management/dist/orders/create_order.php";
+        $redirect_url = "/OMS/dist/orders/create_order.php";
     }
     
     // Clean output buffer
@@ -682,7 +682,7 @@ foreach ($order_items as $item) {
                     // FDE NEW PARCEL API INTEGRATION
                     
                     // Include the FDE API function
-                    include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/api/fde_new_parcel_api.php');
+                    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/api/fde_new_parcel_api.php');
                     
                     // CITY HANDLING
                     $city_name = '';
@@ -828,7 +828,7 @@ foreach ($order_items as $item) {
                     // FDE EXISTING PARCEL API INTEGRATION
                     
                     // Include the FDE Existing Parcel API function
-                    include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/api/fde_existing_parcel_api.php');
+                    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/api/fde_existing_parcel_api.php');
                     
                     // CITY HANDLING
                     $city_name = '';
@@ -1052,7 +1052,7 @@ foreach ($order_items as $item) {
                             $courier_warning = '';
                             
                             // Validate API file and function
-                            $api_file_path = $_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/api/koombiyo_delivery_api.php';
+                            $api_file_path = $_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/api/koombiyo_delivery_api.php';
                             
                             if (!file_exists($api_file_path)) {
                                 $courier_warning = "Koombiyo API configuration error. Please contact support.";
@@ -1328,7 +1328,7 @@ foreach ($order_items as $item) {
 // FIXED TransExpress New Parcel API Integration Section
 // FIXED TransExpress New Parcel API Integration (Type 2)
 } elseif ($courier_type == 2) {
-    include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/api/transexpress_new_parcel_api.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/api/transexpress_new_parcel_api.php');
     
     $proceed_with_api = false;
     $district_id = null;
@@ -1412,7 +1412,7 @@ foreach ($order_items as $item) {
 
 // FIXED TransExpress Existing Parcel API Integration (Type 3)
 } elseif ($courier_type == 3) {
-    include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/api/transexpress_existing_parcel_api.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/api/transexpress_existing_parcel_api.php');
     
     $proceed_with_api = false;
     $city_name = '';
@@ -1588,7 +1588,7 @@ foreach ($order_items as $item) {
 
                 } elseif ($courier_type == 3) {
 
-                    include($_SERVER['DOCUMENT_ROOT'] . '/order_management/dist/api/royal_express_existing_parcel_api.php');
+                    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/api/royal_express_existing_parcel_api.php');
 
                     // STEP 1: Validate city and state
                     $proceed_with_api = false;
