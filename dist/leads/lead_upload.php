@@ -385,31 +385,6 @@ if ($_POST && isset($_FILES['csv_file']) && isset($_POST['users'])) {
                 }
                 $phoneStmt->close();
 
-                // Check email if phone not found
-                if ($is_new_customer && !empty($email)) {
-                    $checkEmailSql = "SELECT customer_id FROM customers 
-                                    WHERE email = ? 
-                                    AND tenant_id = ?
-                                    AND status = 'Active'
-                                    LIMIT 1";
-                    
-                    $emailStmt = $conn->prepare($checkEmailSql);
-                    if (!$emailStmt) {
-                        throw new Exception("Failed to prepare email check query: " . $conn->error);
-                    }
-                    
-                    $emailStmt->bind_param("si", $email, $tenant_id);
-                    $emailStmt->execute();
-                    $emailResult = $emailStmt->get_result();
-                    
-                    if ($emailResult->num_rows > 0) {
-                        $customerId = $emailResult->fetch_assoc()['customer_id'];
-                        $is_new_customer = false;
-                        $infoMessages[] = "Row $rowNumber: Email '$email' already registered - Order created for existing customer (Customer ID: $customerId)";
-                    }
-                    $emailStmt->close();
-                }
-
                 // Create new customer if needed
                 if ($is_new_customer) {
                     $insertCustomerSql = "INSERT INTO customers 
@@ -1176,7 +1151,7 @@ include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
                             
                             <h5 style="margin-top: 1rem;">🔍 Customer Matching Logic:</h5>
                             <ul>
-                                <li><strong>Existing customer check:</strong> System searches by Phone 1, Phone 2, OR Email</li>
+                                <li><strong>Existing customer check:</strong> System searches by Phone 1 or Phone 2 only</li>
                                 <li><strong>If ANY match found:</strong> Order created for existing customer (NO customer data update)</li>
                                 <li><strong>If NO match found:</strong> New customer created with all CSV data</li>
                             </ul>

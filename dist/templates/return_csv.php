@@ -23,7 +23,7 @@ $header = [
 $output = fopen('php://output', 'w');
 
 // Add UTF-8 BOM for Excel compatibility
-fwrite($output, "\xEF\xBB\xBF");
+//fwrite($output, "\xEF\xBB\xBF");
 
 // Write header row (using standard fputcsv with default parameters)
 fputcsv($output, $header);

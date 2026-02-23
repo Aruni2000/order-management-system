@@ -251,37 +251,38 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             }
 
             // STEP 2: If phone not found, check email (optional - frontend should prevent duplicate email)
-            if ($is_new_customer && !empty($customer_email)) {
+    //         if ($is_new_customer && !empty($customer_email)) {
                 
-                $checkEmailSql = "SELECT customer_id, name, email, phone, phone_2 
-                    FROM customers 
-                    WHERE email = ? 
-                    AND tenant_id = ?
-                    AND status = 'Active'
-                    LIMIT 1";
+    //             $checkEmailSql = "SELECT customer_id, name, email, phone, phone_2 
+    //                 FROM customers 
+    //                 WHERE email = ? 
+    //                 AND tenant_id = ?
+    //                 AND status = 'Active'
+    //                 LIMIT 1";
 
-    $stmt = $conn->prepare($checkEmailSql);
+    // $stmt = $conn->prepare($checkEmailSql);
 
-    if (!$stmt) {
-        throw new Exception("Failed to prepare email check query: " . $conn->error);
-    }
+    // if (!$stmt) {
+    //     throw new Exception("Failed to prepare email check query: " . $conn->error);
+    // }
 
-    $stmt->bind_param("si", $customer_email, $tenant_id); // UPDATED: Added tenant_id
+    // $stmt->bind_param("si", $customer_email, $tenant_id); // UPDATED: Added tenant_id
                 
-                if (!$stmt->execute()) {
-                    throw new Exception("Failed to execute email check: " . $stmt->error);
-                }
+    //             if (!$stmt->execute()) {
+    //                 throw new Exception("Failed to execute email check: " . $stmt->error);
+    //             }
                 
-                $result = $stmt->get_result();
+    //             $result = $stmt->get_result();
                 
-                if ($result->num_rows > 0) {
-                    // Email exists - this should be caught by frontend validation
-                    // But as a safety measure, we block it here too
-                    throw new Exception("This email is already registered. Please use a different email.");
-                }
+    //             if ($result->num_rows > 0) {
+    //                 $existing_customer = $result->fetch_assoc();
+    //                 $customer_id = $existing_customer['customer_id'];
+    //                 $is_new_customer = false;
+    //                 error_log("DEBUG - Email found in customer_id: $customer_id (using existing customer)");
+    //             }
                 
-                $stmt->close();
-            }
+    //             $stmt->close();
+    //         }
 
             // ==========================================
             // STEP 3: CREATE NEW CUSTOMER (Only if both phone and email are new)
@@ -556,19 +557,17 @@ error_log("DEBUG - Total amount: Rs. $total_amount");
                 tenant_id, customer_id, user_id, co_id, issue_date, due_date, 
                 subtotal, discount, total_amount, delivery_fee,
                 notes, currency, status, pay_status, pay_date, created_by,
-                product_code, full_name, mobile, mobile_2,
+                product_code, full_name, email, mobile, mobile_2,
                 address_line1, address_line2, city_id, zone_id, district_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
             $stmt = $conn->prepare($insertOrderSql);
 
             if (!$stmt) {
                 throw new Exception("Failed to prepare order header insert query: " . $conn->error);
             }
-
-  // ✅ UPDATED: Added co_id parameter (now 25 total parameters)
 $stmt->bind_param(
-    "iiiissddddsssssissssssiii",  // 25 parameters (added 'i' for co_id)
+    "iiiissddddsssssisssssssiii", 
     $tenant_id,                     // 1.  tenant_id
     $customer_id,                   // 2.  customer_id
     $user_id,                       // 3.  user_id
@@ -587,13 +586,14 @@ $stmt->bind_param(
     $user_id,                       // 16. created_by
     $final_product_code,            // 17. product_code
     $final_full_name,               // 18. full_name
-    $final_mobile,                  // 19. mobile
-    $final_mobile_2,                // 20. mobile_2
-    $final_address_line1,           // 21. address_line1
-    $final_address_line2,           // 22. address_line2
-    $final_city_id,                 // 23. city_id
-    $final_zone_id,                 // 24. zone_id
-    $final_district_id              // 25. district_id
+    $final_email,                   // 19. email
+    $final_mobile,                  // 20. mobile
+    $final_mobile_2,                // 21. mobile_2
+    $final_address_line1,           // 22. address_line1
+    $final_address_line2,           // 23. address_line2
+    $final_city_id,                 // 24. city_id
+    $final_zone_id,                 // 25. zone_id
+    $final_district_id              // 26. district_id
 );
 
     if (!$stmt->execute()) {

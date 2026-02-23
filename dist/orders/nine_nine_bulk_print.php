@@ -122,7 +122,7 @@ $sql = "
  FROM order_header o
  LEFT JOIN customers c ON o.customer_id = c.customer_id
  LEFT JOIN couriers cr ON o.co_id = cr.co_id
- LEFT JOIN city_table ct ON c.city_id = ct.city_id
+ LEFT JOIN city_table ct ON o.city_id = ct.city_id
  WHERE $whereClause
  ORDER BY o.$date_filter DESC
  LIMIT $limit
@@ -206,7 +206,7 @@ function currencySymbol($c)
 
 function barcodeImg($d)
 {
-    return "https://barcodeapi.org/api/code128/" . urlencode($d);
+    return "../include/barcode.php?code=" . urlencode($d);
 }
 
 function formatProducts($order_id, $products_by_order)
@@ -382,6 +382,9 @@ window.onload = function() {
         <img src="<?php echo barcodeImg($o['tracking_number']); ?>" 
              style="width:155px; height:auto;" 
              alt="<?php echo htmlspecialchars($o['tracking_number']); ?>">
+        <div style="font-size: 12px; margin-top: 2px; color: #000; font-weight: bold; font-family: sans-serif; text-align:center;">
+            <?php echo htmlspecialchars($o['tracking_number']); ?>
+        </div>
     </div>
 <?php endif; ?>
 

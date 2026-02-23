@@ -830,6 +830,18 @@ const PhoneValidator = {
         }
     },
     
+    getCustomerByPhone: async (phone) => {
+        if (!phone || phone.length !== 10) return { exists: false };
+        
+        try {
+            const response = await fetch(`get_customer_by_phone.php?phone=${encodeURIComponent(phone)}`);
+            return await response.json();
+        } catch (error) {
+            console.error('Error getting customer by phone:', error);
+            return { exists: false };
+        }
+    },
+    
     // Validate phone field with debouncing
     validatePhoneField: (fieldId, otherFieldId) => {
         const field = document.getElementById(fieldId);
@@ -840,9 +852,11 @@ const PhoneValidator = {
             clearTimeout(PhoneValidator.timeouts[fieldId]);
         }
         
-        // Remove previous error for this field
+        // Remove previous error/success for this field
         const existingError = field.parentNode.querySelector('.phone-validation-error');
         if (existingError) existingError.remove();
+        const existingSuccess = field.parentNode.querySelector('.phone-validation-success');
+        if (existingSuccess) existingSuccess.remove();
         
         const phone = field.value.trim();
         const otherPhone = otherField.value.trim();
@@ -869,21 +883,14 @@ const PhoneValidator = {
         // Debounced database check
         PhoneValidator.timeouts[fieldId] = setTimeout(async () => {
             const currentCustomerId = document.getElementById('customer_id').value || 0;
-            const result = await PhoneValidator.checkPhoneExists(phone, currentCustomerId);
+            const customerResult = await PhoneValidator.getCustomerByPhone(phone);
             
-            if (result.exists) {
-                let message = '';
-                if (result.type === 'primary') {
-                    message = 'This number is already registered as a primary phone';
-                } else if (result.type === 'secondary') {
-                    message = 'This number is already registered as a secondary phone';
-                }
-                
-                ValidationUtils.showError(field, message, 'phone-validation-error');
+            if (customerResult.exists && customerResult.customer && customerResult.customer.customer_id != currentCustomerId) {
+                isExistingCustomer = true;
             }
             
             FormValidator.validateAndToggleSubmit();
-        }, 500); // 500ms debounce
+        }, 500);
     }
 };
 
@@ -924,51 +931,6 @@ const EmailValidator = {
         }
     },
 
-    // Auto-fill customer data
-    autoFillCustomerData: (customerData) => {
-        // Set customer ID (hidden field)
-        document.getElementById('customer_id').value = customerData.customer_id;
-        
-        // Fill all form fields
-        document.getElementById('customer_name').value = customerData.name || '';
-        document.getElementById('customer_phone').value = customerData.phone || '';
-        document.getElementById('customer_phone_2').value = customerData.phone_2 || '';
-        document.getElementById('address_line1').value = customerData.address_line1 || '';
-        document.getElementById('address_line2').value = customerData.address_line2 || '';
-        document.getElementById('city_id').value = customerData.city_id || '';
-        document.getElementById('city_autocomplete').value = customerData.city_name || '';
-        
-        // Mark as existing customer
-        isExistingCustomer = true;
-        
-        // Keep all fields editable
-        CustomerManager.toggleFields(false);
-        
-        // Clear any existing validation errors
-        ValidationUtils.clearErrors();
-        ValidationUtils.clearErrors('phone-validation-error');
-        ValidationUtils.clearErrors('email-validation-error');
-        
-        // Show success message
-        const emailField = document.getElementById('customer_email');
-        const successMsg = document.createElement('div');
-        successMsg.className = 'email-validation-success';
-        successMsg.style.color = '#28a745';
-        successMsg.style.fontSize = '0.875rem';
-        successMsg.style.marginTop = '0.25rem';
-        successMsg.textContent = '✓ Customer found — email already exists';
-        emailField.parentNode.appendChild(successMsg);
-        
-        // Remove success message after 3 seconds
-        setTimeout(() => {
-            const successEl = emailField.parentNode.querySelector('.email-validation-success');
-            if (successEl) successEl.remove();
-        }, 3000);
-        
-        // Validate form
-        FormValidator.validateAndToggleSubmit();
-    },
-
     validateEmailField: () => {
         const field = document.getElementById('customer_email');
 
@@ -981,12 +943,8 @@ const EmailValidator = {
 
         const email = field.value.trim();
         
-        // If email is empty, clear customer data if it was auto-filled
+        // If email is empty, just validate form
         if (!email) {
-            if (isExistingCustomer) {
-                // In edit mode, we don't necessarily want to clear everything if email is cleared
-                // but we should check if they want to treat it as a new customer
-            }
             FormValidator.validateAndToggleSubmit();
             return;
         }
@@ -1006,25 +964,12 @@ const EmailValidator = {
         clearTimeout(EmailValidator.timeout);
 
         EmailValidator.timeout = setTimeout(async () => {
-            const customerId = document.getElementById('customer_id').value || 0;
+            const currentCustomerId = document.getElementById('customer_id').value || 0;
             
-            // Try to get customer data by email
             const customerResult = await EmailValidator.getCustomerByEmail(email);
             
-            if (customerResult.exists && customerResult.customer && customerResult.customer.customer_id != customerId) {
-                // Customer found and it's NOT the current customer - auto-fill data
-                EmailValidator.autoFillCustomerData(customerResult.customer);
-            } else {
-                // No customer found OR it's the current customer - check if email is used elsewhere
-                const duplicateResult = await EmailValidator.checkEmailExists(email, customerId);
-                
-                if (duplicateResult.exists) {
-                    ValidationUtils.showError(
-                        field,
-                        'This email is already registered to another customer',
-                        'email-validation-error'
-                    );
-                }
+            if (customerResult.exists && customerResult.customer && customerResult.customer.customer_id != currentCustomerId) {
+                isExistingCustomer = true;
             }
 
             FormValidator.validateAndToggleSubmit();

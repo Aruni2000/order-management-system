@@ -932,6 +932,20 @@ const PhoneValidator = {
         }
     },
     
+    getCustomerByPhone: async (phone) => {
+        if (!phone || phone.length !== 10) return { exists: false };
+        
+        const tenantId = document.querySelector('input[name="tenant_id"]').value;
+        
+        try {
+            const response = await fetch(`get_customer_by_phone.php?phone=${encodeURIComponent(phone)}&tenant_id=${tenantId}`);
+            return await response.json();
+        } catch (error) {
+            console.error('Error getting customer by phone:', error);
+            return { exists: false };
+        }
+    },
+    
     validatePhoneField: (fieldId, otherFieldId) => {
         const field = document.getElementById(fieldId);
         const otherField = document.getElementById(otherFieldId);
@@ -963,18 +977,16 @@ const PhoneValidator = {
         }
         
         PhoneValidator.timeouts[fieldId] = setTimeout(async () => {
-            const currentCustomerId = document.getElementById('customer_id').value || 0;
-            const result = await PhoneValidator.checkPhoneExists(phone, currentCustomerId);
+            const customerResult = await PhoneValidator.getCustomerByPhone(phone);
             
-            if (result.exists) {
-                let message = '';
-                if (result.type === 'primary') {
-                    message = 'This number is already registered as a primary phone';
-                } else if (result.type === 'secondary') {
-                    message = 'This number is already registered as a secondary phone';
+            if (customerResult.exists && customerResult.customer) {
+                document.getElementById('customer_id').value = customerResult.customer.customer_id;
+                isExistingCustomer = true;
+            } else {
+                if (isExistingCustomer) {
+                    document.getElementById('customer_id').value = '';
+                    isExistingCustomer = false;
                 }
-                
-                ValidationUtils.showError(field, message, 'phone-validation-error');
             }
             
             FormValidator.validateAndToggleSubmit();
@@ -1016,40 +1028,6 @@ const EmailValidator = {
             console.error('Get customer error:', err);
             return { exists: false };
         }
-    },
-
-    autoFillCustomerData: (customerData) => {
-        document.getElementById('customer_id').value = customerData.customer_id;
-        document.getElementById('customer_name').value = customerData.name || '';
-        document.getElementById('customer_phone').value = customerData.phone || '';
-        document.getElementById('customer_phone_2').value = customerData.phone_2 || '';
-        document.getElementById('address_line1').value = customerData.address_line1 || '';
-        document.getElementById('address_line2').value = customerData.address_line2 || '';
-        document.getElementById('city_id').value = customerData.city_id || '';
-        document.getElementById('city_autocomplete').value = customerData.city_name || '';
-        
-        isExistingCustomer = true;
-        CustomerManager.toggleFields(false);
-        ValidationUtils.clearErrors();
-        ValidationUtils.clearErrors('phone-validation-error');
-        ValidationUtils.clearErrors('email-validation-error');
-        
-        const emailField = document.getElementById('customer_email');
-        const successMsg = document.createElement('div');
-        successMsg.className = 'email-validation-success';
-        successMsg.style.color = '#28a745';
-        successMsg.style.fontSize = '0.875rem';
-        successMsg.style.marginTop = '0.25rem';
-        successMsg.textContent = '✓ Customer found — email already exists';
-        emailField.parentNode.appendChild(successMsg);
-        
-        setTimeout(() => {
-            const successEl = emailField.parentNode.querySelector('.email-validation-success');
-            if (successEl) successEl.remove();
-        }, 3000);
-        
-        FormValidator.validateAndToggleSubmit();
-        console.log('Auto-filled customer data for:', customerData.name);
     },
 
     validateEmailField: () => {
@@ -1096,27 +1074,13 @@ const EmailValidator = {
             const customerResult = await EmailValidator.getCustomerByEmail(email);
             
             if (customerResult.exists && customerResult.customer) {
-                EmailValidator.autoFillCustomerData(customerResult.customer);
+                document.getElementById('customer_id').value = customerResult.customer.customer_id;
+                isExistingCustomer = true;
             } else {
-                const duplicateResult = await EmailValidator.checkEmailExists(email, customerId);
-                
-                if (duplicateResult.exists) {
-                    ValidationUtils.showError(
-                        field,
-                        'This email is already registered',
-                        'email-validation-error'
-                    );
-                    if (isExistingCustomer) {
-                        document.getElementById('customer_id').value = '';
-                        isExistingCustomer = false;
-                        CustomerManager.toggleFields(false);
-                    }
-                } else {
-                    if (isExistingCustomer) {
-                        document.getElementById('customer_id').value = '';
-                        isExistingCustomer = false;
-                        CustomerManager.toggleFields(false);
-                    }
+                if (isExistingCustomer) {
+                    document.getElementById('customer_id').value = '';
+                    isExistingCustomer = false;
+                    CustomerManager.toggleFields(false);
                 }
             }
 

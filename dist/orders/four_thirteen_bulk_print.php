@@ -74,7 +74,7 @@ $sql = "SELECT o.order_id, o.tenant_id, o.customer_id, o.full_name, o.mobile, o.
         FROM order_header o 
         LEFT JOIN customers c ON o.customer_id = c.customer_id
         LEFT JOIN couriers cr ON o.co_id = cr.co_id
-        LEFT JOIN city_table ct ON c.city_id = ct.city_id AND ct.is_active = 1
+        LEFT JOIN city_table ct ON o.city_id = ct.city_id AND ct.is_active = 1
         WHERE o.interface IN ('individual', 'leads')";
 
 // Build search conditions (same as main page)
@@ -203,8 +203,7 @@ function getCurrencySymbol($currency) {
 }
 
 function getBarcodeUrl($data) {
-    // Using Code128 format which is widely supported by barcode scanners
-    return "https://barcodeapi.org/api/code128/{$data}";
+    return "../include/barcode.php?text=" . urlencode($data);
 }
 
 // NEW: Function to check if tracking number exists
@@ -703,6 +702,9 @@ foreach ($orders as $order) {
                         <div class="barcode-section">
                             <?php if ($has_tracking): ?>
                                 <img src="<?php echo $barcode_url; ?>" alt="Tracking Barcode" class="barcode-image" onerror="this.style.display='none'">
+                                <div style="font-size: 16px; margin-top: 2px; color: #000; font-weight: bold; font-family: sans-serif; text-align:center;">
+                                    <?php echo htmlspecialchars($order['tracking_number']); ?>
+                                </div>
                             <?php else: ?>
                                 <div class="no-tracking-barcode">
                                     NO TRACKING<br>

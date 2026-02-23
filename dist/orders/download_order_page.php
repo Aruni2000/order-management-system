@@ -52,6 +52,7 @@ $order_query = "SELECT
                 
                 COALESCE(NULLIF(oh.address_line1, ''), c.address_line1) AS customer_address_line1,
                 COALESCE(NULLIF(oh.address_line2, ''), c.address_line2) AS customer_address_line2,
+                COALESCE(NULLIF(oh.email, ''), c.email) AS customer_email,
                 COALESCE(NULLIF(oh.city_id, 0), c.city_id) AS city_id,
                 
                 -- City name lookup
@@ -632,6 +633,9 @@ error_log("  - Data Source: " . (empty($order['full_name']) ? 'customers table (
                     Phone Number 1: <?php echo htmlspecialchars($order['customer_phone']); ?>
                     <?php if (!empty($order['customer_phone_2'])): ?>
                         <br><span class="phone-secondary">Phone Number 2: <?php echo htmlspecialchars($order['customer_phone_2']); ?></span>
+                    <?php endif; ?>
+                    <?php if (!empty($order['customer_email'])): ?>
+                        <br>Email: <?php echo htmlspecialchars($order['customer_email']); ?>
                     <?php endif; ?>
                 </div>
             </div>

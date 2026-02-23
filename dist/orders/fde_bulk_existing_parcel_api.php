@@ -228,7 +228,7 @@ try {
             ct.city_name
         FROM order_header oh 
         LEFT JOIN customers c ON oh.customer_id = c.customer_id 
-        LEFT JOIN city_table ct ON c.city_id = ct.city_id
+        LEFT JOIN city_table ct ON oh.city_id = ct.city_id
         WHERE oh.order_id IN ($placeholders) 
         AND oh.status = 'pending'
     ");

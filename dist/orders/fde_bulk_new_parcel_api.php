@@ -162,7 +162,7 @@ try {
         SELECT oh.*, c.name as customer_name, c.phone as customer_phone, c.address_line1 as customer_address1, c.address_line2 as customer_address2, ct.city_name
         FROM order_header oh 
         LEFT JOIN customers c ON oh.customer_id = c.customer_id 
-        LEFT JOIN city_table ct ON c.city_id = ct.city_id
+        LEFT JOIN city_table ct ON oh.city_id = ct.city_id
         WHERE oh.order_id IN ($placeholders) AND oh.status = 'pending'
     ");
     $stmt->bind_param(str_repeat('i', count($orderIds)), ...$orderIds);
