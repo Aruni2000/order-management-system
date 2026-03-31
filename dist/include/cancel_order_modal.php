@@ -26,7 +26,7 @@
                     <textarea id="cancellationReason" 
                               class="form-control" 
                               rows="4" 
-                              placeholder="Please provide a reason for cancellation (optional)..."></textarea>
+                              placeholder="Optional: Please provide a reason for cancellation..."></textarea>
                     <small class="form-text text-muted">
                         This reason will be logged for record keeping purposes.
                     </small>

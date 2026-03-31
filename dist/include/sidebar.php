@@ -203,6 +203,7 @@ $safe_company_name = htmlspecialchars($company_name, ENT_QUOTES, 'UTF-8');
           <ul class="pc-submenu">
             <li class="pc-item"><a class="pc-link" href="../products/add_product.php">Add New Product</a></li>
             <li class="pc-item"><a class="pc-link" href="../products/product_list.php">All Products</a></li>
+            <li class="pc-item"><a class="pc-link" href="../products/category_list.php">Category List</a></li>
           </ul>
         </li>
 

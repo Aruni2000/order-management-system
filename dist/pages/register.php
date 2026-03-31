@@ -10,13 +10,15 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta
       name="description"
-      content="Datta Able is trending dashboard template made using Bootstrap 5 design framework. Datta Able is available in Bootstrap, React, CodeIgniter, Angular,  and .net Technologies."
+      content="FEIT Solutions Order Management System is a modern dashboard built to manage orders, inventory, customers, and business operations efficiently."
     />
+
     <meta
       name="keywords"
-      content="Bootstrap admin template, Dashboard UI Kit, Dashboard Template, Backend Panel, react dashboard, angular dashboard"
+      content="FEIT Solutions, Order Management System, OMS dashboard, order tracking system, inventory management, business dashboard, admin panel"
     />
-    <meta name="author" content="CodedThemes" />
+
+    <meta name="author" content="FEIT Solutions" />
 
     <!-- [Favicon] icon -->
     <link rel="icon" href="../assets/images/favicon.svg" type="image/x-icon" />

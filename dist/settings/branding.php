@@ -426,6 +426,8 @@ include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
 </head>
 
 <body>
+    <!-- Page Loader -->
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php'); ?>
     <!-- [ Main Content ] start -->
     <div class="pc-container">
         <div class="pc-content">

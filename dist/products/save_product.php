@@ -56,13 +56,17 @@ try {
     $description = sanitizeInput($_POST['description'] ?? '');
 
     // -------------------------------------------------------------------------
-    // REQUIRED FIELDS VALIDATION (updated to include description)
+    // REQUIRED FIELDS VALIDATION
     // -------------------------------------------------------------------------
-    if (empty($name) || empty($status) || empty($lkr_price) || empty($product_code) || empty($description)) {
+    if (empty($name) || empty($status) || empty($lkr_price) || empty($product_code) || empty($description) || $category_id <= 0) {
         $response['message'] = 'Required fields are missing';
 
         if (empty($description)) {
             $response['errors']['description'] = 'Description is required';
+        }
+        
+        if ($category_id <= 0) {
+            $response['errors']['category_id'] = 'Category is required';
         }
 
         echo json_encode($response);
@@ -95,8 +99,8 @@ try {
     }
 
     // Prepare insert query
-    $insertQuery = "INSERT INTO products (name, description, lkr_price, status, product_code) 
-                    VALUES (?, ?, ?, ?, ?)";
+    $insertQuery = "INSERT INTO products (name, description, lkr_price, status, product_code, category_id) 
+                    VALUES (?, ?, ?, ?, ?, ?)";
     $insertStmt = $conn->prepare($insertQuery);
 
     if (!$insertStmt) {
@@ -104,7 +108,7 @@ try {
     }
 
     // Bind parameters
-    $insertStmt->bind_param("ssdss", $name, $description, $lkr_price, $status, $product_code);
+    $insertStmt->bind_param("ssdssi", $name, $description, $lkr_price, $status, $product_code, $category_id);
 
     // Execute the query
     if ($insertStmt->execute()) {
@@ -114,7 +118,7 @@ try {
         if (isset($_SESSION['user_id'])) {
             $user_id = $_SESSION['user_id'];
             $action_type = 'product_create';
-            $details = "New product created - Name: {$name}, Code: {$product_code}, Price: LKR {$lkr_price}, Status: {$status}";
+            $details = "New product created - Name: {$name}, Code: {$product_code}, Price: LKR {$lkr_price}, Status: {$status}Category ID: {$category_id}";
 
             $logQuery = "INSERT INTO user_logs (user_id, action_type, inquiry_id, details) 
                          VALUES (?, ?, ?, ?)";

@@ -811,14 +811,14 @@ Additional CSS for Order Creation page - (create_order.php) End
 */
 
 
-body {
+/* body {
     font-family: Arial, sans-serif;
     margin: 0;
     padding: 0;
     background-color: #f4f6f9;
     font-size: 14px;
     color: #888888;
-}
+} */
 
 .order-container {
     max-width: 100%;

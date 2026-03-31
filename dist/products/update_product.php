@@ -81,6 +81,8 @@ try {
     $product_code = sanitizeInput($_POST['product_code'] ?? '');
     $description = sanitizeInput($_POST['description'] ?? '');
 
+    $category_id = intval($_POST['category_id'] ?? $originalProduct['category_id']);
+
     // Server-side validation
     $errors = [];
 
@@ -128,6 +130,10 @@ try {
         $errors['description'] = 'Description is too long (maximum 65,535 characters)';
     }
 
+    if ($category_id <= 0) {
+        $errors['category_id'] = 'Category is required';
+    }
+
     // Check for duplicate product code (excluding current product)
     if (empty($errors['product_code'])) {
         $checkCodeQuery = "SELECT id FROM products WHERE product_code = ? AND id != ? LIMIT 1";
@@ -152,7 +158,7 @@ try {
 
     // Prepare update query
     $updateQuery = "UPDATE products 
-                    SET name = ?, description = ?, lkr_price = ?, status = ?, product_code = ? 
+                    SET name = ?, description = ?, lkr_price = ?, status = ?, product_code = ?, category_id = ?
                     WHERE id = ?";
 
     $updateStmt = $conn->prepare($updateQuery);
@@ -162,7 +168,7 @@ try {
     }
 
     // Bind parameters
-    $updateStmt->bind_param("ssdssi", $name, $description, $lkr_price, $status, $product_code, $product_id);
+    $updateStmt->bind_param("ssdssii", $name, $description, $lkr_price, $status, $product_code, $category_id, $product_id);
 
     // Execute the update
     if ($updateStmt->execute()) {
@@ -190,6 +196,9 @@ try {
                 }
                 if (($originalProduct['description'] ?? '') !== ($description ?? '')) {
                     $changes[] = "Description updated";
+                }
+                if (intval($originalProduct['category_id'] ?? 0) !== $category_id) {
+                    $changes[] = "Category ID: {$originalProduct['category_id']} to {$category_id}";
                 }
 
                 $details = empty($changes)
