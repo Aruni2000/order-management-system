@@ -381,7 +381,6 @@ if ($_POST && isset($_FILES['csv_file']) && isset($_POST['users'])) {
                 if ($phoneResult->num_rows > 0) {
                     $customerId = $phoneResult->fetch_assoc()['customer_id'];
                     $is_new_customer = false;
-                    $infoMessages[] = "Row $rowNumber: Phone number already exists - Order created for existing customer (Customer ID: $customerId)";
                 }
                 $phoneStmt->close();
 

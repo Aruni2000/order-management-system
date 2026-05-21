@@ -92,6 +92,10 @@ if ($is_main_admin) {
 // STEP 3: Form Submission Handling (POST)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_branding'])) {
 
+    // Initialize flags
+    $logo_removed = false;
+    $favicon_removed = false;
+
     // Verify CSRF token
     if (!isset($_POST['csrf_token']) || $_POST['csrf_token'] !== $_SESSION['csrf_token']) {
         $_SESSION['error_message'] = "Invalid request. Please try again.";
@@ -130,6 +134,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_branding'])) {
         $_SESSION['error_message'] = "Please enter a valid delivery fee (non-negative number).";
         header("Location: " . $_SERVER['PHP_SELF']);
         exit();
+    }
+    
+    // Load current branding before processing removal
+    $check_branding_query = "SELECT logo_url, fav_icon_url FROM branding WHERE tenant_id = ? LIMIT 1";
+    $stmt_branding = $conn->prepare($check_branding_query);
+    $stmt_branding->bind_param("i", $target_tenant_id);
+    $stmt_branding->execute();
+    $branding_result = $stmt_branding->get_result();
+    $current_branding = $branding_result->fetch_assoc();
+    $stmt_branding->close();
+
+    // Handle logo removal
+    if (isset($_POST['remove_logo']) && $_POST['remove_logo'] == '1' && !empty($current_branding['logo_url'])) {
+        $old_file = $_SERVER['DOCUMENT_ROOT'] . $current_branding['logo_url'];
+        if (file_exists($old_file)) {
+            unlink($old_file);
+        }
+        $logo_removed = true;
+    }
+    
+    // Handle favicon removal
+    if (isset($_POST['remove_favicon']) && $_POST['remove_favicon'] == '1' && !empty($current_branding['fav_icon_url'])) {
+        $old_file = $_SERVER['DOCUMENT_ROOT'] . $current_branding['fav_icon_url'];
+        if (file_exists($old_file)) {
+            unlink($old_file);
+        }
+        $favicon_removed = true;
     }
     
     // Logo upload handling
@@ -220,16 +251,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_branding'])) {
         ];
         $types = "sssssssss"; // 9 's' for strings/varchar/decimal
         
-        // Add file fields if a new one was uploaded
+        // Handle logo URL (new upload or removal)
         if (!empty($logo_url)) {
             $update_sql_parts[] = "logo_url = ?";
             $params[] = $logo_url;
             $types .= "s";
+        } elseif ($logo_removed) {
+            $update_sql_parts[] = "logo_url = ?";
+            $params[] = '';
+            $types .= "s";
         }
         
+        // Handle favicon URL (new upload or removal)
         if (!empty($fav_icon_url)) {
             $update_sql_parts[] = "fav_icon_url = ?";
             $params[] = $fav_icon_url;
+            $types .= "s";
+        } elseif ($favicon_removed) {
+            $update_sql_parts[] = "fav_icon_url = ?";
+            $params[] = '';
             $types .= "s";
         }
         
@@ -280,11 +320,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_branding'])) {
                 $old_logo = !empty($old_branding['logo_url']) ? basename($old_branding['logo_url']) : 'None';
                 $new_logo = basename($logo_url);
                 $changes['logo'] = ['from' => $old_logo, 'to' => $new_logo];
+            } elseif ($logo_removed) {
+                $old_logo = !empty($old_branding['logo_url']) ? basename($old_branding['logo_url']) : 'None';
+                $changes['logo'] = ['from' => $old_logo, 'to' => 'Removed'];
             }
             if ($favicon_uploaded) {
                 $old_favicon = !empty($old_branding['fav_icon_url']) ? basename($old_branding['fav_icon_url']) : 'None';
                 $new_favicon = basename($fav_icon_url);
                 $changes['favicon'] = ['from' => $old_favicon, 'to' => $new_favicon];
+            } elseif ($favicon_removed) {
+                $old_favicon = !empty($old_branding['fav_icon_url']) ? basename($old_branding['fav_icon_url']) : 'None';
+                $changes['favicon'] = ['from' => $old_favicon, 'to' => 'Removed'];
             }
             
             // Log only if there were actual changes
@@ -485,8 +531,8 @@ if ($result && $result->num_rows > 0) {
                                     <div class="form-column">
                                         <div class="form-group">
                                             <label for="company_name" class="form-label">Company Name *</label>
-                                            <input type="text" class="form-control" id="company_name" name="company_name" 
-                                                   value="<?php echo htmlspecialchars($branding['company_name']); ?>" required>
+                                            <span>(max 15 characters)</span>
+                                            <input type="text" class="form-control" id="company_name" name="company_name" maxlength="15" value="<?php echo htmlspecialchars($branding['company_name']); ?>" required>
                                         </div>
                                     </div>
                                     <!-- Website Name -->
@@ -550,6 +596,10 @@ if ($result && $result->num_rows > 0) {
                                             <?php if (!empty($branding['logo_url'])): ?>
                                                 <p class="mt-2">Current Logo:</p>
                                                 <img src="<?php echo htmlspecialchars($branding['logo_url']); ?>" alt="Current Logo" class="file-preview">
+                                                <div class="form-check mt-2">
+                                                    <input type="checkbox" class="form-check-input" id="remove_logo" name="remove_logo" value="1">
+                                                    <label class="form-check-label text-danger" for="remove_logo">Remove current logo</label>
+                                                </div>
                                             <?php endif; ?>
                                         </div>
                                     </div>
@@ -561,6 +611,10 @@ if ($result && $result->num_rows > 0) {
                                             <?php if (!empty($branding['fav_icon_url'])): ?>
                                                 <p class="mt-2">Current Favicon:</p>
                                                 <img src="<?php echo htmlspecialchars($branding['fav_icon_url']); ?>" alt="Current Favicon" class="file-preview">
+                                                <div class="form-check mt-2">
+                                                    <input type="checkbox" class="form-check-input" id="remove_favicon" name="remove_favicon" value="1">
+                                                    <label class="form-check-label text-danger" for="remove_favicon">Remove current favicon</label>
+                                                </div>
                                             <?php endif; ?>
                                         </div>
                                     </div>

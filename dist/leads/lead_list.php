@@ -20,10 +20,16 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
 
 // Get user permissions and tenant info
 $logged_user_id = isset($_SESSION['user_id']) ? $_SESSION['user_id'] : 0;
-$is_main_admin = isset($_SESSION['is_main_admin']) ? $_SESSION['is_main_admin'] : 0;
-$role_id = isset($_SESSION['role_id']) ? $_SESSION['role_id'] : 0;
+$is_admin = (isset($_SESSION['role_id']) && $_SESSION['role_id'] == 1) ? 1 : 0;
+$is_main_admin_tenant = (isset($_SESSION['is_main_admin']) && $_SESSION['is_main_admin'] == 1) ? 1 : 0;
 $tenant_id = isset($_SESSION['tenant_id']) ? $_SESSION['tenant_id'] : 0;
 $tenant_filter = isset($_GET['tenant_filter']) ? $_GET['tenant_filter'] : 0;
+
+// Access control - Only ($is_admin == 1 && $is_main_admin_tenant == 1) can access this page
+if ($is_admin != 1 || $is_main_admin_tenant != 1) {
+    header("Location: /OMS/dist/dashboard/index.php");
+    exit();
+}
 
 // Include database connection
 include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
@@ -35,7 +41,6 @@ $search = isset($_GET['search']) ? trim($_GET['search']) : '';
 $order_id_filter = isset($_GET['order_id_filter']) ? trim($_GET['order_id_filter']) : '';
 $customer_name_filter = isset($_GET['customer_name_filter']) ? trim($_GET['customer_name_filter']) : '';
 $phone_filter = isset($_GET['phone_filter']) ? trim($_GET['phone_filter']) : '';
-$user_filter = isset($_GET['user_filter']) ? trim($_GET['user_filter']) : '';
 $date_from = isset($_GET['date_from']) ? trim($_GET['date_from']) : '';
 $date_to = isset($_GET['date_to']) ? trim($_GET['date_to']) : '';
 $status_filter = isset($_GET['status_filter']) ? trim($_GET['status_filter']) : '';
@@ -50,16 +55,11 @@ $offset = ($page - 1) * $limit;
  * Main query to fetch leads (orders with interface='leads')
  */
 
-// Access Control logic
+// Access Control logic - For All Leads page, main admins see everything or selected tenant
 $accessFilter = "";
-if ($is_main_admin === 1 && $role_id === 1) {
-    // Superadmin: See everything, or filter by tenant if selected
-    if ($tenant_filter > 0) {
-        $accessFilter = " AND i.tenant_id = $tenant_filter";
-    }
-} else {
-    // Everyone else: Restricted to their own tenant
-    $accessFilter = " AND i.tenant_id = $tenant_id";
+if ($tenant_filter > 0) {
+    $tenantTerm = (int)$tenant_filter;
+    $accessFilter = " AND i.tenant_id = $tenantTerm";
 }
 
 // Base SQL for counting total records - Updated for better user filtering
@@ -143,13 +143,6 @@ if (!empty($phone_filter)) {
     $searchConditions[] = "(c.phone LIKE '%$phoneTerm%' OR i.mobile LIKE '%$phoneTerm%')";
 }
 
-// Simple User filter - Shows only leads assigned to selected user
-if (!empty($user_filter)) {
-    $userTerm = $conn->real_escape_string($user_filter);
-    $searchConditions[] = "i.user_id = '$userTerm'";
-}
-
-// Date range filter
 if (!empty($date_from)) {
     $dateFromTerm = $conn->real_escape_string($date_from);
     $searchConditions[] = "DATE(i.issue_date) >= '$dateFromTerm'";
@@ -190,24 +183,6 @@ if ($countResult && $countResult->num_rows > 0) {
 }
 $totalPages = ceil($totalRows / $limit);
 $result = $conn->query($sql);
-
-// Get all users for dropdown filter - Only active users within the same tenant
-if ($is_main_admin === 1 && $role_id === 1) {
-    if ($tenant_filter > 0) {
-        $usersQuery = "SELECT id, name, email FROM users WHERE status = 'active' AND tenant_id = $tenant_filter ORDER BY name ASC";
-    } else {
-        $usersQuery = "SELECT id, name, email FROM users WHERE status = 'active' ORDER BY name ASC";
-    }
-} else {
-    $usersQuery = "SELECT id, name, email FROM users WHERE status = 'active' AND tenant_id = $tenant_id ORDER BY name ASC";
-}
-$usersResult = $conn->query($usersQuery);
-$users = [];
-if ($usersResult && $usersResult->num_rows > 0) {
-    while ($user = $usersResult->fetch_assoc()) {
-        $users[] = $user;
-    }
-}
 
 // Include navigation components
 
@@ -306,7 +281,6 @@ if ($usersResult && $usersResult->num_rows > 0) {
                 <div class="tracking-container">
                    
                     <form class="tracking-form" method="GET" action="">
-                        <?php if ($is_main_admin === 1 && $role_id === 1): ?>
                         <?php 
                         // Fetch tenants for superadmin filter
                         $tenants = [];
@@ -319,9 +293,9 @@ if ($usersResult && $usersResult->num_rows > 0) {
                         }
                         ?>
                         <div class="form-group">
-                            <label for="tenant_filter">Tenant</label>
+                            <label for="tenant_filter">Tenant Company</label>
                             <select id="tenant_filter" name="tenant_filter" onchange="this.form.submit()">
-                                <option value="">All Tenants</option>
+                                <option value="">All Companies</option>
                                 <?php foreach ($tenants as $t): ?>
                                     <option value="<?php echo $t['tenant_id']; ?>" <?php echo ($tenant_filter == $t['tenant_id']) ? 'selected' : ''; ?>>
                                         <?php echo htmlspecialchars($t['company_name']); ?>
@@ -329,7 +303,6 @@ if ($usersResult && $usersResult->num_rows > 0) {
                                 <?php endforeach; ?>
                             </select>
                         </div>
-                        <?php endif; ?>
 
                         <div class="form-group">
                             <label for="order_id_filter">Order ID</label>
@@ -352,19 +325,6 @@ if ($usersResult && $usersResult->num_rows > 0) {
                                    value="<?php echo htmlspecialchars($phone_filter); ?>">
                         </div>
                         
-                        <!-- Simple User Filter Dropdown -->
-                        <div class="form-group">
-                            <label for="user_filter">Assigned User</label>
-                            <select id="user_filter" name="user_filter">
-                                <option value="">All Users</option>
-                                <?php foreach ($users as $user): ?>
-                                    <option value="<?php echo $user['id']; ?>" 
-                                            <?php echo ($user_filter == $user['id']) ? 'selected' : ''; ?>>
-                                        <?php echo htmlspecialchars($user['name']) . ' (ID: ' . $user['id'] . ')'; ?>
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
                         
                         <div class="form-group">
                             <label for="date_from">Date From</label>
@@ -435,19 +395,6 @@ if ($usersResult && $usersResult->num_rows > 0) {
                     <div class="order-count-dash">-</div>
                     <div class="order-count-subtitle">Total Leads</div>
                     
-                    <?php if (!empty($user_filter)): ?>
-                        <?php
-                        // Get the user name for display
-                        $displayUserName = '';
-                        foreach ($users as $user) {
-                            if ($user['id'] == $user_filter) {
-                                $displayUserName = $user['name'];
-                                break;
-                            }
-                        }
-                        ?>
-                       
-                    <?php endif; ?>
                 </div>
 
                 <!-- Leads Table -->
@@ -458,9 +405,7 @@ if ($usersResult && $usersResult->num_rows > 0) {
                                 <th>Order ID</th>
                                 <th>Customer Name</th>
                                 <th>Phone Number</th>
-                                <?php if ($is_main_admin === 1 && $role_id === 1): ?>
                                 <th>Tenant</th>
-                                <?php endif; ?>
                                 <th>Total Amount</th>
                                 <th>Pay Status</th>
                                 <th>Status</th>
@@ -520,11 +465,9 @@ if ($usersResult && $usersResult->num_rows > 0) {
                                         </td>
 
                                         <!-- Tenant Column -->
-                                        <?php if ($is_main_admin === 1 && $role_id === 1): ?>
                                         <td class="tenant-info">
                                             <?php echo isset($row['tenant_name']) ? htmlspecialchars($row['tenant_name']) : 'N/A'; ?>
                                         </td>
-                                        <?php endif; ?>
                                        
                                         <!-- Total Amount with Currency -->
                                         <td class="amount">
@@ -646,8 +589,8 @@ if ($usersResult && $usersResult->num_rows > 0) {
                                 <?php endwhile; ?>
                             <?php else: ?>
                                  <tr>
-                                    <td colspan="<?php echo ($is_main_admin === 1 && $role_id === 1) ? '9' : '8'; ?>" class="text-center" style="padding: 40px; text-align: center; color: #666;">
-                                        <?php if (!empty($search) || !empty($order_id_filter) || !empty($customer_name_filter) || !empty($phone_filter) || !empty($user_filter) || !empty($date_from) || !empty($date_to) || !empty($status_filter) || !empty($pay_status_filter)): ?>
+                                    <td colspan="9" class="text-center" style="padding: 40px; text-align: center; color: #666;">
+                                        <?php if (!empty($search) || !empty($order_id_filter) || !empty($customer_name_filter) || !empty($phone_filter) || !empty($date_from) || !empty($date_to) || !empty($status_filter) || !empty($pay_status_filter)): ?>
                                             No leads found
                                         <?php else: ?>
                                             No leads found
@@ -666,20 +609,20 @@ if ($usersResult && $usersResult->num_rows > 0) {
                     </div>
                     <div class="pagination-controls">
                         <?php if ($page > 1): ?>
-                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page - 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&user_filter=<?php echo urlencode($user_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&status_filter=<?php echo urlencode($status_filter); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&search=<?php echo urlencode($search); ?>'">
+                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page - 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&tenant_filter=<?php echo urlencode($tenant_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&status_filter=<?php echo urlencode($status_filter); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&search=<?php echo urlencode($search); ?>'">
                                 <i class="fas fa-chevron-left"></i>
                             </button>
                         <?php endif; ?>
                         
                         <?php for ($i = max(1, $page - 2); $i <= min($totalPages, $page + 2); $i++): ?>
                             <button class="page-btn <?php echo ($i == $page) ? 'active' : ''; ?>" 
-                                    onclick="window.location.href='?page=<?php echo $i; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&user_filter=<?php echo urlencode($user_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&status_filter=<?php echo urlencode($status_filter); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&search=<?php echo urlencode($search); ?>'">
+                                    onclick="window.location.href='?page=<?php echo $i; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&tenant_filter=<?php echo urlencode($tenant_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&status_filter=<?php echo urlencode($status_filter); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&search=<?php echo urlencode($search); ?>'">
                                 <?php echo $i; ?>
                             </button>
                         <?php endfor; ?>
                         
                         <?php if ($page < $totalPages): ?>
-                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page + 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&user_filter=<?php echo urlencode($user_filter); ?>&tenant_filter=<?php echo urlencode($tenant_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&status_filter=<?php echo urlencode($status_filter); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&search=<?php echo urlencode($search); ?>'">
+                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page + 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&tenant_filter=<?php echo urlencode($tenant_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&status_filter=<?php echo urlencode($status_filter); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&search=<?php echo urlencode($search); ?>'">
                                 <i class="fas fa-chevron-right"></i>
                             </button>
                         <?php endif; ?>
@@ -706,7 +649,6 @@ if ($usersResult && $usersResult->num_rows > 0) {
         document.getElementById('order_id_filter').value = '';
         document.getElementById('customer_name_filter').value = '';
         document.getElementById('phone_filter').value = '';
-        document.getElementById('user_filter').value = '';
         document.getElementById('date_from').value = '';
         document.getElementById('date_to').value = '';
         document.getElementById('status_filter').value = '';

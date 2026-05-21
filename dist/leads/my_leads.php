@@ -39,8 +39,7 @@ $date_from = isset($_GET['date_from']) ? trim($_GET['date_from']) : '';
 $date_to = isset($_GET['date_to']) ? trim($_GET['date_to']) : '';
 $status_filter = isset($_GET['status_filter']) ? trim($_GET['status_filter']) : '';
 $pay_status_filter = isset($_GET['pay_status_filter']) ? trim($_GET['pay_status_filter']) : '';
-$tenant_filter = isset($_GET['tenant_filter']) ? trim($_GET['tenant_filter']) : '';
-$my_leads_only = isset($_GET['my_leads_only']) && $_GET['my_leads_only'] == '1';
+$user_filter = isset($_GET['user_filter']) ? trim($_GET['user_filter']) : '';
 
 $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 10;
 $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
@@ -64,24 +63,11 @@ $tenant_id = isset($_SESSION['tenant_id']) ? (int)$_SESSION['tenant_id'] : 0;
 $baseWhere = "i.interface = 'leads'";
 $accessFilter = "";
 
-if ($is_main_admin === 1 && $role_id === 1) {
-    // is_main_admin = 1 AND role_id = 1: See all leads from all tenants
-    if ($my_leads_only) {
-        $accessFilter = " AND i.user_id = $logged_user_id";
-    } elseif (!empty($tenant_filter)) {
-        $accessFilter = " AND i.tenant_id = " . (int)$tenant_filter;
-    } else {
-        $accessFilter = "";
-    }
-} elseif ($role_id === 1 && $is_main_admin === 0) {
-    // role_id = 1 AND is_main_admin = 0: See all leads within their own tenant
-    if ($my_leads_only) {
-        $accessFilter = " AND i.tenant_id = $tenant_id AND i.user_id = $logged_user_id";
-    } else {
-        $accessFilter = " AND i.tenant_id = $tenant_id";
-    }
+if ($role_id == 1) {
+    // Admin sees all in their tenant
+    $accessFilter = " AND i.tenant_id = $tenant_id";
 } else {
-    // Regular User/Moderator/Others: See only leads assigned to them
+    // Regular user sees only assigned
     $accessFilter = " AND i.user_id = $logged_user_id";
 }
 
@@ -168,6 +154,12 @@ if (!empty($pay_status_filter)) {
     $searchConditions[] = "i.pay_status = '$payStatusTerm'";
 }
 
+// User filter (Admins only)
+if ($role_id == 1 && !empty($user_filter)) {
+    $userFilterId = (int)$user_filter;
+    $searchConditions[] = "i.user_id = $userFilterId";
+}
+
 // Apply all search conditions
 if (!empty($searchConditions)) {
     $finalSearchCondition = " AND (" . implode(' AND ', $searchConditions) . ")";
@@ -193,14 +185,16 @@ $userInfoResult = $conn->query($userInfoQuery);
 $userInfo = $userInfoResult->fetch_assoc();
 
 
-// Fetch tenants for filter if main admin
-$tenants = [];
-if ($is_main_admin === 1 && $role_id === 1) {
-    $tenantsQuery = "SELECT tenant_id, company_name FROM tenants WHERE status = 'active' ORDER BY company_name ASC";
-    $tenantsResult = $conn->query($tenantsQuery);
-    if ($tenantsResult && $tenantsResult->num_rows > 0) {
-        while ($t = $tenantsResult->fetch_assoc()) {
-            $tenants[] = $t;
+
+// Fetch all users for the assignment dropdown if admin
+$users = [];
+if ($role_id === 1) {
+    // Only show users belonging to the same company (tenant)
+    $usersQuery = "SELECT id, name FROM users WHERE status = 'active' AND tenant_id = $tenant_id ORDER BY name ASC";
+    $usersResult = $conn->query($usersQuery);
+    if ($usersResult && $usersResult->num_rows > 0) {
+        while ($u = $usersResult->fetch_assoc()) {
+            $users[] = $u;
         }
     }
 }
@@ -288,6 +282,66 @@ if ($is_main_admin === 1 && $role_id === 1) {
     font-weight: 600;
     color: #4e73df;
 }
+
+/* User Reassignment Styles */
+.user-change-btn {
+    padding: 2px 6px;
+    font-size: 10px;
+    margin-top: 5px;
+    cursor: pointer;
+    background: #f0f2f5;
+    border: 1px solid #dcdfe3;
+    border-radius: 3px;
+    color: #555;
+    transition: all 0.2s;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.user-change-btn:hover {
+    background: #e4e6e9;
+    color: #333;
+}
+
+.user-assign-select {
+    display: none;
+    width: 100%;
+    margin-top: 5px;
+    padding: 4px;
+    font-size: 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+.user-edit-ui {
+    margin-top: 5px;
+}
+
+.edit-actions {
+    margin-top: 5px;
+}
+
+.assign-confirm-btn {
+    padding: 2px 8px;
+    font-size: 11px;
+    background-color: #007bff;
+    color: white;
+    border: none;
+    border-radius: 3px;
+    cursor: pointer;
+}
+
+.assign-cancel-btn {
+    padding: 2px 8px;
+    font-size: 11px;
+    background-color: #6c757d;
+    color: white;
+    border: none;
+    border-radius: 3px;
+    cursor: pointer;
+    margin-left: 4px;
+}
 </style>
 </head>
 
@@ -323,19 +377,6 @@ if ($is_main_admin === 1 && $role_id === 1) {
                 <div class="tracking-container">
                    
                     <form class="tracking-form" method="GET" action="">
-                        <?php if ($is_main_admin === 1 && $role_id === 1): ?>
-                        <div class="form-group">
-                            <label for="tenant_filter">Tenant</label>
-                            <select id="tenant_filter" name="tenant_filter">
-                                <option value="">All Tenants</option>
-                                <?php foreach ($tenants as $t): ?>
-                                    <option value="<?php echo $t['tenant_id']; ?>" <?php echo ($tenant_filter == $t['tenant_id']) ? 'selected' : ''; ?>>
-                                        <?php echo htmlspecialchars($t['company_name']); ?>
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
-                        <?php endif; ?>
 
                         <div class="form-group">
                             <label for="order_id_filter">Order ID</label>
@@ -406,14 +447,22 @@ if ($is_main_admin === 1 && $role_id === 1) {
                             </select>
                         </div>
                         
+                        <?php if ($role_id === 1): ?>
+                        <div class="form-group">
+                            <label for="user_filter">Assigned User</label>
+                            <select id="user_filter" name="user_filter">
+                                <option value="">All Users</option>
+                                <?php foreach ($users as $u): ?>
+                                    <option value="<?php echo $u['id']; ?>" <?php echo ($user_filter == $u['id']) ? 'selected' : ''; ?>>
+                                        <?php echo htmlspecialchars($u['name']); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <?php endif; ?>
+                        
                         <div class="form-group">
                             <div class="button-group">
-                                <?php if ($role_id === 1): ?>
-                                <div style="display: flex; align-items: center; margin-right: 20px;">
-                                    <input type="checkbox" id="my_leads_only" name="my_leads_only" value="1" <?php if (isset($_GET['my_leads_only']) && $_GET['my_leads_only'] == '1') echo 'checked'; ?>>
-                                    <label for="my_leads_only" style="margin-left: 8px; margin-bottom: 0; white-space: nowrap;">My Leads</label>
-                                </div>
-                                <?php endif; ?>
                                 <button type="submit" class="search-btn">
                                     <i class="fas fa-search"></i>
                                     Search
@@ -442,9 +491,6 @@ if ($is_main_admin === 1 && $role_id === 1) {
                                 <th>Order ID</th>
                                 <th>Customer Name</th>
                                 <th>Phone Number</th>
-                                <?php if ($is_main_admin === 1 && $role_id === 1): ?>
-                                <th>Tenant</th>
-                                <?php endif; ?>
                                 <th>Total Amount</th>
                                 <th>Pay Status</th>
                                 <th>Status</th>
@@ -501,12 +547,6 @@ if ($is_main_admin === 1 && $role_id === 1) {
                                             ?>
                                         </td>
 
-                                         <!-- Tenant Column -->
-                                        <?php if ($is_main_admin === 1 && $role_id === 1): ?>
-                                        <td class="tenant-info">
-                                            <?php echo isset($row['tenant_name']) ? htmlspecialchars($row['tenant_name']) : 'N/A'; ?>
-                                        </td>
-                                        <?php endif; ?>
                                        
                                         <!-- Total Amount with Currency -->
                                         <td class="amount">
@@ -600,15 +640,42 @@ if ($is_main_admin === 1 && $role_id === 1) {
                                         </td>
 
                                         <!-- Assigned User Column -->
-                                        <td class="user-info">
-                                            <?php if (isset($row['user_name']) && !empty($row['user_name'])): ?>
-                                                <div class="user-name"><?php echo htmlspecialchars($row['user_name']); ?></div>
-                                                <div class="user-id">ID: <?php echo htmlspecialchars($row['user_id']); ?></div>
-                                                <?php if (!empty($row['user_email'])): ?>
-                                                    <div class="user-email"><?php echo htmlspecialchars($row['user_email']); ?></div>
+                                        <td class="user-info" id="user-info-<?php echo htmlspecialchars($row['order_id']); ?>">
+                                            <div class="user-display">
+                                                <?php if (isset($row['user_name']) && !empty($row['user_name'])): ?>
+                                                    <div class="user-name">
+                                                        <?php echo htmlspecialchars($row['user_name']); ?>
+                                                        <span class="user-id">(ID: <?php echo htmlspecialchars($row['user_id']); ?>)</span>
+                                                    </div>
+                                                    <?php if (!empty($row['user_email'])): ?>
+                                                        <div class="user-email"><?php echo htmlspecialchars($row['user_email']); ?></div>
+                                                    <?php endif; ?>
+                                                <?php else: ?>
+                                                    <span style="color: #999;">Unassigned</span>
                                                 <?php endif; ?>
-                                            <?php else: ?>
-                                                <span style="color: #999;">Unassigned</span>
+
+                                                <?php if ($role_id === 1 && strtolower($row['status']) === 'pending'): ?>
+                                                    <button type="button" class="user-change-btn" onclick="toggleUserSelect('<?php echo htmlspecialchars($row['order_id']); ?>')">
+                                                        <i class="fas fa-user-edit"></i> Change
+                                                    </button>
+                                                <?php endif; ?>
+                                            </div>
+
+                                            <?php if ($role_id === 1 && strtolower($row['status']) === 'pending'): ?>
+                                                <div class="user-edit-ui" style="display: none;">
+                                                    <select class="user-assign-select" id="select-user-<?php echo htmlspecialchars($row['order_id']); ?>" style="display: block;">
+                                                        <option value="">Select User</option>
+                                                        <?php foreach ($users as $user): ?>
+                                                            <option value="<?php echo $user['id']; ?>" <?php echo (isset($row['user_id']) && $row['user_id'] == $user['id']) ? 'selected' : ''; ?>>
+                                                                <?php echo htmlspecialchars($user['name']); ?>
+                                                            </option>
+                                                        <?php endforeach; ?>
+                                                    </select>
+                                                    <div class="edit-actions">
+                                                        <button type="button" class="assign-confirm-btn" onclick="updateLeadUser('<?php echo htmlspecialchars($row['order_id']); ?>')">Update</button>
+                                                        <button type="button" class="assign-cancel-btn" onclick="toggleUserSelect('<?php echo htmlspecialchars($row['order_id']); ?>')">Cancel</button>
+                                                    </div>
+                                                </div>
                                             <?php endif; ?>
                                         </td>
                                         
@@ -628,7 +695,7 @@ if ($is_main_admin === 1 && $role_id === 1) {
                                 <?php endwhile; ?>
                             <?php else: ?>
                                  <tr>
-                                    <td colspan="<?php echo ($is_main_admin === 1 && $role_id === 1) ? '9' : '8'; ?>" class="text-center" style="padding: 40px; text-align: center; color: #666;">
+                                    <td colspan="8" class="text-center" style="padding: 40px; text-align: center; color: #666;">
                                         No leads assigned to you
                                     </td>
                                 </tr>
@@ -644,20 +711,20 @@ if ($is_main_admin === 1 && $role_id === 1) {
                     </div>
                     <div class="pagination-controls">
                         <?php if ($page > 1): ?>
-                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page - 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&status_filter=<?php echo urlencode($status_filter); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&tenant_filter=<?php echo urlencode($tenant_filter); ?>&search=<?php echo urlencode($search); ?>&my_leads_only=<?php echo $my_leads_only ? '1' : '0'; ?>'">
+                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page - 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&status_filter=<?php echo urlencode($status_filter); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&search=<?php echo urlencode($search); ?>'">
                                 <i class="fas fa-chevron-left"></i>
                             </button>
                         <?php endif; ?>
                         
                         <?php for ($i = max(1, $page - 2); $i <= min($totalPages, $page + 2); $i++): ?>
                             <button class="page-btn <?php echo ($i == $page) ? 'active' : ''; ?>" 
-                                    onclick="window.location.href='?page=<?php echo $i; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&status_filter=<?php echo urlencode($status_filter); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&tenant_filter=<?php echo urlencode($tenant_filter); ?>&search=<?php echo urlencode($search); ?>&my_leads_only=<?php echo $my_leads_only ? '1' : '0'; ?>'">
+                                    onclick="window.location.href='?page=<?php echo $i; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&status_filter=<?php echo urlencode($status_filter); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&user_filter=<?php echo urlencode($user_filter); ?>&search=<?php echo urlencode($search); ?>'">
                                 <?php echo $i; ?>
                             </button>
                         <?php endfor; ?>
                         
                         <?php if ($page < $totalPages): ?>
-                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page + 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&status_filter=<?php echo urlencode($status_filter); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&tenant_filter=<?php echo urlencode($tenant_filter); ?>&search=<?php echo urlencode($search); ?>&my_leads_only=<?php echo $my_leads_only ? '1' : '0'; ?>'">
+                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page + 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&status_filter=<?php echo urlencode($status_filter); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&user_filter=<?php echo urlencode($user_filter); ?>&search=<?php echo urlencode($search); ?>'">
                                 <i class="fas fa-chevron-right"></i>
                             </button>
                         <?php endif; ?>
@@ -683,8 +750,8 @@ if ($is_main_admin === 1 && $role_id === 1) {
         document.getElementById('date_to').value = '';
         document.getElementById('status_filter').value = '';
         document.getElementById('pay_status_filter').value = '';
-        if (document.getElementById('tenant_filter')) {
-            document.getElementById('tenant_filter').value = '';
+        if (document.getElementById('user_filter')) {
+            document.getElementById('user_filter').value = '';
         }
         
         window.location.href = window.location.pathname;
@@ -823,6 +890,79 @@ if ($is_main_admin === 1 && $role_id === 1) {
         modal.style.display = 'none';
         document.body.style.overflow = 'auto';
         currentLeadId = null;
+    }
+
+    // Toggle user selection UI
+    function toggleUserSelect(orderId) {
+        const userInfoCell = document.getElementById('user-info-' + orderId);
+        const displayDiv = userInfoCell.querySelector('.user-display');
+        const editDiv = userInfoCell.querySelector('.user-edit-ui');
+
+        if (editDiv.style.display === 'none') {
+            displayDiv.style.display = 'none';
+            editDiv.style.display = 'block';
+        } else {
+            displayDiv.style.display = 'block';
+            editDiv.style.display = 'none';
+        }
+    }
+
+    // Update lead assigned user via AJAX
+    function updateLeadUser(orderId) {
+        const userId = document.getElementById('select-user-' + orderId).value;
+        
+        if (!userId) {
+            alert('Please select a user');
+            return;
+        }
+
+        const confirmBtn = document.querySelector(`#user-info-${orderId} .assign-confirm-btn`);
+        const originalBtnText = confirmBtn.innerText;
+        confirmBtn.disabled = true;
+        confirmBtn.innerText = 'Updating...';
+
+        const formData = new FormData();
+        formData.append('order_id', orderId);
+        formData.append('user_id', userId);
+
+        fetch('update_lead_user.php', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Update the UI
+                const userInfoCell = document.getElementById('user-info-' + orderId);
+                const userDisplayDiv = userInfoCell.querySelector('.user-display');
+                
+                // Update user name and ID text
+                userDisplayDiv.innerHTML = `
+                    <div class="user-name">${data.new_user_name}</div>
+                    <div class="user-id">ID: ${data.new_user_id}</div>
+                    <button type="button" class="user-change-btn" onclick="toggleUserSelect('${orderId}')">
+                        <i class="fas fa-user-edit"></i> Change
+                    </button>
+                `;
+                
+                // Reset UI state
+                toggleUserSelect(orderId);
+                
+                // RESET BUTTON STATE for future use
+                confirmBtn.disabled = false;
+                confirmBtn.innerText = originalBtnText;
+            } else {
+                alert('Error: ' + data.message);
+                confirmBtn.disabled = false;
+                confirmBtn.innerText = originalBtnText;
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('An unexpected error occurred');
+            confirmBtn.disabled = false;
+            confirmBtn.innerText = originalBtnText;
+        });
     }
 
     // Download lead

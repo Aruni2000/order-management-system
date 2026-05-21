@@ -108,19 +108,56 @@ $fallback_svg = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiI
 $safe_company_name = htmlspecialchars($company_name, ENT_QUOTES, 'UTF-8');
 ?>
 
+<style>
+.m-header.branding-header {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem 1.5rem;
+    min-height: 90px;
+    height: auto;
+}
+.b-brand.branding-link {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    width: 100%;
+    text-decoration: none;
+}
+.brand-logo-img {
+    max-height: 60px;
+    width: auto;
+}
+.brand-company-name {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: white;
+    padding: 10px 24px;
+    border-radius: 8px;
+    background: linear-gradient(135deg, rgba(255,255,255,0.2) 0%, rgba(255,255,255,0.08) 100%);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255,255,255,0.25);
+    display: inline-block;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.2);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    white-space: nowrap;
+}
+</style>
+
 <nav class="pc-sidebar">
   <div class="navbar-wrapper">
-    <div class="m-header flex items-center py-4 px-6 h-header-height">
-      <a href="../dashboard/index.php" class="b-brand flex items-center gap-3">
+    <div class="m-header branding-header">
+      <a href="../dashboard/index.php" class="b-brand branding-link">
         <?php if ($logo_url): ?>
           <img src="<?php echo htmlspecialchars($logo_url, ENT_QUOTES, 'UTF-8'); ?>" 
-            alt="<?php echo $safe_company_name; ?> logo" class="img-fluid logo logo-lg" 
-            style="max-height: 40px; margin-right: 10px;" 
+            alt="<?php echo $safe_company_name; ?> logo" class="brand-logo-img" 
             onerror="this.onerror=null; this.src='<?php echo $fallback_svg; ?>';" />
         <?php else: ?>
-          <img src="<?php echo $fallback_svg; ?>" alt="<?php echo $safe_company_name; ?> logo" class="img-fluid logo logo-lg" style="max-height: 40px; margin-right: 10px;" />
+          <span class="brand-company-name"><?php echo $safe_company_name; ?></span>
         <?php endif; ?>
-        <span class="text-lg font-semibold dark:text-white"><?php echo $safe_company_name; ?></span>
       </a>
     </div>
     
@@ -204,6 +241,7 @@ $safe_company_name = htmlspecialchars($company_name, ENT_QUOTES, 'UTF-8');
             <li class="pc-item"><a class="pc-link" href="../products/add_product.php">Add New Product</a></li>
             <li class="pc-item"><a class="pc-link" href="../products/product_list.php">All Products</a></li>
             <li class="pc-item"><a class="pc-link" href="../products/category_list.php">Category List</a></li>
+            <li class="pc-item"><a class="pc-link" href="../products/product_analysis.php">Product Analysis</a></li>
           </ul>
         </li>
 
@@ -212,11 +250,10 @@ $safe_company_name = htmlspecialchars($company_name, ENT_QUOTES, 'UTF-8');
           <a href="#!" class="pc-link"><span class="pc-micon"> <i data-feather="users"></i></span><span class="pc-mtext">Leads</span><span class="pc-arrow"><i class="ti ti-chevron-right"></i></span></a>
           <ul class="pc-submenu">
             <li class="pc-item"><a class="pc-link" href="../leads/lead_upload.php">Lead Upload</a></li>
-            <?php if ($is_admin): ?>
-            <li class="pc-item"><a class="pc-link" href="../leads/my_leads.php">All Leads</a></li>
-            <?php else: ?>
-            <li class="pc-item"><a class="pc-link" href="../leads/my_leads.php">My Leads</a></li>
+            <?php if ($is_admin == 1 && $is_main_admin_tenant == 1): ?>
+            <li class="pc-item"><a class="pc-link" href="../leads/lead_list.php">All Leads</a></li>
             <?php endif; ?>
+            <li class="pc-item"><a class="pc-link" href="../leads/my_leads.php">My Leads</a></li>
             <li class="pc-item"><a class="pc-link" href="../leads/city_list.php">City List</a></li>
           </ul>
         </li>
