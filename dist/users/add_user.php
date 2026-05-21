@@ -67,8 +67,7 @@ if ($is_main_admin) {
 //     return $_SESSION['csrf_token'];
 // }
 
-include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
-include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
+
 ?>
 
 <!doctype html>
@@ -231,6 +230,8 @@ input[type="password"] {
     <!-- LOADER -->
     <?php
         include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php');
+        include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
+        include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
     ?>
     <!-- END LOADER -->
 

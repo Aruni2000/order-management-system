@@ -23,8 +23,7 @@ function generateCSRFToken() {
     return $_SESSION['csrf_token'];
 }
 
-include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
-include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
+
 
 // Fetch all categories for the dropdown logic
 $mainCategories = [];
@@ -212,6 +211,8 @@ try {
     <!-- LOADER -->
     <?php
         include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php');
+        include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
+        include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
     ?>
     <!-- END LOADER -->
 

@@ -28,8 +28,6 @@ function generateCSRFToken() {
     return $_SESSION['csrf_token'];
 }
 
-include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
-include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
 
 $is_main_admin = $_SESSION['is_main_admin'];
 $role_id = $_SESSION['role_id'];
@@ -261,7 +259,11 @@ $role_id = $_SESSION['role_id'];
 </head>
 
 <body>
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php'); ?>
+    <?php 
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
+    ?>
 
     <div class="loading-overlay" id="loadingOverlay">
         <div class="loading-spinner">

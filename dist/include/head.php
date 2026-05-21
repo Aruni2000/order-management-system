@@ -16,7 +16,28 @@
     <meta name="author" content="FEIT Solutions" />
 
     <!-- [Favicon] icon -->
-    <link rel="icon" href="../assets/images/favicon.svg" type="image/x-icon" />
+    <?php
+    // Default favicon
+    $favicon_url = '../assets/images/favicon.png';
+    
+    // Check if we have a database connection to fetch custom favicon
+    if (isset($conn) && $conn) {
+        try {
+            $check_branding_query = "SELECT fav_icon_url FROM branding WHERE active = 1 LIMIT 1";
+            $branding_result = $conn->query($check_branding_query);
+            
+            if ($branding_result && $branding_result->num_rows > 0) {
+                $branding_data = $branding_result->fetch_assoc();
+                if (!empty($branding_data['fav_icon_url'])) {
+                    $favicon_url = $branding_data['fav_icon_url'];
+                }
+            }
+        } catch (Throwable $e) {
+            // Silently fail and use default if DB error
+        }
+    }
+    ?>
+    <link rel="icon" href="<?php echo htmlspecialchars($favicon_url); ?>" type="image/x-icon" />
 
      <!-- [Font] Family -->
      <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;500;600&display=swap" rel="stylesheet" />

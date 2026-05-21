@@ -2,8 +2,7 @@
 // Start session at the very beginning
 session_start();
 
-include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
-include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
+
 ?>
 
 <!doctype html>
@@ -15,6 +14,8 @@ include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
 
     <?php
     include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
     ?>
     
     <!-- [Template CSS Files] -->

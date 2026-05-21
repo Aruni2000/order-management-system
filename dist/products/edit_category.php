@@ -65,8 +65,7 @@ function generateCSRFToken() {
     return $_SESSION['csrf_token'];
 }
 
-include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
-include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
+
 ?>
 
 <!doctype html>
@@ -170,7 +169,11 @@ include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
 </head>
 
 <body>
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php'); ?>
+    <?php 
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
+    ?>
 
     <div class="pc-container">
         <div class="pc-content">

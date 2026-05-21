@@ -174,7 +174,7 @@ try {
             $currentUserId = 1; // Default fallback
         }
         
-        $paymentDate = date('Y-m-d');
+        $paymentDate = date('Y-m-d H:i:s');
         $updatedAt = date('Y-m-d H:i:s');
         
         // Update order_header with payment information

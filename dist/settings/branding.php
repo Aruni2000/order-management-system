@@ -363,9 +363,7 @@ if ($result && $result->num_rows > 0) {
     $branding['delivery_fee'] = $branding['delivery_fee'] ?? '0.00';
 }
 
-// Include navbar and sidebar
-include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
-include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
+
 ?>
 
 <!doctype html>
@@ -427,7 +425,11 @@ include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
 
 <body>
     <!-- Page Loader -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php'); ?>
+    <?php 
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
+    ?>
     <!-- [ Main Content ] start -->
     <div class="pc-container">
         <div class="pc-content">

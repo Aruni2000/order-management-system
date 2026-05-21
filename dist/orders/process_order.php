@@ -478,7 +478,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $currency = isset($_POST['order_currency']) ? strtolower($_POST['order_currency']) : 'lkr';
             $order_status = $_POST['order_status'] ?? 'Unpaid';
             $pay_status = $order_status === 'Paid' ? 'paid' : 'unpaid';
-            $pay_date = $order_status === 'Paid' ? date('Y-m-d') : null;
+            $pay_date = $order_status === 'Paid' ? date('Y-m-d H:i:s') : null;
             $status = 'pending';
 
          // Product processing with quantity

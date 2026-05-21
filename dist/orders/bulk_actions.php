@@ -101,7 +101,7 @@ function handleBulkMarkPaid($conn, $user_id) {
     }
     
     $success_count = 0;
-    $current_date = date('Y-m-d');
+    $current_date = date('Y-m-d H:i:s');
     
     foreach ($order_ids as $order_id) {
         // Validate order exists and is not already paid

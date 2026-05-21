@@ -1,4 +1,5 @@
 <?php
+date_default_timezone_set('Asia/Colombo');
 $fe_servername = "localhost";   // Database server
 $fe_username   = "root";        // Database username (default for XAMPP is root)
 $fe_password   = "";            // Database password (empty by default in XAMPP)

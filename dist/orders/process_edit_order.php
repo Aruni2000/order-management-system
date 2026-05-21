@@ -118,7 +118,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $notes = $_POST['notes'] ?? "";
         $order_status = $_POST['order_status'] ?? 'Unpaid';
         $pay_status = $order_status === 'Paid' ? 'paid' : 'unpaid';
-        $pay_date = $order_status === 'Paid' ? date('Y-m-d') : null;
+        $pay_date = $order_status === 'Paid' ? date('Y-m-d H:i:s') : null;
 
         // Product processing
         $products = $_POST['order_product'];

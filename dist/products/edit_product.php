@@ -52,8 +52,7 @@ try {
     exit();
 }
 
-include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
-include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
+
 
 // Fetch all active categories
 $mainCategories = [];
@@ -283,8 +282,10 @@ if ($prodCatId > 0) {
 
 <body>
     <!-- LOADER -->
-    <?php
-        include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php');
+    <?php 
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
     ?>
     <!-- END LOADER -->
 
