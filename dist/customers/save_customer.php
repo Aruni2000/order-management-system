@@ -193,6 +193,20 @@ try {
         $status = 'Active'; // Default to Active if invalid
     }
 
+    // 8. TENANT VALIDATION
+    if (empty($teanentID) || $teanentID <= 0) {
+        $errors['teanetID'] = 'Please select a Tenant User';
+    } else {
+        $tenantCheckStmt = $conn->prepare("SELECT tenant_id FROM tenants WHERE tenant_id = ? AND status = 'Active'");
+        $tenantCheckStmt->bind_param("i", $teanentID);
+        $tenantCheckStmt->execute();
+        $tenantCheckResult = $tenantCheckStmt->get_result();
+        if ($tenantCheckResult->num_rows === 0) {
+            $errors['teanetID'] = 'Selected Tenant User is not valid or inactive';
+        }
+        $tenantCheckStmt->close();
+    }
+
     // ============================================
     // DATABASE DUPLICATE CHECKS
     // ============================================
@@ -200,7 +214,7 @@ try {
     // Only proceed with duplicate checks if basic validation passed
     if (empty($errors)) {
 
-        // 8. CHECK DUPLICATE EMAIL
+        // 9. CHECK DUPLICATE EMAIL
         if (!empty($email)) {
             $emailCheckStmt = $conn->prepare("SELECT customer_id, name FROM customers WHERE email = ?");
             $emailCheckStmt->bind_param("s", $email);
@@ -214,7 +228,7 @@ try {
             $emailCheckStmt->close();
         }
 
-        // 9. CHECK PRIMARY PHONE AS PRIMARY NUMBER
+        // 10. CHECK PRIMARY PHONE AS PRIMARY NUMBER
         if (!empty($phone)) {
             $phoneCheckStmt = $conn->prepare("SELECT customer_id, name FROM customers WHERE phone = ?");
             $phoneCheckStmt->bind_param("s", $phone);
@@ -228,7 +242,7 @@ try {
             $phoneCheckStmt->close();
         }
 
-        // 10. CHECK PRIMARY PHONE AS SECONDARY NUMBER
+        // 11. CHECK PRIMARY PHONE AS SECONDARY NUMBER
         if (!empty($phone) && !isset($errors['phone'])) {
             $phoneAsPhone2Stmt = $conn->prepare("SELECT customer_id, name FROM customers WHERE phone_2 = ?");
             $phoneAsPhone2Stmt->bind_param("s", $phone);
@@ -242,7 +256,7 @@ try {
             $phoneAsPhone2Stmt->close();
         }
 
-        // 11. CHECK SECONDARY PHONE AS PRIMARY NUMBER (if phone_2 is provided)
+        // 12. CHECK SECONDARY PHONE AS PRIMARY NUMBER (if phone_2 is provided)
         if (!empty($phone_2)) {
             $phone2AsPrimaryStmt = $conn->prepare("SELECT customer_id, name FROM customers WHERE phone = ?");
             $phone2AsPrimaryStmt->bind_param("s", $phone_2);
@@ -256,7 +270,7 @@ try {
             $phone2AsPrimaryStmt->close();
         }
 
-        // 12. CHECK SECONDARY PHONE AS SECONDARY NUMBER (if phone_2 is provided)
+        // 13. CHECK SECONDARY PHONE AS SECONDARY NUMBER (if phone_2 is provided)
         if (!empty($phone_2) && !isset($errors['phone_2'])) {
             $phone2AsPhone2Stmt = $conn->prepare("SELECT customer_id, name FROM customers WHERE phone_2 = ?");
             $phone2AsPhone2Stmt->bind_param("s", $phone_2);
@@ -270,7 +284,7 @@ try {
             $phone2AsPhone2Stmt->close();
         }
 
-        // 13. VALIDATE CITY EXISTS AND IS ACTIVE
+        // 14. VALIDATE CITY EXISTS AND IS ACTIVE
         if ($city_id > 0 && !isset($errors['city_id'])) {
             $cityCheckStmt = $conn->prepare("SELECT city_id, city_name FROM city_table WHERE city_id = ? AND is_active = 1");
             $cityCheckStmt->bind_param("i", $city_id);

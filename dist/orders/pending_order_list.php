@@ -245,7 +245,60 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
     <!-- Stylesheets -->
     <link rel="stylesheet" href="../assets/css/style.css" id="main-style-link" />
     <link rel="stylesheet" href="../assets/css/orders.css" id="main-style-link" />
+    <link rel="stylesheet" href="../assets/css/alert.css" id="main-style-link" />
     <style>
+    .alert-container {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .alert-container .alert {
+        animation: slideInRight 0.3s ease-out;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+        border-radius: 8px;
+        border: 1px solid transparent;
+        padding: 1rem 1.5rem;
+        border-left: 4px solid;
+        font-size: inherit;
+        width: 100%;
+    }
+
+    .alert-container .alert-success {
+        color: #0f5132;
+        background: linear-gradient(135deg, #f8f9fa 0%, #d1e7dd 100%);
+        border-left-color: #28a745;
+    }
+
+    .alert-container .alert-error {
+        color: #842029;
+        background: linear-gradient(135deg, #f8f9fa 0%, #f8d7da 100%);
+        border-left-color: #dc3545;
+    }
+
+    .alert-container .alert-warning {
+        color: #664d03;
+        background: linear-gradient(135deg, #f8f9fa 0%, #fff3cd 100%);
+        border-left-color: #ffc107;
+    }
+
+    .alert-container .alert-info {
+        color: #055160;
+        background: linear-gradient(135deg, #f8f9fa 0%, #cff4fc 100%);
+        border-left-color: #0dcaf0;
+    }
+
+    @keyframes slideInRight {
+        from {
+            opacity: 0;
+            transform: translateX(100px);
+        }
+        to {
+            opacity: 1;
+            transform: translateX(0);
+        }
+    }
+
     .print-btn {
         background-color: #28a745;
         color: white;
@@ -296,6 +349,69 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                     </div>
                 </div>
             </div>
+
+            <!-- Session Alerts Container -->
+            <div class="alert-container" style="position: fixed; top: 25px; right: 20px; z-index: 9999; max-width: 400px; width: 100%;">
+                <?php
+                if (isset($_SESSION['order_success'])) {
+                    echo '<div class="alert alert-success" id="success-alert">
+                            <div><span class="alert-icon">✅</span><span>' . htmlspecialchars($_SESSION['order_success']) . '</span></div>
+                            <button class="alert-close" onclick="this.parentElement.remove()">&times;</button>
+                          </div>';
+                    unset($_SESSION['order_success']);
+                }
+                if (isset($_SESSION['order_error'])) {
+                    echo '<div class="alert alert-error" id="error-alert">
+                            <div><span class="alert-icon">❌</span><span>' . htmlspecialchars($_SESSION['order_error']) . '</span></div>
+                            <button class="alert-close" onclick="this.parentElement.remove()">&times;</button>
+                          </div>';
+                    unset($_SESSION['order_error']);
+                }
+                if (isset($_SESSION['order_warning'])) {
+                    echo '<div class="alert alert-warning" id="warning-alert">
+                            <div><span class="alert-icon">⚠️</span><span>' . htmlspecialchars($_SESSION['order_warning']) . '</span></div>
+                            <button class="alert-close" onclick="this.parentElement.remove()">&times;</button>
+                          </div>';
+                    unset($_SESSION['order_warning']);
+                }
+                if (isset($_SESSION['order_info'])) {
+                    echo '<div class="alert alert-info" id="info-alert">
+                            <div><span class="alert-icon">ℹ️</span><span>' . htmlspecialchars($_SESSION['order_info']) . '</span></div>
+                            <button class="alert-close" onclick="this.parentElement.remove()">&times;</button>
+                          </div>';
+                    unset($_SESSION['order_info']);
+                }
+                ?>
+            </div>
+
+            <!-- Auto-hide script for alerts -->
+            <script>
+                setTimeout(function() {
+                    const successAlert = document.getElementById('success-alert');
+                    const infoAlert = document.getElementById('info-alert');
+                    if (successAlert) {
+                        successAlert.style.opacity = '0';
+                        setTimeout(() => successAlert.remove(), 300);
+                    }
+                    if (infoAlert) {
+                        infoAlert.style.opacity = '0';
+                        setTimeout(() => infoAlert.remove(), 300);
+                    }
+                }, 5000);
+
+                setTimeout(function() {
+                    const errorAlert = document.getElementById('error-alert');
+                    const warningAlert = document.getElementById('warning-alert');
+                    if (errorAlert) {
+                        errorAlert.style.opacity = '0';
+                        setTimeout(() => errorAlert.remove(), 300);
+                    }
+                    if (warningAlert) {
+                        warningAlert.style.opacity = '0';
+                        setTimeout(() => warningAlert.remove(), 300);
+                    }
+                }, 10000);
+            </script>
 
             <div class="main-content-wrapper">
 
@@ -671,6 +787,23 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
     let currentPaymentSlip = null; // Store payment slip filename
     let currentPayStatus = null; // Store payment status
 
+    function showAlert(type, message) {
+        const container = document.querySelector('.alert-container');
+        if (!container) return;
+        const alert = document.createElement('div');
+        alert.className = 'alert alert-' + type;
+        const iconMap = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
+        alert.innerHTML =
+            '<div><span class="alert-icon">' + (iconMap[type] || '') + '</span><span>' + message + '</span></div>' +
+            '<button class="alert-close" onclick="this.parentElement.remove()">&times;</button>';
+        container.appendChild(alert);
+        setTimeout(function() {
+            alert.style.opacity = '0';
+            alert.style.transition = 'opacity 0.3s';
+            setTimeout(function() { if (alert.parentElement) alert.remove(); }, 300);
+        }, 5000);
+    }
+
     // Clear all filter inputs
     function clearFilters() {
         document.getElementById('order_id_filter').value = '';
@@ -999,17 +1132,16 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    alert('Order marked as paid successfully!');
+                    showAlert('success', 'Order marked as paid successfully!');
                     closePaidModal();
-                    // Reload the page to reflect changes
-                    window.location.reload();
+                    setTimeout(function() { window.location.reload(); }, 1500);
                 } else {
-                    alert('Error: ' + (data.message || 'Failed to mark order as paid'));
+                    showAlert('error', data.message || 'Failed to mark order as paid');
                 }
             })
             .catch(error => {
                 console.error('Error:', error);
-                alert('An error occurred while processing the payment. Please try again.');
+                showAlert('error', 'An error occurred while processing the payment. Please try again.');
             })
             .finally(() => {
                 // Reset button state
@@ -1037,15 +1169,15 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                 .then(response => response.json())
                 .then(data => {
                     if (data.success) {
-                        alert('Order unmarked as paid successfully!');
-                        window.location.reload();
+                        showAlert('success', 'Order unmarked as paid successfully!');
+                        setTimeout(function() { window.location.reload(); }, 1500);
                     } else {
-                        alert('Error: ' + (data.message || 'Failed to unmark order as paid'));
+                        showAlert('error', data.message || 'Failed to unmark order as paid');
                     }
                 })
                 .catch(error => {
                     console.error('Error:', error);
-                    alert('An error occurred while unmarking the payment. Please try again.');
+                    showAlert('error', 'An error occurred while unmarking the payment. Please try again.');
                 });
         }
     }
@@ -1579,17 +1711,16 @@ function updateModalContentBySelection() {
             .then(data => {
                 if (data.success) {
                     const statusText = (selectedCallLog == 1) ? 'answered' : 'no answer';
-                    alert(`Order marked as ${statusText} successfully!`);
+                    showAlert('success', `Order marked as ${statusText} successfully!`);
                     closeAnswerModal();
-                    // Reload the page to reflect changes
-                    window.location.reload();
+                    setTimeout(function() { window.location.reload(); }, 1500);
                 } else {
-                    alert('Error: ' + (data.message || 'Failed to update call status'));
+                    showAlert('error', data.message || 'Failed to update call status');
                 }
             })
             .catch(error => {
                 console.error('Error:', error);
-                alert('An error occurred while updating call status. Please try again.');
+                showAlert('error', 'An error occurred while updating call status. Please try again.');
             })
             .finally(() => {
                 // Reset button state
@@ -1737,17 +1868,16 @@ function updateModalContentBySelection() {
             })
             .then(data => {
                 if (data.success) {
-                    alert('Order cancelled successfully!');
+                    showAlert('success', 'Order cancelled successfully!');
                     closeCancelModal();
-                    // Reload the page to reflect changes
-                    window.location.reload();
+                    setTimeout(function() { window.location.reload(); }, 1500);
                 } else {
-                    alert('Error: ' + (data.message || 'Failed to cancel order'));
+                    showAlert('error', data.message || 'Failed to cancel order');
                 }
             })
             .catch(error => {
                 console.error('Error:', error);
-                alert('An error occurred while cancelling the order. Please try again.');
+                showAlert('error', 'An error occurred while cancelling the order. Please try again.');
             })
             .finally(() => {
                 // Reset button state

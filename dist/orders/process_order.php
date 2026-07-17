@@ -1860,17 +1860,25 @@ $updateOrderStmt->bind_param("iisi", $co_id, $default_courier_id, $tracking_numb
         // Commit transaction
         $conn->commit();
         
-        // UPDATED: Determine success message and redirect logic
+        // UPDATED: Determine success message and redirect/JSON logic
         if ($tracking_assigned) {
-            // Order created successfully with tracking
             $success_message = "Order #" . $order_id . " created successfully with tracking number assigned!";
+            if (isset($_POST['ajax'])) {
+                $_SESSION['order_success'] = $success_message;
+                header('Content-Type: application/json');
+                echo json_encode([
+                    'status' => 'success',
+                    'order_id' => $order_id,
+                    'message' => $success_message
+                ]);
+                exit();
+            }
             setMessageAndRedirect('success', $success_message, "download_order.php?id=" . $order_id);
         } else {
-            // Order created but tracking assignment failed or skipped
             $success_message = "Order #" . $order_id . " created successfully!";
             
             if (!empty($courier_warning)) {
-                // Set both success and warning messages
+                // Set session messages
                 $_SESSION['order_success'] = $success_message;
                 $_SESSION['order_warning'] = $courier_warning;
                 
@@ -1883,6 +1891,16 @@ $updateOrderStmt->bind_param("iisi", $co_id, $default_courier_id, $tracking_numb
                     $_SESSION['order_info'] = "Courier API client configuration needs to be updated. Contact system administrator.";
                 }
                 
+                if (isset($_POST['ajax'])) {
+                    header('Content-Type: application/json');
+                    echo json_encode([
+                        'status' => 'success',
+                        'order_id' => $order_id,
+                        'message' => $success_message
+                    ]);
+                    exit();
+                }
+                
                 // Clear any output buffers before redirect
                 while (ob_get_level()) {
                     ob_end_clean();
@@ -1891,6 +1909,16 @@ $updateOrderStmt->bind_param("iisi", $co_id, $default_courier_id, $tracking_numb
                 header("Location: download_order.php?id=" . $order_id);
                 exit();
             } else {
+                if (isset($_POST['ajax'])) {
+                    $_SESSION['order_success'] = $success_message;
+                    header('Content-Type: application/json');
+                    echo json_encode([
+                        'status' => 'success',
+                        'order_id' => $order_id,
+                        'message' => $success_message
+                    ]);
+                    exit();
+                }
                 setMessageAndRedirect('success', $success_message, "download_order.php?id=" . $order_id);
             }
         }
@@ -1904,6 +1932,15 @@ $updateOrderStmt->bind_param("iisi", $co_id, $default_courier_id, $tracking_numb
         // Log the error for debugging
         error_log("Order creation error: " . $e->getMessage());
         error_log("Error trace: " . $e->getTraceAsString());
+        
+        if (isset($_POST['ajax'])) {
+            header('Content-Type: application/json');
+            echo json_encode([
+                'status' => 'error',
+                'message' => $e->getMessage()
+            ]);
+            exit();
+        }
         
         // Set error message and redirect
         setMessageAndRedirect('error', $e->getMessage());

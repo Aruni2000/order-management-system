@@ -213,7 +213,7 @@ try {
     if (empty($nic)) $fieldErrors['nic'] = "NIC number is required.";
     if (empty($address)) $fieldErrors['address'] = "Address is required.";
     if (!empty($password) && strlen($password) < 6) $fieldErrors['password'] = "Password must be at least 6 characters long.";
-    if (!isset($role_mapping[$role])) $fieldErrors['role'] = "Please select a valid role.";
+    if (!isset($role_mapping[strtolower($role)])) $fieldErrors['role'] = "Please select a valid role.";
     
     // Email format validation (security critical)
     if (!empty($email) && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
@@ -271,7 +271,7 @@ try {
     }
 
     // NEW: Check if any actual changes were made before proceeding
-    $role_id = $role_mapping[$role]['id'];
+    $role_id = $role_mapping[strtolower($role)]['id'];
     $passwordChanged = !empty($password);
     
     $role_name = $role_mapping[strtolower($role)]['name'] ?? ucfirst($role);
@@ -315,7 +315,7 @@ try {
     // Begin database transaction
     $conn->begin_transaction();
     
-    $role_name = $role_mapping[$role]['name'];
+    $role_name = $role_mapping[strtolower($role)]['name'];
     
     // Prepare update query - with or without password
     if (!empty($password)) {

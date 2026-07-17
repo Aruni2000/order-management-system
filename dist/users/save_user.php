@@ -126,7 +126,7 @@ try {
     if (empty($mobile)) $fieldErrors['mobile'] = "Mobile number is required.";
     if (empty($nic)) $fieldErrors['nic'] = "NIC number is required.";
     if (empty($address)) $fieldErrors['address'] = "Address is required.";
-    if (!isset($role_mapping[$role])) $fieldErrors['role'] = "Please select a valid role.";
+    if (!isset($role_mapping[strtolower($role)])) $fieldErrors['role'] = "Please select a valid role.";
     
     // Validate tenant selection if main admin
     if ($is_main_admin && empty($input_tenant_id)) {
@@ -180,8 +180,8 @@ try {
     $hashed_password = password_hash($password, PASSWORD_BCRYPT);
     
     // Get role info
-    $role_id = $role_mapping[$role]['id'];
-    $role_name = $role_mapping[$role]['name'];
+    $role_id = $role_mapping[strtolower($role)]['id'];
+    $role_name = $role_mapping[strtolower($role)]['name'];
     
     // Set commission defaults (if your table has these fields)
     $commission_type = 'none';

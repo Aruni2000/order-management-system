@@ -879,7 +879,7 @@ input[type="password"] {
                 return { valid: false, message: 'Role selection is required' };
             }
             const validRoles = ['admin', 'moderator', 'user'];
-            if (!validRoles.includes(role)) {
+            if (!validRoles.includes(role.toLowerCase())) {
                 return { valid: false, message: 'Please select a valid role' };
             }
             return { valid: true, message: '' };

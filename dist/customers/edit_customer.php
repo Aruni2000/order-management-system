@@ -149,19 +149,21 @@ $customerStmt->close();
         }
 
         .autocomplete-dropdown {
-            position: fixed !important;
-            background: white;
-            border: 1px solid #dee2e6;
-            border-top: 2px solid #4680ff;
-            border-radius: 0 0 8px 8px;
-            max-height: 280px;
-            overflow-y: auto;
-            overflow-x: hidden;
-            z-index: 99999 !important;
-            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
-            display: none;
-            margin-top: 2px;
-            min-width: 300px;
+        position: absolute;
+        top: 100%;
+        left: 0;
+        width: 100%;
+        background: white;
+        border: 1px solid #dee2e6;
+        border-top: 2px solid #4680ff;
+        border-radius: 0 0 8px 8px;
+        max-height: 280px;
+        overflow-y: auto;
+        overflow-x: hidden;
+        z-index: 99999;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+        display: none;
+        margin-top: 2px;
         }
 
         .autocomplete-dropdown.show {
@@ -235,6 +237,8 @@ $customerStmt->close();
 
         .main-container {
             overflow: visible !important;
+            position: relative;
+            z-index: 996;
         }
 
         .autocomplete-dropdown::-webkit-scrollbar {
@@ -564,17 +568,7 @@ $customerStmt->close();
         }
 
         function positionDropdown() {
-            const $input = $('#city_input');
-            const $dropdown = $('#cityDropdown');
-            const offset = $input.offset();
-            const inputHeight = $input.outerHeight();
-            const inputWidth = $input.outerWidth();
-
-            $dropdown.css({
-                'top': (offset.top + inputHeight) + 'px',
-                'left': offset.left + 'px',
-                'width': inputWidth + 'px'
-            });
+            // Positioning is handled by CSS (position: absolute + top: 100% in .autocomplete-container)
         }
 
         $(window).on('resize scroll', function() {

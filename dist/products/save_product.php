@@ -54,6 +54,7 @@ try {
     $lkr_price = sanitizeInput($_POST['lkr_price'] ?? '');
     $product_code = sanitizeInput($_POST['product_code'] ?? '');
     $description = sanitizeInput($_POST['description'] ?? '');
+    $category_id = intval($_POST['category_id'] ?? 0);
 
     // -------------------------------------------------------------------------
     // REQUIRED FIELDS VALIDATION

@@ -130,7 +130,10 @@ $role_id = $_SESSION['role_id'];
     }
 
     .autocomplete-dropdown {
-        position: fixed !important;
+        position: absolute;
+        top: 100%;
+        left: 0;
+        width: 100%;
         background: white;
         border: 1px solid #dee2e6;
         border-top: 2px solid #4680ff;
@@ -138,11 +141,10 @@ $role_id = $_SESSION['role_id'];
         max-height: 280px;
         overflow-y: auto;
         overflow-x: hidden;
-        z-index: 99999 !important;
+        z-index: 99999;
         box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
         display: none;
         margin-top: 2px;
-        min-width: 300px;
     }
 
     .autocomplete-dropdown.show {
@@ -235,6 +237,8 @@ $role_id = $_SESSION['role_id'];
 
     .main-container {
         overflow: visible !important;
+        position: relative;
+        z-index: 996;
     }
 
     /* Scrollbar styling for dropdown */
@@ -311,7 +315,7 @@ $role_id = $_SESSION['role_id'];
                                         </option>
                                         <?php } ?>
                                     </select>
-                                    <div class="error-feedback" id="status-error"></div>
+                                    <div class="error-feedback" id="teanetID-error"></div>
                                 </div>
                             </div>
                             <?php } else { ?>
@@ -594,18 +598,7 @@ $role_id = $_SESSION['role_id'];
     }
 
     function positionDropdown() {
-        const $input = $('#city_input');
-        const $dropdown = $('#cityDropdown');
-        const offset = $input.offset();
-        const inputHeight = $input.outerHeight();
-        const inputWidth = $input.outerWidth();
-
-        $dropdown.css({
-            // 'top': (offset.top + inputHeight) + 'px',
-            'top': '450 px',
-            'left': offset.left + 'px',
-            'width': inputWidth + 'px'
-        });
+        // Positioning is handled by CSS (position: absolute + top: 100% in .autocomplete-container)
     }
 
     $(window).on('resize scroll', function() {
@@ -820,6 +813,11 @@ $role_id = $_SESSION['role_id'];
             const validation = validateAddressLine1($(this).val());
             validation.valid ? showSuccess('address_line1') : showError('address_line1', validation.message);
         });
+
+        $('#teanetID').on('blur', function() {
+            const validation = validateTenant($(this).val());
+            validation.valid ? showSuccess('teanetID') : showError('teanetID', validation.message);
+        });
     }
 
     function validateForm() {
@@ -856,6 +854,14 @@ $role_id = $_SESSION['role_id'];
                 value: $('#city_id').val()
             }
         ];
+
+        if ($('#teanetID').length) {
+            validations.push({
+                field: 'teanetID',
+                validator: validateTenant,
+                value: $('#teanetID').val()
+            });
+        }
 
         validations.forEach(function(validation) {
             const result = validation.validator(validation.value);
@@ -980,6 +986,16 @@ $role_id = $_SESSION['role_id'];
         if (!cityId || cityId.trim() === '') return {
             valid: false,
             message: 'Please select a city'
+        };
+        return {
+            valid: true
+        };
+    }
+
+    function validateTenant(tenantId) {
+        if (!tenantId || tenantId === '0' || tenantId.trim() === '') return {
+            valid: false,
+            message: 'Please select a Tenant User'
         };
         return {
             valid: true

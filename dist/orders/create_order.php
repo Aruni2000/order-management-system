@@ -1814,22 +1814,61 @@ const CustomerModal = {
 
             // Form submission
             document.getElementById('orderForm').addEventListener('submit', (e) => {
+                e.preventDefault();
+                
                 if (!FormValidator.validateAndToggleSubmit()) {
-                    e.preventDefault();
                     let issues = [];
                     if (!CustomerManager.validate()) issues.push('Customer information');
                     if (!DateValidator.validate()) issues.push('Order dates');
                     if (!ProductManager.validate()) issues.push('Product information');
                     if (!ProductManager.hasValidProduct()) issues.push('At least one complete product');
                 
-                if (document.querySelectorAll('.email-validation-error').length > 0) {
-                    isValid = false;
-                }
+                    if (document.querySelectorAll('.email-validation-error').length > 0) {
+                        isValid = false;
+                    }
 
                     alert('Please fix the following issues:\n- ' + issues.join('\n- '));
                     return false;
                 }
-                return true;
+
+                // Disable submit button to prevent double-submits
+                const submitButton = document.getElementById('submit_order');
+                submitButton.disabled = true;
+                const originalText = submitButton.innerHTML;
+                submitButton.innerHTML = '<i class="feather icon-loader"></i> Creating Order...';
+
+                // Open new blank tab immediately (user gesture context to bypass popup blocker)
+                const newTab = window.open('about:blank', '_blank');
+
+                const form = document.getElementById('orderForm');
+                const formData = new FormData(form);
+                formData.append('ajax', '1');
+
+                fetch('process_order.php', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        // Redirect the new tab to download_order.php
+                        newTab.location.href = 'download_order.php?id=' + data.order_id;
+                        // Reload/redirect the current page to show the success message
+                        window.location.href = 'create_order.php?tenant_id=' + formData.get('tenant_id');
+                    } else {
+                        newTab.close();
+                        alert('Error: ' + data.message);
+                        submitButton.disabled = false;
+                        submitButton.innerHTML = originalText;
+                    }
+                })
+                .catch(error => {
+                    newTab.close();
+                    console.error('Error:', error);
+                    alert('An unexpected error occurred.');
+                    submitButton.disabled = false;
+                    submitButton.innerHTML = originalText;
+                });
             });
         }
     };
