@@ -11,7 +11,6 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
 
 include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
-
 $current_user_id = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
 $current_user_role = isset($_SESSION['role_id']) ? (int)$_SESSION['role_id'] : 0;
 
@@ -44,9 +43,15 @@ if ($current_user_id == 0) {
 
 $is_admin = ($current_user_role == 1);
 
+// Access control – Only main admin (is_main_admin == 1) can access this page
+$is_main_admin = isset($_SESSION['is_main_admin']) && $_SESSION['is_main_admin'] == 1;
+if (!($is_admin && $is_main_admin)) {
+    header("Location: /OMS/dist/pages/access_denied.php");
+    exit();
+}
+
 $date_from = isset($_GET['date_from']) && !empty($_GET['date_from']) ? $_GET['date_from'] : date('Y-m-01');
 $date_to = isset($_GET['date_to']) && !empty($_GET['date_to']) ? $_GET['date_to'] : date('Y-m-d');
-$category_filter = isset($_GET['category_filter']) ? trim($_GET['category_filter']) : '';
 $product_search = isset($_GET['product_search']) ? trim($_GET['product_search']) : '';
 
 $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 20;
@@ -68,11 +73,6 @@ if (!$is_admin) {
 
 $searchConditions = ["oh.interface IN ('individual', 'leads')", "DATE(oh.created_at) BETWEEN '$date_from' AND '$date_to'"];
 
-if (!empty($category_filter)) {
-    $catTerm = $conn->real_escape_string($category_filter);
-    $searchConditions[] = "(p.category_id = '$catTerm' OR c.parent_id = '$catTerm')";
-}
-
 if (!empty($product_search)) {
     $searchTerm = $conn->real_escape_string($product_search);
     $searchConditions[] = "(p.name LIKE '%$searchTerm%' OR p.product_code LIKE '%$searchTerm%' OR p.id LIKE '%$searchTerm%')";
@@ -90,22 +90,24 @@ $sql = "SELECT
             p.id as product_id,
             p.name as product_name,
             p.product_code,
-            p.lkr_price,
             c.name as category_name,
             pc.name as parent_category_name,
-            SUM(oi.quantity) as total_quantity,
-            SUM(oi.total_amount) as total_revenue,
+            SUM(CASE WHEN oh.status IN ('done', 'delivered') THEN oi.quantity ELSE 0 END) as total_quantity,
+            SUM(CASE WHEN oh.status IN ('done', 'delivered') THEN oi.total_amount ELSE 0 END) as total_earn,
             COUNT(DISTINCT oi.order_id) as order_count,
+            COUNT(DISTINCT CASE WHEN oh.status = 'pending' THEN oh.order_id END) as pending_count,
             COUNT(DISTINCT CASE WHEN oh.status = 'dispatch' THEN oh.order_id END) as dispatched_count,
-            COUNT(DISTINCT CASE WHEN oh.status IN ('Done', 'Delivered') THEN oh.order_id END) as completed_count,
-            COUNT(DISTINCT CASE WHEN oh.status = 'cancel' THEN oh.order_id END) as cancelled_count
+            COUNT(DISTINCT CASE WHEN oh.status IN ('done', 'delivered') THEN oh.order_id END) as completed_count,
+            COUNT(DISTINCT CASE WHEN oh.status = 'cancel' THEN oh.order_id END) as cancelled_count,
+            -- New Metrics
+            (COUNT(DISTINCT CASE WHEN oh.status IN ('done', 'delivered') THEN oh.order_id END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN oh.status IN ('done', 'delivered', 'cancel') THEN oh.order_id END), 0)) as success_rate
         FROM order_items oi 
         JOIN order_header oh ON oi.order_id = oh.order_id 
         LEFT JOIN products p ON oi.product_id = p.id 
         LEFT JOIN categories c ON p.category_id = c.id
         LEFT JOIN categories pc ON c.parent_id = pc.id" . $whereClause . "
-        GROUP BY p.id, p.name, p.product_code, p.lkr_price, c.name, pc.name
-        ORDER BY total_revenue DESC, total_quantity DESC
+        GROUP BY p.id, p.name, p.product_code, c.name, pc.name
+        ORDER BY total_earn DESC, total_quantity DESC
         LIMIT $limit OFFSET $offset";
 
 $countResult = $conn->query($countSql);
@@ -118,10 +120,12 @@ $totalPages = ceil($totalRows / $limit);
 $result = $conn->query($sql);
 
 $summarySql = "SELECT 
-                COUNT(DISTINCT oi.product_id) as unique_products,
-                SUM(oi.quantity) as total_items_sold,
-                SUM(oi.total_amount) as total_revenue,
-                COUNT(DISTINCT oi.order_id) as total_orders
+                COUNT(DISTINCT CASE WHEN oh.status IN ('done', 'delivered') THEN oi.product_id END) as unique_products,
+                SUM(CASE WHEN oh.status IN ('done', 'delivered') THEN oi.quantity ELSE 0 END) as total_items_sold,
+                SUM(CASE WHEN oh.status IN ('done', 'delivered') THEN oi.total_amount ELSE 0 END) as total_earn,
+                COUNT(DISTINCT oi.order_id) as total_orders,
+                -- Average Metrics
+                (COUNT(DISTINCT CASE WHEN oh.status IN ('done', 'delivered') THEN oh.order_id END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN oh.status IN ('done', 'delivered', 'cancel') THEN oh.order_id END), 0)) as avg_success_rate
             FROM order_items oi 
             JOIN order_header oh ON oi.order_id = oh.order_id 
             LEFT JOIN products p ON oi.product_id = p.id 
@@ -131,8 +135,9 @@ $summaryResult = $conn->query($summarySql);
 $summary = [
     'unique_products' => 0,
     'total_items_sold' => 0,
-    'total_revenue' => 0,
-    'total_orders' => 0
+    'total_earn' => 0,
+    'total_orders' => 0,
+    'avg_success_rate' => 0
 ];
 if ($summaryResult && $summaryResult->num_rows > 0) {
     $summary = $summaryResult->fetch_assoc();
@@ -152,26 +157,21 @@ if ($summaryResult && $summaryResult->num_rows > 0) {
 </head>
 
 <body>
-    <?php 
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php');
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php'); 
     include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
-    ?>
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');?>
 
     <div class="pc-container">
         <div class="pc-content">
-            <div class="page-header">
-                <div class="page-block">
-                    <div class="page-header-title">
-                        <h5 class="mb-0 font-medium">Product Analysis</h5>
+                <div class="page-header">
+                    <div class="page-block">
+                        <div class="page-header-title">
+                            <h5 class="mb-0 font-medium">Product Analysis</h5>
+                        </div>
                     </div>
                 </div>
-            </div>
 
             <div class="main-content-wrapper">
-                <div class="col-span-12 mb-4">
-                    <h2 class="section-title" style="font-size: 16px; font-weight: 600; color: #1f2937; margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 2px solid #e5e7eb;">Filters</h2>
-                </div>
                 <div class="tracking-container">
                     <form class="tracking-form" method="GET" action="">
                         <div class="form-group">
@@ -182,22 +182,6 @@ if ($summaryResult && $summaryResult->num_rows > 0) {
                         <div class="form-group">
                             <label for="date_to">Date To</label>
                             <input type="date" id="date_to" name="date_to" value="<?php echo htmlspecialchars($date_to); ?>">
-                        </div>
-                        
-                        <div class="form-group">
-                            <label for="category_filter">Category</label>
-                            <select id="category_filter" name="category_filter">
-                                <option value="">All Categories</option>
-                                <?php foreach ($categories as $cat): ?>
-                                    <option value="<?php echo $cat['id']; ?>" <?php echo ($category_filter == $cat['id']) ? 'selected' : ''; ?>>
-                                        <?php 
-                                        echo $cat['parent_name'] 
-                                            ? htmlspecialchars($cat['parent_name'] . ' > ' . $cat['name']) 
-                                            : htmlspecialchars($cat['name']); 
-                                        ?>
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
                         </div>
 
                         <div class="form-group">
@@ -221,98 +205,27 @@ if ($summaryResult && $summaryResult->num_rows > 0) {
                 </div>
 
                 <div class="col-span-12 mb-4">
-                    <h2 class="section-title" style="font-size: 16px; font-weight: 600; color: #1f2937; margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 2px solid #e5e7eb;">Analysis Summary</h2>
+                    <h2 class="section-title" style="font-size: 16px; font-weight: 600; color: #1f2937; margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 2px solid #e5e7eb;">Analysis Summary <i class="fas fa-info-circle text-primary" style="cursor: pointer; font-size: 16px;" onclick="openInfoModal()" title="Click here to know more about this page"></i></h2>
                 </div>
 
-                <div class="grid grid-cols-12 gap-x-6 mb-6">
-                    <!-- Unique Products -->
-                    <div class="col-span-12 xl:col-span-3 md:col-span-6">
-                        <div class="card">
-                            <div class="card-header !pb-0 !border-b-0">
-                                <h5>Products Sold</h5>
-                                <i class="fas fa-box text-blue-500 text-xl"></i>
-                            </div>
-                            <div class="card-body">
-                                <div class="flex items-center justify-between gap-3 flex-wrap">
-                                    <h3 class="font-light flex items-center mb-0">
-                                        <span class="status-indicator" style="background-color: #3b82f6;"></span>
-                                        <?php echo number_format($summary['unique_products'] ?? 0); ?>
-                                    </h3>
-                                    <p class="mb-0 text-sm text-blue-600">Products</p>
-                                </div>
-                                <div class="w-full bg-theme-bodybg rounded-lg h-1.5 mt-6 dark:bg-themedark-bodybg">
-                                    <div class="bg-blue-500 h-full rounded-lg shadow-[0_10px_20px_0_rgba(0,0,0,0.3)]" role="progressbar" style="width: 100%"></div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Items Sold -->
-                    <div class="col-span-12 xl:col-span-3 md:col-span-6">
-                        <div class="card">
-                            <div class="card-header !pb-0 !border-b-0">
-                                <h5>Total Items Sold</h5>
-                                <i class="fas fa-shopping-cart text-purple-500 text-xl"></i>
-                            </div>
-                            <div class="card-body">
-                                <div class="flex items-center justify-between gap-3 flex-wrap">
-                                    <h3 class="font-light flex items-center mb-0">
-                                        <span class="status-indicator" style="background-color: #8b5cf6;"></span>
-                                        <?php echo number_format($summary['total_items_sold'] ?? 0); ?>
-                                    </h3>
-                                    <p class="mb-0 text-sm text-purple-600">Items</p>
-                                </div>
-                                <div class="w-full bg-theme-bodybg rounded-lg h-1.5 mt-6 dark:bg-themedark-bodybg">
-                                    <div class="bg-purple-500 h-full rounded-lg shadow-[0_10px_20px_0_rgba(0,0,0,0.3)]" role="progressbar" style="width: 100%"></div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Revenue -->
-                    <div class="col-span-12 xl:col-span-3 md:col-span-6">
-                        <div class="card">
-                            <div class="card-header !pb-0 !border-b-0">
-                                <h5>Total Revenue</h5>
-                                <i class="fas fa-coins text-green-500 text-xl"></i>
-                            </div>
-                            <div class="card-body">
-                                <div class="flex items-center justify-between gap-3 flex-wrap">
-                                    <h3 class="font-light flex items-center mb-0">
-                                        <span class="status-indicator" style="background-color: #10b981;"></span>
-                                        LKR <?php echo number_format($summary['total_revenue'] ?? 0, 0); ?>
-                                    </h3>
-                                    <p class="mb-0 text-sm text-green-600">Revenue</p>
-                                </div>
-                                <div class="w-full bg-theme-bodybg rounded-lg h-1.5 mt-6 dark:bg-themedark-bodybg">
-                                    <div class="bg-green-500 h-full rounded-lg shadow-[0_10px_20px_0_rgba(0,0,0,0.3)]" role="progressbar" style="width: 100%"></div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Total Orders -->
-                    <div class="col-span-12 xl:col-span-3 md:col-span-6">
-                        <div class="card">
-                            <div class="card-header !pb-0 !border-b-0">
-                                <h5>Total Orders</h5>
-                                <i class="fas fa-file-invoice text-amber-500 text-xl"></i>
-                            </div>
-                            <div class="card-body">
-                                <div class="flex items-center justify-between gap-3 flex-wrap">
-                                    <h3 class="font-light flex items-center mb-0">
-                                        <span class="status-indicator" style="background-color: #f59e0b;"></span>
-                                        <?php echo number_format($summary['total_orders'] ?? 0); ?>
-                                    </h3>
-                                    <p class="mb-0 text-sm text-amber-600">Orders</p>
-                                </div>
-                                <div class="w-full bg-theme-bodybg rounded-lg h-1.5 mt-6 dark:bg-themedark-bodybg">
-                                    <div class="bg-amber-500 h-full rounded-lg shadow-[0_10px_20px_0_rgba(0,0,0,0.3)]" role="progressbar" style="width: 100%"></div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                <div class="flex flex-wrap gap-4 mb-6">
+    <div class="flex-1 min-w-[180px] bg-white rounded-lg p-4 shadow-sm border border-gray-100">
+        <div class="text-sm text-gray-500 mb-1">Products Sold</div>
+        <div class="text-2xl font-semibold text-blue-600"><?php echo number_format($summary['unique_products'] ?? 0); ?></div>
+    </div>
+    <div class="flex-1 min-w-[180px] bg-white rounded-lg p-4 shadow-sm border border-gray-100">
+        <div class="text-sm text-gray-500 mb-1">Items Sold</div>
+        <div class="text-2xl font-semibold text-purple-600"><?php echo number_format($summary['total_items_sold'] ?? 0); ?></div>
+    </div>
+    <div class="flex-1 min-w-[180px] bg-white rounded-lg p-4 shadow-sm border border-gray-100">
+        <div class="text-sm text-gray-500 mb-1">Success Rate</div>
+        <div class="text-2xl font-semibold text-green-600"><?php echo number_format($summary['avg_success_rate'] ?? 0, 1); ?>%</div>
+    </div>
+    <div class="flex-1 min-w-[180px] bg-white rounded-lg p-4 shadow-sm border border-gray-100">
+        <div class="text-sm text-gray-500 mb-1">Total Orders</div>
+        <div class="text-2xl font-semibold text-amber-600"><?php echo number_format($summary['total_orders'] ?? 0); ?></div>
+    </div>
+</div>
 
                 <div class="table-wrapper">
                     <table class="orders-table">
@@ -322,10 +235,11 @@ if ($summaryResult && $summaryResult->num_rows > 0) {
                                 <th>Product Name</th>
                                 <th>Category</th>
                                 <th>Code</th>
-                                <th>Unit Price</th>
                                 <th>Qty Sold</th>
-                                <th>Revenue</th>
+                                <th>Earn</th>
                                 <th>Orders</th>
+                                <th>Success %</th>
+                                <th>Pending</th>
                                 <th>Dispatched</th>
                                 <th>Completed</th>
                                 <th>Cancelled</th>
@@ -357,17 +271,27 @@ if ($summaryResult && $summaryResult->num_rows > 0) {
                                                 <?php echo htmlspecialchars($row['product_code'] ?? 'N/A'); ?>
                                             </div>
                                         </td>
-                                        <td style="font-weight: 600; color: #28a745;">
-                                            LKR <?php echo number_format($row['lkr_price'] ?? 0, 2); ?>
-                                        </td>
                                         <td style="font-weight: 600;">
                                             <?php echo number_format($row['total_quantity'] ?? 0); ?>
                                         </td>
                                         <td style="font-weight: 600; color: #28a745;">
-                                            LKR <?php echo number_format($row['total_revenue'] ?? 0, 2); ?>
+                                            LKR <?php echo number_format($row['total_earn'] ?? 0, 2); ?>
                                         </td>
                                         <td>
                                             <?php echo number_format($row['order_count'] ?? 0); ?>
+                                        </td>
+                                        <td>
+                                            <div class="d-flex align-items-center">
+                                                <span class="mr-2"><?php echo number_format($row['success_rate'] ?? 0, 1); ?>%</span>
+                                                <div class="w-full bg-gray-200 rounded-full h-1.5 dark:bg-gray-700" style="width: 50px;">
+                                                    <div class="bg-success h-1.5 rounded-full" style="width: <?php echo min(100, max(0, $row['success_rate'])); ?>%; background-color: #28a745;"></div>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <span style="color: #f59e0b; font-weight: 600;">
+                                                <?php echo number_format($row['pending_count'] ?? 0); ?>
+                                            </span>
                                         </td>
                                         <td>
                                             <?php echo number_format($row['dispatched_count'] ?? 0); ?>
@@ -386,7 +310,7 @@ if ($summaryResult && $summaryResult->num_rows > 0) {
                                 <?php endwhile; ?>
                             <?php else: ?>
                                 <tr>
-                                    <td colspan="11" class="text-center" style="padding: 40px; text-align: center; color: #666;">
+                                    <td colspan="12" class="text-center" style="padding: 40px; text-align: center; color: #666;">
                                         <i class="fas fa-chart-bar" style="font-size: 2rem; margin-bottom: 10px; display: block;"></i>
                                         No product analysis data found for the selected filters
                                     </td>
@@ -433,6 +357,53 @@ if ($summaryResult && $summaryResult->num_rows > 0) {
             </div>
         </div>
     </div>
+
+    <?php
+    include_once($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/info_modal.php');
+    renderInfoModal(
+        'How Product Analysis Works',
+        'fas fa-chart-bar',
+        '<div style="font-family: system-ui, -apple-system, sans-serif;">
+
+        <div style="margin-bottom: 16px;">
+            <h6 style="margin: 0 0 10px; font-size: 14px;">📊 Summary Cards (Top Section)</h6>
+            <div style="display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; font-size: 13px; color: #374151;">
+                <span style="color: #3b82f6;">●</span>
+                <span><strong>Products Sold</strong> — count of different products sold</span>
+                <span style="color: #8b5cf6;">●</span>
+                <span><strong>Items Sold</strong> — total quantity of all items</span>
+                <span style="color: #10b981;">●</span>
+                <span><strong>Success Rate</strong> — orders completed without cancellation</span>
+                <span style="color: #f59e0b;">●</span>
+                <span><strong>Total Orders</strong> — all orders in selected period</span>
+            </div>
+        </div>
+
+        <div style="margin-bottom: 16px;">
+            <h6 style="margin: 0 0 10px; font-size: 14px;">📋 Product Table Columns</h6>
+            <ul style="margin: 0; padding-left: 20px; color: #374151; font-size: 13px; line-height: 1.7;">
+                <li><strong>Qty Sold & Earn</strong> — only completed/delivered orders count</li>
+                <li><strong>Success %</strong> — how often this product completes</li>
+                <li><strong>Status columns</strong> — pending, dispatched, completed, cancelled</li>
+            </ul>
+        </div>
+
+        <div style="margin-bottom: 16px;">
+            <h6 style="margin: 0 0 10px; font-size: 14px;">🔍 Using Filters</h6>
+            <ul style="margin: 0; padding-left: 20px; color: #374151; font-size: 13px; line-height: 1.7;">
+                <li><strong>Date range</strong> — pick From / To dates</li>
+                <li><strong>Search</strong> — type product name or code</li>
+                <li><strong>Clear</strong> — resets all filters</li>
+            </ul>
+        </div>
+
+        <div style="background: #fef3c7; border-radius: 6px; padding: 10px 12px; font-size: 13px; color: #92400e;">
+            💡 Products sorted by highest earnings first. Use filters to narrow down.
+        </div>
+
+        </div>'
+    );
+    ?>
 
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php'); ?>
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php'); ?>

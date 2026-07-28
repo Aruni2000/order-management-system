@@ -51,8 +51,8 @@ try {
             $user_id = $_SESSION['user_id'];
             $parent_text = ($parent_id > 0) ? "under parent ID $parent_id" : "as top-level";
             $details = "Created new category: $name $parent_text";
-            $log = $conn->prepare("INSERT INTO user_logs (user_id, action_type, details) VALUES (?, 'category_create', ?)");
-            $log->bind_param("is", $user_id, $details);
+            $log = $conn->prepare("INSERT INTO user_logs (user_id, action_type, inquiry_id, details) VALUES (?, 'category_create', ?, ?)");
+            $log->bind_param("iis", $user_id, $category_id, $details);
             $log->execute();
             $log->close();
         }

@@ -139,25 +139,25 @@ if ($_POST && isset($_FILES['csv_file']) && isset($_POST['users'])) {
         }
         $userValidationStmt->close();
 
-        // Fetch delivery fee from branding table
+        // Fetch delivery fee from tenants table
         $deliveryFee = 0.00;
-        $brandingSql = "SELECT delivery_fee FROM branding WHERE tenant_id = ? AND active = 1 LIMIT 1";
-        $brandingStmt = $conn->prepare($brandingSql);
-        if (!$brandingStmt) {
-            throw new Exception("Failed to prepare branding query: " . $conn->error);
+        $tenantFeeSql = "SELECT delivery_fee FROM tenants WHERE tenant_id = ? AND status = 'active' LIMIT 1";
+        $tenantFeeStmt = $conn->prepare($tenantFeeSql);
+        if (!$tenantFeeStmt) {
+            throw new Exception("Failed to prepare tenant delivery fee query: " . $conn->error);
         }
-        $brandingStmt->bind_param("i", $tenant_id);
-        $brandingStmt->execute();
-        $brandingResult = $brandingStmt->get_result();
+        $tenantFeeStmt->bind_param("i", $tenant_id);
+        $tenantFeeStmt->execute();
+        $tenantFeeResult = $tenantFeeStmt->get_result();
 
-        if ($brandingResult->num_rows > 0) {
-            $brandingData = $brandingResult->fetch_assoc();
-            $deliveryFee = (float)$brandingData['delivery_fee'];
-            error_log("DEBUG - Delivery fee fetched from branding for tenant_id $tenant_id: $deliveryFee");
+        if ($tenantFeeResult->num_rows > 0) {
+            $tenantFeeData = $tenantFeeResult->fetch_assoc();
+            $deliveryFee = (float)$tenantFeeData['delivery_fee'];
+            error_log("DEBUG - Delivery fee fetched from tenants for tenant_id $tenant_id: $deliveryFee");
         } else {
-            error_log("WARNING - No active branding found for tenant_id: $tenant_id, using default delivery_fee: 0.00");
+            error_log("WARNING - No active tenant found for tenant_id: $tenant_id, using default delivery_fee: 0.00");
         }
-        $brandingStmt->close();
+        $tenantFeeStmt->close();
         
         // Process CSV file
         $csvFile = $_FILES['csv_file']['tmp_name'];
@@ -640,6 +640,7 @@ if ($selectedTenantId) {
     
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
     
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css">
     <link rel="stylesheet" href="../assets/css/style.css" id="main-style-link" />
     <link rel="stylesheet" href="../assets/css/leads.css" id="main-style-link" />
 </head>
@@ -652,6 +653,26 @@ if ($selectedTenantId) {
     padding: 1rem;
     margin-bottom: 1.5rem;
     border-radius: 5px;
+}
+
+/* Info Box - Clean minimal alert */
+.info-box {
+    background: #e8f4fd;
+    border: 1px solid #bee5eb;
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin-bottom: 24px;
+    color: #0c5460;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.info-box--warning {
+    background: #fff3cd;
+    border-color: #ffeaa7;
+    color: #856404;
 }
 
 .alert-info h4 {
@@ -667,6 +688,7 @@ if ($selectedTenantId) {
 .alert-info li {
     margin-bottom: 0.3rem;
 }
+
 
 .alert-warning {
     background-color: #fff3cd;
@@ -797,20 +819,6 @@ if ($selectedTenantId) {
     font-weight: 600;
     margin-bottom: 1rem;
     color: #333;
-}
-
-.alert-info h4 {
-    margin-bottom: 0.5rem;
-    color: #0c5460;
-}
-
-.alert-info ul {
-    margin-bottom: 0;
-    padding-left: 1.5rem;
-}
-
-.alert-info li {
-    margin-bottom: 0.3rem;
 }
 
 .alert-warning {
@@ -963,66 +971,78 @@ if ($selectedTenantId) {
             <div class="page-header">
                 <div class="page-block">
                     <div class="page-header-title">
-                        <h5 class="mb-0 font-medium">Lead Management</h5>
+                        <h5 class="mb-0 font-medium">
+                            Lead Management
+                            <i class="fas fa-info-circle text-primary" style="cursor: pointer; font-size: 16px; margin-left: 8px;" onclick="openInfoModal()" title="How to use this page"></i>
+                        </h5>
                     </div>
                 </div>
             </div>
 
           <?php if (isset($_SESSION['import_result'])): ?>
+    <?php 
+        $impSuccess = $_SESSION['import_result']['success'];
+        $impErrors = $_SESSION['import_result']['errors'];
+        $impMessages = $_SESSION['import_result']['messages'] ?? [];
+        $impInfo = $_SESSION['import_result']['info'] ?? [];
+    ?>
     <script>
-        setTimeout(function() {
-            window.location.reload();
-        }, 5000);
+        document.addEventListener('DOMContentLoaded', function() {
+            <?php if ($impErrors > 0): ?>
+                toastManager.warning('Import completed: <?php echo $impSuccess; ?> imported, <?php echo $impErrors; ?> failed', 8000);
+            <?php else: ?>
+                toastManager.success('Successfully imported <?php echo $impSuccess; ?> records', 5000);
+            <?php endif; ?>
+        });
     </script>
-    <div class="alert alert-<?php echo $_SESSION['import_result']['errors'] > 0 ? 'warning' : 'success'; ?>">
-        <h4>Import Results</h4>
-        <p><strong>Successfully imported:</strong> <?php echo $_SESSION['import_result']['success']; ?> records</p>
-        
-        <?php if (!empty($_SESSION['import_result']['info'])): ?>
-            <div class="alert alert-info mt-3" style="background-color: #e7f3ff; border-color: #b3d9ff;">
+
+    <?php if ($impErrors > 0 || !empty($impInfo)): ?>
+    <div style="background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 20px; margin-bottom: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.06);">
+        <?php if ($impErrors > 0): ?>
+            <div style="margin-bottom: 16px;">
+                <?php if (isset($_SESSION['failed_rows_data'])): ?>
+                    <div style="margin-bottom: 14px;">
+                        <a href="?download_errors=1" class="btn btn-danger btn-sm">
+                            <i class="feather icon-download"></i> Download Failed Rows CSV
+                        </a>
+                        <p style="margin-top: 6px; font-size: 0.8rem; color: #6b7280;">
+                            <em>Fix the issues in the CSV and re-upload just those rows.</em>
+                        </p>
+                    </div>
+                <?php endif; ?>
+                <?php if (!empty($impMessages)): ?>
+                    <details>
+                        <summary style="cursor: pointer; font-weight: 600; color: #92400e; font-size: 0.85rem;">
+                            <i class="fas fa-exclamation-triangle"></i> View Error Details (<?php echo count($impMessages); ?>)
+                        </summary>
+                        <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 12px 16px; margin-top: 8px;">
+                            <ul style="margin-bottom: 0; padding-left: 20px; color: #991b1b; font-size: 0.82rem;">
+                                <?php foreach ($impMessages as $message): ?>
+                                    <li style="margin-bottom: 4px;"><?php echo htmlspecialchars($message); ?></li>
+                                <?php endforeach; ?>
+                            </ul>
+                        </div>
+                    </details>
+                <?php endif; ?>
+            </div>
+        <?php endif; ?>
+        <?php if (!empty($impInfo)): ?>
+            <div>
                 <details open>
-                    <summary style="cursor: pointer; font-weight: bold; color: #004085;">
-                         Additional Information (<?php echo count($_SESSION['import_result']['info']); ?> notices)
+                    <summary style="cursor: pointer; font-weight: 600; color: #0369a1; font-size: 0.85rem;">
+                        <i class="fas fa-info-circle"></i> Additional Information (<?php echo count($impInfo); ?> notices)
                     </summary>
-                    <ul class="mt-2" style="margin-bottom: 0;">
-                        <?php foreach ($_SESSION['import_result']['info'] as $infoMsg): ?>
-                            <li style="color: #004085;"><?php echo htmlspecialchars($infoMsg); ?></li>
+                    <ul style="margin-top: 8px; margin-bottom: 0; padding-left: 20px; color: #0c4a6e; font-size: 0.85rem;">
+                        <?php foreach ($impInfo as $infoMsg): ?>
+                            <li style="margin-bottom: 4px;"><?php echo htmlspecialchars($infoMsg); ?></li>
                         <?php endforeach; ?>
                     </ul>
                 </details>
             </div>
         <?php endif; ?>
-        
-        <?php if ($_SESSION['import_result']['errors'] > 0): ?>
-            <p><strong>Failed imports:</strong> <?php echo $_SESSION['import_result']['errors']; ?> records</p>
-            
-            <!-- ============ ADD THIS ENTIRE BLOCK HERE ============ -->
-            <?php if (isset($_SESSION['failed_rows_data'])): ?>
-                <div style="margin-top: 1rem; margin-bottom: 1rem;">
-                    <a href="?download_errors=1" class="btn btn-danger">
-                        <i class="feather icon-download"></i> Download Failed Rows CSV
-                    </a>
-                    <p style="margin-top: 0.5rem; font-size: 0.9rem; color: #721c24;">
-                        <em>💡 Download the CSV file containing only the failed rows with error reasons. Fix the issues and re-upload just those rows.</em>
-                    </p>
-                </div>
-            <?php endif; ?>
-            <!-- ============ END OF NEW BLOCK ============ -->
-            
-            <?php if (!empty($_SESSION['import_result']['messages'])): ?>
-                <details>
-                    <summary style="cursor: pointer; font-weight: bold; color: #856404;">⚠️ View Error Details</summary>
-                    <div class="error-section">
-                        <ul class="mt-2">
-                            <?php foreach ($_SESSION['import_result']['messages'] as $message): ?>
-                                <li><?php echo htmlspecialchars($message); ?></li>
-                            <?php endforeach; ?>
-                        </ul>
-                    </div>
-                </details>
-            <?php endif; ?>
-        <?php endif; ?>
     </div>
+    <?php endif; ?>
+
     <?php unset($_SESSION['import_result']); ?>
 <?php endif; ?>
             
@@ -1102,7 +1122,7 @@ if ($selectedTenantId) {
 
                         <div class="user-selection-section">
                             <h2 class="section-title">Select Users</h2>
-                            <p class="text-muted">Choose which users will receive the imported leads (Distributed Round-Robin)</p>
+                            <p class="text-muted">Choose which users will receive the imported leads</p>
                             
                             <div class="user-checkboxes" id="usersList">
                                 <?php if (!empty($users)): ?>
@@ -1137,52 +1157,87 @@ if ($selectedTenantId) {
 
                         <hr>
 
-                        <div class="alert alert-info mt-4">
-                            <h4>📋 Upload Guidelines & Error Handling</h4>
-                            <ul>
-                                <li><strong>Download template first</strong> - Use the CSV template with all required columns</li>
-                                <li><strong>Required fields:</strong> Full Name, Phone Number, City, Address Line 1</li>
-                                <li><strong>Note:</strong> Product is selected from the dropdown above</li>
-                                <li><strong>Optional fields:</strong> Quantity, Phone Number 2, Email, Address Line 2, Other</li>
-                                <li><strong>Quantity Rule:</strong> Defaults to 1 if empty or 0</li>
-                                <li><strong>File requirements:</strong> CSV format only, 10MB maximum size</li>
-                                <li><strong>Select users</strong> to distribute leads round-robin</li>
-                                <li><strong>Column order doesn't matter</strong> - Template can have columns in any order</li>
-                                <li><strong>⭐ NEW: Failed rows CSV export</strong> - If any rows fail, download a CSV with only failed rows and error reasons to fix and re-upload</li>
-                            </ul>
-                            
-                            <h5 style="margin-top: 1rem;">🔍 Customer Matching Logic:</h5>
-                            <ul>
-                                <li><strong>Existing customer check:</strong> System searches by Phone 1 or Phone 2 only</li>
-                                <li><strong>If ANY match found:</strong> Order created for existing customer (NO customer data update)</li>
-                                <li><strong>If NO match found:</strong> New customer created with all CSV data</li>
-                            </ul>
-                            
-                            <h5 style="margin-top: 1rem;">⚠️ Common Errors & Solutions:</h5>
-                            <ul>
-                                <li><strong>"Missing required CSV headers"</strong> → Download fresh template, ensure all column headers are present</li>
-                                <li><strong>"Full Name is required"</strong> → Ensure Full Name column has data</li>
-                                <li><strong>"Phone Number must be exactly 10 digits"</strong> → Use format: 0771234567</li>
-                                <li><strong>"City not found"</strong> → City name must match system database exactly</li>
-                            </ul>
-                        </div>
                     </form>
                 <?php else: ?>
                     <?php if ($isMainAdmin == 1 && $role_id === 1): ?>
-                        <div class="alert alert-info">
-                            <i class="feather icon-info"></i> Please select a tenant above to begin uploading leads.
-                        </div>
+                        <?php if (!empty($tenants)): ?>
+                            <div class="info-box">
+                                <i class="feather icon-info"></i>
+                                Please select a tenant above to begin uploading leads.
+                            </div>
+                        <?php else: ?>
+                            <div class="info-box info-box--warning">
+                                <i class="feather icon-alert-triangle"></i>
+                                No active tenants found in the system. Please create a tenant first before uploading leads.
+                            </div>
+                        <?php endif; ?>
                     <?php endif; ?>
                 <?php endif; ?>
                 
             </div>
         </div>
     </div>
+    <?php
+    include_once($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/info_modal.php');
+    renderInfoModal(
+        'How Lead Upload Works',
+        'fas fa-upload',
+        '<div style="font-family: system-ui, -apple-system, sans-serif;">
+
+        <div style="margin-bottom: 16px;">
+            <h6 style="margin: 0 0 10px; font-size: 14px;">📌 3 Simple Steps</h6>
+            <ol style="margin: 0; padding-left: 20px; color: #374151; font-size: 13.5px; line-height: 1.8;">
+                <li><strong>Generate template</strong> → fill with customer data</li>
+                <li><strong>Pick a product</strong> and select users who get the leads</li>
+                <li><strong>Upload the CSV</strong> → system imports automatically</li>
+            </ol>
+        </div>
+
+        <div style="margin-bottom: 16px;">
+            <h6 style="margin: 0 0 10px; font-size: 14px;">✅ CSV Requirements</h6>
+            <div style="display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; font-size: 13px; color: #374151;">
+                <span style="font-weight: 600; color: #dc2626;">Required:</span>
+                <span>Full Name, Phone Number, City, Address Line 1</span>
+                <span style="font-weight: 600; color: #6b7280;">Optional:</span>
+                <span>Quantity, Phone 2, Email, Address 2, Other</span>
+                <span style="font-weight: 600; color: #6b7280;">Phone:</span>
+                <span>10 digits (e.g. 0771234567)</span>
+                <span style="font-weight: 600; color: #6b7280;">Size:</span>
+                <span>Max 10MB · .csv only</span>
+            </div>
+        </div>
+
+        <div style="margin-bottom: 16px;">
+            <h6 style="margin: 0 0 10px; font-size: 14px;">🔍 How Customers Are Matched</h6>
+            <ul style="margin: 0; padding-left: 20px; color: #374151; font-size: 13px; line-height: 1.7;">
+                <li>Checks by <strong>Phone Number</strong> against existing customers</li>
+                <li><strong>Match found</strong> → new order for that customer</li>
+                <li><strong>No match</strong> → new customer created automatically</li>
+            </ul>
+        </div>
+
+        <div style="margin-bottom: 16px;">
+            <h6 style="margin: 0 0 10px; font-size: 14px;">📊 After Upload</h6>
+            <ul style="margin: 0; padding-left: 20px; color: #374151; font-size: 13px; line-height: 1.7;">
+                <li>See how many imported <strong>✓</strong> vs failed <strong>✗</strong></li>
+                <li><strong>Download failed rows</strong> → fix errors → re-upload</li>
+            </ul>
+        </div>
+
+        <div style="background: #fef3c7; border-radius: 6px; padding: 10px 12px; font-size: 13px; color: #92400e;">
+            💡 City names must <strong>exactly match</strong> what\'s in the system. Use the template to get the right format.
+        </div>
+
+        </div>',
+        '650px'
+    );
+    ?>
 
     <?php
     include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php');
     include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php');
     ?>
+
 
     <script>
     // Product Search Autocomplete

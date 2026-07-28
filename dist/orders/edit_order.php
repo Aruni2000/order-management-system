@@ -165,34 +165,12 @@ $productStmt = $conn->prepare($productSql);
 $productStmt->execute();
 $productsResult = $productStmt->get_result();
 
-// Fetch customer data 
-if ($is_main_admin === 1 && $role_id === 1) {
-    // Main admin sees all customers from all tenants
-    $customerSql = "SELECT c.*, ct.city_name 
-                    FROM customers c 
-                    LEFT JOIN city_table ct ON c.city_id = ct.city_id 
-                    WHERE c.status = 'Active' 
-                    ORDER BY c.customer_id DESC";
-    $customersResult = $conn->query($customerSql);
-} else {
-    // Regular users see only their tenant's customers
-    $customerSql = "SELECT c.*, ct.city_name 
-                    FROM customers c 
-                    LEFT JOIN city_table ct ON c.city_id = ct.city_id 
-                    WHERE c.tenant_id = ? 
-                    AND c.status = 'Active' 
-                    ORDER BY c.customer_id DESC";
-    $customerStmt = $conn->prepare($customerSql);
-    $customerStmt->bind_param("i", $order_tenant_id);
-    $customerStmt->execute();
-    $customersResult = $customerStmt->get_result();
-}
 
 $citySql = "SELECT city_id, city_name FROM city_table WHERE is_active = 1 ORDER BY city_name ASC";
 $cityResult = $conn->query($citySql);
 
-// Fetch delivery fee from branding table for the order's tenant
-$deliveryFeeSql = "SELECT delivery_fee FROM branding WHERE tenant_id = ? AND active = 1 LIMIT 1";
+// Fetch delivery fee from tenants table for the order's tenant
+$deliveryFeeSql = "SELECT delivery_fee FROM tenants WHERE tenant_id = ? AND status = 'active' LIMIT 1";
 $deliveryFeeStmt = $conn->prepare($deliveryFeeSql);
 $deliveryFeeStmt->bind_param("i", $order_tenant_id);
 $deliveryFeeStmt->execute();
@@ -205,9 +183,6 @@ if ($deliveryFeeResult && $deliveryFeeResult->num_rows > 0) {
 
 // Close prepared statements
 $productStmt->close();
-if (!($is_main_admin === 1 && $role_id === 1)) {
-    $customerStmt->close();
-}
 $deliveryFeeStmt->close();
 
 
@@ -220,7 +195,6 @@ $deliveryFeeStmt->close();
     <title>Order Management Admin Portal - Edit Order #<?= htmlspecialchars($order_id) ?></title>
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
     <link rel="stylesheet" href="../assets/css/styles.css" id="main-style-link" />
-    <link rel="stylesheet" href="../assets/css/alert.css" id="main-style-link" />
     <style>
         .autocomplete-suggestions {
             position: absolute;
@@ -305,6 +279,76 @@ $deliveryFeeStmt->close();
         }
         .duplicate-product-alert .alert-close:hover {
             opacity: 1;
+        }
+
+        /* ===== CUSTOMER MODAL PAGINATION ===== */
+        .customer-pagination {
+            display: flex;
+            justify-content: center;
+            padding: 15px 0 5px;
+        }
+        .pagination-controls {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .pagination-btn {
+            padding: 5px 12px;
+            border: 1px solid #dee2e6;
+            background: #fff;
+            color: #007bff;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.2s;
+        }
+        .pagination-btn:hover:not(:disabled):not(.active) {
+            background: #e9ecef;
+        }
+        .pagination-btn.active {
+            background: #007bff;
+            color: #fff;
+            border-color: #007bff;
+        }
+        .pagination-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .pagination-ellipsis {
+            padding: 5px 6px;
+            color: #6c757d;
+            font-size: 13px;
+        }
+        .customer-count-info {
+            text-align: center;
+            font-size: 12px;
+            color: #6c757d;
+            padding-bottom: 10px;
+        }
+        .customer-search-bar {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 20px;
+        }
+        .customer-search-bar .form-control {
+            flex: 1;
+        }
+        .customer-search-btn {
+            white-space: nowrap;
+        }
+        .customer-clear-btn {
+            white-space: nowrap;
+            border: 1px solid #dee2e6;
+            background: #fff;
+            color: #6c757d;
+        }
+        .customer-clear-btn:hover {
+            background: #f8f9fa;
+            border-color: #c0c5cc;
+        }
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
         }
     </style>
 </head>
@@ -719,17 +763,21 @@ $deliveryFeeStmt->close();
         </div>
     </div>
 
-    <!-- Customer Selection Modal (same as create_order.php) -->
+    <!-- Customer Selection Modal -->
     <div id="customerModal" class="customer-modal">
         <div class="customer-modal-content">
             <div class="modal-header">
-                <h5 class="modal-title"><i class="feather icon-users"></i> Select Customer</h5>
+                <h5 class="modal-title">
+                    <i class="feather icon-users"></i>
+                    Select Customer
+                </h5>
                 <button type="button" class="close-modal">&times;</button>
             </div>
             <div class="modal-body">
-                <div class="input-group" style="margin-bottom: 20px;">
-                    <span class="input-group-text"><i class="feather icon-search"></i></span>
-                    <input type="text" id="customerSearch" class="form-control" placeholder="Search : Customer id | Customer Name | Email | Phone Number | city ">
+                <div class="customer-search-bar">
+                    <input type="text" id="customerSearch" class="form-control" placeholder="Search : Customer id | Customer Name | Email | Phone Number | City" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('customerSearchBtn').click();}">
+                    <button type="button" id="customerSearchBtn" class="btn btn-primary customer-search-btn"><i class="feather icon-search"></i> Search</button>
+                    <button type="button" id="customerClearBtn" class="btn customer-clear-btn"><i class="feather icon-x"></i> Clear</button>
                 </div>
                 <div class="table-responsive">
                     <table class="table table-hover">
@@ -737,48 +785,18 @@ $deliveryFeeStmt->close();
                             <tr>
                                 <th>ID</th>
                                 <th>CUSTOMER NAME</th>
-                                <th>PHONE & EMAIL</th>
+                                <th>PHONE &amp; EMAIL</th>
                                 <th>ADDRESS</th>
                                 <th>ACTIONS</th>
                             </tr>
                         </thead>
-                        <tbody>
-                            <?php
-                            $customersResult->data_seek(0);
-                            while ($customer = $customersResult->fetch_assoc()): ?>
-                                <tr class="customer-row" 
-                                    data-customer-id="<?= $customer['customer_id'] ?? '' ?>"
-                                    data-name="<?= htmlspecialchars($customer['name'] ?? '') ?>"
-                                    data-email="<?= htmlspecialchars($customer['email'] ?? '') ?>"
-                                    data-phone="<?= htmlspecialchars($customer['phone'] ?? '') ?>"
-                                    data-phone-2="<?= htmlspecialchars($customer['phone_2'] ?? '') ?>"
-                                    data-address-line1="<?= htmlspecialchars($customer['address_line1'] ?? '') ?>"
-                                    data-address-line2="<?= htmlspecialchars($customer['address_line2'] ?? '') ?>"
-                                    data-city-name="<?= htmlspecialchars($customer['city_name'] ?? '') ?>"
-                                    data-city-id="<?= $customer['city_id'] ?? '' ?>">
-                                    <td><?= $customer['customer_id'] ?? '' ?></td>
-                                    <td><div class="customer-name"><?= htmlspecialchars($customer['name'] ?? '') ?></div></td>
-                                    <td>
-                                        <div class="contact-info">
-                                            <div class="phone-number"><?= htmlspecialchars($customer['phone'] ?? '') ?></div>
-                                            <?php if (!empty($customer['phone_2'])): ?>
-                                                <div class="phone-number-2" style="color: #6c757d; font-size: 0.9em;"><?= htmlspecialchars($customer['phone_2']) ?></div>
-                                            <?php endif; ?>
-                                            <div class="email-address"><?= htmlspecialchars($customer['email'] ?? '') ?></div>
-                                        </div>
-                                    </td>
-                                    <td>
-                                        <div class="address-info">
-                                            <div class="address-line"><?= htmlspecialchars($customer['address_line1'] ?? '') ?></div>
-                                            <div class="city-name"><?= htmlspecialchars($customer['city_name'] ?? '') ?></div>
-                                        </div>
-                                    </td>
-                                    <td><button type="button" class="btn btn-primary select-customer-btn">Select</button></td>
-                                </tr>
-                            <?php endwhile; ?>
+                        <tbody id="customerTableBody">
+                            <tr><td colspan="5" style="text-align:center; padding:20px;">Loading customers...</td></tr>
                         </tbody>
                     </table>
                 </div>
+                <div id="customerPagination" class="customer-pagination"></div>
+                <div id="customerCountInfo" class="customer-count-info"></div>
             </div>
         </div>
     </div>
@@ -956,7 +974,7 @@ const EmailValidator = {
         if (!EmailValidator.isValidFormat(email)) {
             ValidationUtils.showError(
                 field,
-                'Please enter a valid email address (e.g., name@example.com)',
+                'Please enter a valid email address',
                 'email-validation-error'
             );
             FormValidator.validateAndToggleSubmit();
@@ -1581,32 +1599,137 @@ const FormValidator = {
         }
     };
 
-    // ========== CUSTOMER MODAL ==========
-    const CustomerModal = {
+    // ========== CUSTOMER MODAL WITH AJAX PAGINATION ==========
+    window.CustomerModal = {
+        currentPage: 1,
+        currentSearch: '',
+        selectedTenantId: <?php echo $order_tenant_id; ?>,
+
         init: () => {
             const modal = document.getElementById("customerModal");
             const selectBtn = document.getElementById("select_existing_customer");
             const closeBtn = document.querySelector(".close-modal");
             const searchInput = document.getElementById("customerSearch");
+            const searchBtn = document.getElementById("customerSearchBtn");
+            const clearBtn = document.getElementById("customerClearBtn");
 
-            selectBtn.addEventListener('click', () => modal.style.display = "block");
+            selectBtn.addEventListener('click', () => {
+                CustomerModal.currentPage = 1;
+                CustomerModal.currentSearch = '';
+                document.getElementById('customerSearch').value = '';
+                modal.style.display = "block";
+                CustomerModal.loadCustomers();
+            });
+
             closeBtn.addEventListener('click', () => modal.style.display = "none");
-            
             window.addEventListener('click', (event) => {
                 if (event.target == modal) modal.style.display = "none";
             });
 
-            searchInput.addEventListener('keyup', function() {
-                const value = this.value.toLowerCase();
-                document.querySelectorAll(".customer-row").forEach(row => {
-                    const text = row.textContent || row.innerText;
-                    row.style.display = text.toLowerCase().indexOf(value) > -1 ? "" : "none";
-                });
+            // Search button click
+            searchBtn.addEventListener('click', function() {
+                CustomerModal.currentSearch = document.getElementById('customerSearch').value.trim();
+                CustomerModal.currentPage = 1;
+                CustomerModal.loadCustomers();
             });
 
+            // Clear button
+            clearBtn.addEventListener('click', function() {
+                document.getElementById('customerSearch').value = '';
+                CustomerModal.currentSearch = '';
+                CustomerModal.currentPage = 1;
+                CustomerModal.loadCustomers();
+            });
+
+            // Add clear selection button next to select customer button
+            const clearSelectionBtn = document.createElement('button');
+            clearSelectionBtn.type = 'button';
+            clearSelectionBtn.className = 'btn btn-outline-secondary ml-2';
+            clearSelectionBtn.innerHTML = '<i class="feather icon-x"></i> Clear Selection';
+            clearSelectionBtn.style.marginLeft = '10px';
+            clearSelectionBtn.addEventListener('click', CustomerManager.clearFields);
+            selectBtn.parentNode.appendChild(clearSelectionBtn);
+        },
+
+        escapeHtml: (str) => {
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        },
+
+        loadCustomers: () => {
+            const tbody = document.getElementById('customerTableBody');
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px;"><i class="feather icon-loader" style="animation: spin 1s linear infinite;"></i> Loading customers...</td></tr>';
+
+            const params = new URLSearchParams();
+            params.append('page', CustomerModal.currentPage);
+            params.append('search', CustomerModal.currentSearch);
+            params.append('tenant_id', CustomerModal.selectedTenantId);
+
+            fetch(`get_customers_ajax.php?${params.toString()}`)
+                .then(response => response.json())
+                .then(data => {
+                    CustomerModal.renderCustomers(data.customers);
+                    CustomerModal.renderPagination(data.pagination);
+                    CustomerModal.renderCountInfo(data.pagination);
+                })
+                .catch(error => {
+                    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px; color:#dc3545;">Error loading customers. Please try again.</td></tr>';
+                    console.error('Error loading customers:', error);
+                });
+        },
+
+        renderCustomers: (customers) => {
+            const tbody = document.getElementById('customerTableBody');
+
+            if (!customers || customers.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px; color:#6c757d;">No customers found</td></tr>';
+                return;
+            }
+
+            let html = '';
+            customers.forEach(c => {
+                const phone2Html = c.phone_2 
+                    ? `<div class="phone-number-2" style="color: #6c757d; font-size: 0.9em;">${CustomerModal.escapeHtml(c.phone_2)}</div>` 
+                    : '';
+
+                html += `<tr class="customer-row"
+                            data-customer-id="${CustomerModal.escapeHtml(String(c.customer_id))}"
+                            data-name="${CustomerModal.escapeHtml(c.name)}"
+                            data-email="${CustomerModal.escapeHtml(c.email)}"
+                            data-phone="${CustomerModal.escapeHtml(c.phone)}"
+                            data-phone-2="${CustomerModal.escapeHtml(c.phone_2)}"
+                            data-address-line1="${CustomerModal.escapeHtml(c.address_line1)}"
+                            data-address-line2="${CustomerModal.escapeHtml(c.address_line2)}"
+                            data-city-name="${CustomerModal.escapeHtml(c.city_name)}"
+                            data-city-id="${CustomerModal.escapeHtml(String(c.city_id))}">
+                            <td>${CustomerModal.escapeHtml(String(c.customer_id))}</td>
+                            <td><div class="customer-name">${CustomerModal.escapeHtml(c.name)}</div></td>
+                            <td>
+                                <div class="phone-number">${CustomerModal.escapeHtml(c.phone)}</div>
+                                ${phone2Html}
+                                <div class="email-address" style="color: #6c757d; font-size: 0.85em;">${CustomerModal.escapeHtml(c.email)}</div>
+                            </td>
+                            <td>
+                                <div class="address-line">${CustomerModal.escapeHtml(c.address_line1)}</div>
+                                <div class="city-name" style="color: #6c757d; font-size: 0.85em;">${CustomerModal.escapeHtml(c.city_name)}</div>
+                            </td>
+                            <td>
+                                <button type="button" class="btn btn-primary select-customer-btn">Select</button>
+                            </td>
+                        </tr>`;
+            });
+
+            tbody.innerHTML = html;
+            CustomerModal.bindSelectButtons();
+        },
+
+        bindSelectButtons: () => {
             document.querySelectorAll(".select-customer-btn").forEach(btn => {
                 btn.addEventListener('click', function() {
                     const row = this.closest('tr');
+                    const modal = document.getElementById("customerModal");
+
                     document.getElementById('customer_id').value = row.getAttribute('data-customer-id');
                     document.getElementById('customer_name').value = row.getAttribute('data-name');
                     document.getElementById('customer_email').value = row.getAttribute('data-email');
@@ -1616,21 +1739,72 @@ const FormValidator = {
                     document.getElementById('address_line2').value = row.getAttribute('data-address-line2');
                     document.getElementById('city_id').value = row.getAttribute('data-city-id');
                     document.getElementById('city_autocomplete').value = row.getAttribute('data-city-name');
+
                     isExistingCustomer = true;
                     CustomerManager.toggleFields(false);
                     ValidationUtils.clearErrors();
+                    ValidationUtils.clearErrors('phone-validation-error');
+                    ValidationUtils.clearErrors('email-validation-error');
+
                     modal.style.display = "none";
                     FormValidator.validateAndToggleSubmit();
                 });
             });
+        },
 
-            const clearBtn = document.createElement('button');
-            clearBtn.type = 'button';
-            clearBtn.className = 'btn btn-outline-secondary ml-2';
-            clearBtn.innerHTML = '<i class="feather icon-x"></i> Clear Selection';
-            clearBtn.style.marginLeft = '10px';
-            clearBtn.addEventListener('click', CustomerManager.clearFields);
-            selectBtn.parentNode.appendChild(clearBtn);
+        renderPagination: (pagination) => {
+            const container = document.getElementById('customerPagination');
+            const { current_page, total_pages } = pagination;
+
+            if (total_pages <= 1) {
+                container.innerHTML = '';
+                return;
+            }
+
+            let html = '<div class="pagination-controls">';
+
+            // Previous button
+            html += `<button class="pagination-btn" ${current_page === 1 ? 'disabled' : ''} 
+                      onclick="CustomerModal.goToPage(${current_page - 1})">&laquo; Prev</button>`;
+
+            // Page numbers
+            let startPage = Math.max(1, current_page - 2);
+            let endPage = Math.min(total_pages, current_page + 2);
+
+            if (startPage > 1) {
+                html += `<button class="pagination-btn" onclick="CustomerModal.goToPage(1)">1</button>`;
+                if (startPage > 2) html += '<span class="pagination-ellipsis">...</span>';
+            }
+
+            for (let i = startPage; i <= endPage; i++) {
+                html += `<button class="pagination-btn ${i === current_page ? 'active' : ''}" 
+                          onclick="CustomerModal.goToPage(${i})">${i}</button>`;
+            }
+
+            if (endPage < total_pages) {
+                if (endPage < total_pages - 1) html += '<span class="pagination-ellipsis">...</span>';
+                html += `<button class="pagination-btn" onclick="CustomerModal.goToPage(${total_pages})">${total_pages}</button>`;
+            }
+
+            // Next button
+            html += `<button class="pagination-btn" ${current_page === total_pages ? 'disabled' : ''} 
+                      onclick="CustomerModal.goToPage(${current_page + 1})">Next &raquo;</button>`;
+
+            html += '</div>';
+            container.innerHTML = html;
+        },
+
+        renderCountInfo: (pagination) => {
+            const container = document.getElementById('customerCountInfo');
+            const { current_page, per_page, total_customers } = pagination;
+            const start = ((current_page - 1) * per_page) + 1;
+            const end = Math.min(current_page * per_page, total_customers);
+            container.textContent = `Showing ${start}–${end} of ${total_customers} customers`;
+        },
+
+        goToPage: (page) => {
+            CustomerModal.currentPage = page;
+            CustomerModal.loadCustomers();
         }
     };
 
@@ -1657,11 +1831,6 @@ const FormValidator = {
             });
 
             document.addEventListener('input', (e) => {
-                // if (e.target.classList.contains('discount')) {
-                //     e.target.value = e.target.value.replace(/[^0-9.]/g, '');
-                //     const parts = e.target.value.split('.');
-                //     if (parts.length > 2) e.target.value = parts[0] + '.' + parts.slice(1).join('');
-                // }
                 if (e.target.classList.contains('price') || e.target.classList.contains('discount') || e.target.classList.contains('quantity')) {
                     if (e.target.classList.contains('quantity') && e.target.value !== "" && parseInt(e.target.value) < 1) e.target.value = 1;
                     ProductManager.updateRowTotal(e.target.closest('tr'));
@@ -1708,7 +1877,7 @@ const FormValidator = {
                     if (!DateValidator.validate()) issues.push('Order dates');
                     if (!ProductManager.validate()) issues.push('Product info');
                     if (!ProductManager.hasValidProduct()) issues.push('At least one complete product');
-                    alert('Please fix issues:\n- ' + issues.join('\n- '));
+                    toastManager.warning('Please fix issues:\n- ' + issues.join('\n- '));
                 }
             });
         }

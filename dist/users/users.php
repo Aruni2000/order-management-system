@@ -329,7 +329,8 @@ if ($is_main_admin) {
                     <table class="orders-table">
                         <thead>
                             <tr>
-                                <th>User Info</th>
+                                <th>ID</th>
+                                <th>User Name</th>
                                 <?php if ($is_main_admin): ?>
                                     <th>Tenant</th>
                                 <?php endif; ?>
@@ -343,11 +344,13 @@ if ($is_main_admin) {
                             <?php if ($result && $result->num_rows > 0): ?>
                                 <?php while ($row = $result->fetch_assoc()): ?>
                                     <tr>
-                                        <!-- User Info -->
+                                        <td>
+                                            <h6 style="margin: 0; font-size: 14px; font-weight: 600;"><?php echo htmlspecialchars($row['user_id']); ?></h6>
+                                        </td>
                                         <td class="customer-name">
                                             <div class="customer-info">
                                                 <h6 style="margin: 0; font-size: 14px; font-weight: 600;"><?php echo htmlspecialchars($row['username']); ?></h6>
-                                                <small style="color: #6c757d; font-size: 12px;">ID: <?php echo htmlspecialchars($row['user_id']); ?></small>
+                                                
                                             </div>
                                         </td>
 
@@ -525,32 +528,7 @@ if ($is_main_admin) {
         </div>
     </div>
 
-    <!-- Status Confirmation Modal -->
-    <div id="statusConfirmationModal" class="modal confirmation-modal">
-        <div class="modal-content confirmation-modal-content">
-            <div class="modal-header">
-                <h4>Are you sure?</h4>
-                <span class="close" onclick="closeConfirmationModal()">&times;</span>
-            </div>
-            <div class="modal-body">
-                <div class="confirmation-icon">
-                    <i class="ti ti-alert-triangle"></i>
-                </div>
-                <div class="confirmation-text">
-                    You are about to <span class="action-highlight" id="action-text"></span> user:
-                </div>
-                <div class="confirmation-text">
-                    <span class="user-name-highlight" id="confirm-user-name"></span>
-                </div>
-                <div class="modal-buttons">
-                    <button class="btn-confirm" id="confirmActionBtn">
-                        <span id="confirm-button-text">Yes, deactivate user!</span>
-                    </button>
-                    <button class="btn-cancel" onclick="closeConfirmationModal()">Cancel</button>
-                </div>
-            </div>
-        </div>
-    </div>
+
 
     <!-- Footer -->
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php'); ?>
@@ -620,68 +598,62 @@ function formatDateTime(dateString) {
 }
 
 // Status Toggle Functions - Updated to match customer page style
-function closeConfirmationModal() {
-    document.getElementById('statusConfirmationModal').style.display = 'none';
-}
-
-function openConfirmationModal(button) {
+function toggleUserStatus(button) {
     const userId = button.getAttribute('data-user-id');
     const userName = button.getAttribute('data-user-name');
     const currentStatus = button.getAttribute('data-current-status');
     
-    // Determine action based on current status
     const isActive = currentStatus.toLowerCase() === 'active';
-    const actionText = isActive ? 'deactivate' : 'activate';
-    const buttonText = isActive ? 'Yes, deactivate user!' : 'Yes, activate user!';
+    const newStatus = isActive ? 'inactive' : 'active';
     
-    // Update modal content
-    document.getElementById('action-text').textContent = actionText;
-    document.getElementById('confirm-user-name').textContent = userName;
-    document.getElementById('confirm-button-text').textContent = buttonText;
-    
-    // Store data for confirmation
-    const confirmBtn = document.getElementById('confirmActionBtn');
-    confirmBtn.setAttribute('data-user-id', userId);
-    confirmBtn.setAttribute('data-new-status', isActive ? 'inactive' : 'active');
-    
-    // Add click handler to confirm button
-    confirmBtn.onclick = function() {
-        toggleUserStatus(userId, isActive ? 'inactive' : 'active');
-    };
-    
-    // Show modal
-    document.getElementById('statusConfirmationModal').style.display = 'block';
-}
-
-function toggleUserStatus(userId, newStatus) {
-    fetch('toggle_user_status.php', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
+    Swal.fire({
+        title: 'Are you sure?',
+        text: `You are about to ${isActive ? 'Deactivate' : 'Activate'} User: ${userName}`,
+        icon: 'warning',
+        showCancelButton: true,
+        customClass: {
+            confirmButton: isActive ? 'swal-danger' : 'swal-success'
         },
-        body: JSON.stringify({
-            user_id: userId,
-            new_status: newStatus
-        })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            // Close confirmation modal
-            closeConfirmationModal();
-            
-            // Show success message
-            alert('User status updated successfully!');
-            
-            // Reload page to reflect changes
-            location.reload();
-        } else {
-            alert('Error updating user status: ' + data.message);
+        confirmButtonText: isActive ? 'Yes, Deactivate it!' : 'Yes, Activate it!',
+        cancelButtonText: 'Cancel',
+        reverseButtons: true
+    }).then((result) => {
+        if (result.isConfirmed) {
+            fetch('toggle_user_status.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    user_id: userId,
+                    new_status: newStatus
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'Updated!',
+                        text: `User has been ${isActive ? 'deactivated' : 'activated'} successfully.`,
+                        showConfirmButton: false,
+                        timer: 1500
+                    }).then(() => location.reload());
+                } else {
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Error!',
+                        text: data.message || 'Failed to update user status.'
+                    });
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Error!',
+                    text: 'An error occurred while updating the user status.'
+                });
+            });
         }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        alert('An error occurred while updating the user status.');
     });
 }
 
@@ -704,28 +676,22 @@ document.addEventListener('DOMContentLoaded', function() {
     const statusToggleButtons = document.querySelectorAll('.toggle-status-btn');
     statusToggleButtons.forEach(button => {
         button.addEventListener('click', function() {
-            openConfirmationModal(this);
+            toggleUserStatus(this);
         });
     });
     
-    // Close modals when clicking outside
+    // Close modal when clicking outside (only for user details modal)
     window.onclick = function(event) {
         const userModal = document.getElementById('userDetailsModal');
-        const statusModal = document.getElementById('statusConfirmationModal');
-        
         if (event.target === userModal) {
             closeUserModal();
         }
-        if (event.target === statusModal) {
-            closeConfirmationModal();
-        }
     };
     
-    // Escape key to close modals
+    // Escape key to close user details modal
     document.addEventListener('keydown', function(event) {
         if (event.key === 'Escape') {
             closeUserModal();
-            closeConfirmationModal();
         }
     });
 });

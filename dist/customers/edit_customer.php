@@ -331,10 +331,10 @@ $customerStmt->close();
                                         <i class="fas fa-phone"></i> Phone Number<span class="required">*</span>
                                     </label>
                                     <input type="tel" class="form-control" id="phone" name="phone"
-                                        placeholder="0771234567" 
+                                        placeholder="Enter Phone Number" 
                                         value="<?= htmlspecialchars($customer['phone']) ?>" required>
                                     <div class="error-feedback" id="phone-error"></div>
-                                    <div class="phone-hint">Enter 10-digit Sri Lankan mobile number</div>
+                                    
                                 </div>
 
                                 <div class="customer-form-group">
@@ -342,10 +342,9 @@ $customerStmt->close();
                                         <i class="fas fa-phone-alt"></i> Phone Number 2
                                     </label>
                                     <input type="tel" class="form-control" id="phone_2" name="phone_2"
-                                        placeholder="0771234567 (optional)" 
+                                        placeholder="Enter Phone Number 2 (optional)" 
                                         value="<?= htmlspecialchars($customer['phone_2'] ?? '') ?>">
                                     <div class="error-feedback" id="phone_2-error"></div>
-                                    <div class="phone-hint">Additional contact number (optional)</div>
                                 </div>
                             </div>
 
@@ -436,6 +435,12 @@ $customerStmt->close();
             $('#editCustomerForm').on('submit', function(e) {
                 e.preventDefault();
                 clearAllValidations();
+                
+                // Check for changes first
+                if (!hasFormChanged()) {
+                    toastManager.warning('No changes were made to the customer.');
+                    return;
+                }
                 
                 if (validateForm()) {
                     submitFormAjax();
@@ -635,13 +640,13 @@ $customerStmt->close();
                     $submitBtn.prop('disabled', false).html(originalText);
                     
                     if (response.success) {
-                        showSuccessNotification(response.message || 'Customer updated successfully!');
+                        toastManager.success(response.message || 'Customer updated successfully!');
                         storeOriginalData();
                     } else {
                         if (response.errors) {
                             showFieldErrors(response.errors);
                         }
-                        showErrorNotification(response.message || 'Failed to update customer.');
+                        toastManager.error(response.message || 'Failed to update customer.');
                     }
                 },
                 error: function(xhr, status, error) {
@@ -655,7 +660,7 @@ $customerStmt->close();
                         errorMessage = xhr.responseJSON.message;
                     }
                     
-                    showErrorNotification(errorMessage);
+                    toastManager.error(errorMessage);
                 }
             });
         }
@@ -668,7 +673,7 @@ $customerStmt->close();
 
         function showLoading() {
             $('#loadingOverlay').css('display', 'flex');
-            $('body').css('overflow', 'hidden');
+            $('body').css('overflow', 'clip');
         }
 
         function hideLoading() {
@@ -676,41 +681,20 @@ $customerStmt->close();
             $('body').css('overflow', 'auto');
         }
 
-        function showSuccessNotification(message) {
-            showNotification(message, 'success');
+        // Change detection functions
+        function hasFormChanged() {
+            return (
+                $('#name').val() !== originalFormData.name ||
+                $('#email').val() !== originalFormData.email ||
+                $('#phone').val() !== originalFormData.phone ||
+                $('#phone_2').val() !== originalFormData.phone_2 ||
+                $('#status').val() !== originalFormData.status ||
+                $('#address_line1').val() !== originalFormData.address_line1 ||
+                $('#address_line2').val() !== originalFormData.address_line2 ||
+                $('#city_id').val() !== originalFormData.city_id
+            );
         }
-
-        function showErrorNotification(message) {
-            showNotification(message, 'danger');
-        }
-
-        function showNotification(message, type) {
-            const notificationId = 'notification_' + Date.now();
-            const iconClass = type === 'success' ? 'fas fa-check-circle' : 'fas fa-exclamation-circle';
-            
-            const notification = `
-                <div class="alert alert-${type} alert-dismissible fade show ajax-notification" id="${notificationId}" role="alert">
-                    <div class="d-flex align-items-center">
-                        <i class="${iconClass} me-2"></i>
-                        <div>${message}</div>
-                    </div>
-                    <button type="button" class="btn-close" onclick="hideNotification('${notificationId}')" aria-label="Close"></button>
-                </div>
-            `;
-            
-            $('body').append(notification);
-            
-            setTimeout(() => {
-                hideNotification(notificationId);
-            }, 5000);
-        }
-
-        function hideNotification(notificationId) {
-            $('#' + notificationId).fadeOut(300, function() {
-                $(this).remove();
-            });
-        }
-
+        
         function clearAllValidations() {
             $('.form-control, .form-select').removeClass('is-valid is-invalid');
             $('.error-feedback').hide().text('');
@@ -902,7 +886,7 @@ $customerStmt->close();
             const internationalPattern = /^(\+94|94)[1-9][0-9]{8}$/;
             
             if (!localPattern.test(cleanPhone) && !internationalPattern.test(cleanPhone)) {
-                return { valid: false, message: 'Please enter a valid Sri Lankan phone number (e.g., 0771234567)' };
+                return { valid: false, message: 'Please enter a valid Sri Lankan phone number' };
             }
             return { valid: true, message: '' };
         }

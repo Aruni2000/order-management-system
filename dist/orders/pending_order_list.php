@@ -19,9 +19,9 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
 }
 
 // Check if user is main admin
-$is_main_admin = $_SESSION['is_main_admin'];
-$teanent_id = $_SESSION['tenant_id'];
-$is_admin = $_SESSION['role_id'];
+$is_main_admin = $_SESSION['is_main_admin'] ?? 0;
+$tenant_id = $_SESSION['tenant_id'] ?? 0;
+$is_admin = $_SESSION['role_id'] ?? 0;
 
 // NEW: Get current user's role information
 $current_user_id = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
@@ -67,12 +67,11 @@ $date_to = isset($_GET['date_to']) ? trim($_GET['date_to']) : '';
 $pay_status_filter = isset($_GET['pay_status_filter']) ? trim($_GET['pay_status_filter']) : '';
 $call_status_filter = isset($_GET['call_status_filter']) ? trim($_GET['call_status_filter']) : '';
 $tenant_id_filter = isset($_GET['tenant_id_filter']) ? trim($_GET['tenant_id_filter']) : '';
+$condition_filter = isset($_GET['condition_filter']) ? $_GET['condition_filter'] : '';
 
 // AFTER (Fixed Code):
 $tenant_id_filter = isset($_GET['tenant_id_filter']) ? trim($_GET['tenant_id_filter']) : '';
 // Determine if tenant filter is active
-// Show checkboxes: always for regular users, or when main admin selects tenant
-//$show_checkboxes = ($is_main_admin == 0) || !empty($tenant_id_filter);
 $show_checkboxes = (!(($is_admin == 1) && $is_main_admin)) || !empty($tenant_id_filter);
 
 
@@ -141,7 +140,7 @@ if ($is_main_admin == 1){
 // Add ordering and pagination
 
 } else {
-    $sql .= " AND i.tenant_id = $teanent_id ";
+    $sql .= " AND i.tenant_id = $tenant_id ";
 }
 
 
@@ -197,6 +196,12 @@ if (!empty($call_status_filter !== '')) {
     $searchConditions[] = "i.call_log = '$callStatusTerm'";
 }
 
+// Success Rate filter
+if ($condition_filter !== '') {
+    $conditionTerm = (int)$condition_filter;
+    $searchConditions[] = "i.condition = $conditionTerm";
+}
+
 // Specific tenant ID filter
 if (!empty($tenant_id_filter)) {
     $tenantIdTerm = $conn->real_escape_string($tenant_id_filter);
@@ -245,60 +250,24 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
     <!-- Stylesheets -->
     <link rel="stylesheet" href="../assets/css/style.css" id="main-style-link" />
     <link rel="stylesheet" href="../assets/css/orders.css" id="main-style-link" />
-    <link rel="stylesheet" href="../assets/css/alert.css" id="main-style-link" />
     <style>
-    .alert-container {
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-    }
+        /* NEW: Issue Date Styling */
+.issued-time {
+    font-size: 0.9em;
+    color: #333;
+    line-height: 1.2;
+}
 
-    .alert-container .alert {
-        animation: slideInRight 0.3s ease-out;
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-        border-radius: 8px;
-        border: 1px solid transparent;
-        padding: 1rem 1.5rem;
-        border-left: 4px solid;
-        font-size: inherit;
-        width: 100%;
-    }
+.issued-date {
+    display: block;
+    font-weight: 600;
+}
 
-    .alert-container .alert-success {
-        color: #0f5132;
-        background: linear-gradient(135deg, #f8f9fa 0%, #d1e7dd 100%);
-        border-left-color: #28a745;
-    }
-
-    .alert-container .alert-error {
-        color: #842029;
-        background: linear-gradient(135deg, #f8f9fa 0%, #f8d7da 100%);
-        border-left-color: #dc3545;
-    }
-
-    .alert-container .alert-warning {
-        color: #664d03;
-        background: linear-gradient(135deg, #f8f9fa 0%, #fff3cd 100%);
-        border-left-color: #ffc107;
-    }
-
-    .alert-container .alert-info {
-        color: #055160;
-        background: linear-gradient(135deg, #f8f9fa 0%, #cff4fc 100%);
-        border-left-color: #0dcaf0;
-    }
-
-    @keyframes slideInRight {
-        from {
-            opacity: 0;
-            transform: translateX(100px);
-        }
-        to {
-            opacity: 1;
-            transform: translateX(0);
-        }
-    }
-
+.issued-time-only {
+    display: block;
+    color: #666;
+    font-size: 0.85em;
+}
     .print-btn {
         background-color: #28a745;
         color: white;
@@ -323,9 +292,35 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
         white-space: nowrap;
     }
     .status-badge.pay-status-paid,
-.status-badge.pay-status-unpaid {
+    .status-badge.pay-status-unpaid {
     font-size: 0.65rem;
     padding: 2px 8px;
+}
+
+/* Info Box - Clean minimal alert matching system design */
+.info-box {
+    background: #e8f4fd;
+    border: 1px solid #bee5eb;
+    border-radius: 8px;
+    padding: 14px 18px;
+    margin-bottom: 18px;
+    color: #0c5460;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    line-height: 1.5;
+}
+
+.info-box i {
+    font-size: 16px;
+    flex-shrink: 0;
+}
+
+.info-box--warning {
+    background: #fff3cd;
+    border-color: #ffeaa7;
+    color: #856404;
 }
     </style>
 </head>
@@ -350,67 +345,37 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                 </div>
             </div>
 
-            <!-- Session Alerts Container -->
-            <div class="alert-container" style="position: fixed; top: 25px; right: 20px; z-index: 9999; max-width: 400px; width: 100%;">
-                <?php
-                if (isset($_SESSION['order_success'])) {
-                    echo '<div class="alert alert-success" id="success-alert">
-                            <div><span class="alert-icon">✅</span><span>' . htmlspecialchars($_SESSION['order_success']) . '</span></div>
-                            <button class="alert-close" onclick="this.parentElement.remove()">&times;</button>
-                          </div>';
-                    unset($_SESSION['order_success']);
-                }
-                if (isset($_SESSION['order_error'])) {
-                    echo '<div class="alert alert-error" id="error-alert">
-                            <div><span class="alert-icon">❌</span><span>' . htmlspecialchars($_SESSION['order_error']) . '</span></div>
-                            <button class="alert-close" onclick="this.parentElement.remove()">&times;</button>
-                          </div>';
-                    unset($_SESSION['order_error']);
-                }
-                if (isset($_SESSION['order_warning'])) {
-                    echo '<div class="alert alert-warning" id="warning-alert">
-                            <div><span class="alert-icon">⚠️</span><span>' . htmlspecialchars($_SESSION['order_warning']) . '</span></div>
-                            <button class="alert-close" onclick="this.parentElement.remove()">&times;</button>
-                          </div>';
-                    unset($_SESSION['order_warning']);
-                }
-                if (isset($_SESSION['order_info'])) {
-                    echo '<div class="alert alert-info" id="info-alert">
-                            <div><span class="alert-icon">ℹ️</span><span>' . htmlspecialchars($_SESSION['order_info']) . '</span></div>
-                            <button class="alert-close" onclick="this.parentElement.remove()">&times;</button>
-                          </div>';
-                    unset($_SESSION['order_info']);
-                }
-                ?>
-            </div>
-
-            <!-- Auto-hide script for alerts -->
+            <!-- Session Alerts Container (toasts shown via JS after toastManager initializes) -->
+            <?php
+            // Store session alerts in JS variables for toast display
+            $sessionAlerts = [];
+            if (isset($_SESSION['order_success'])) {
+                $sessionAlerts[] = ['type' => 'success', 'message' => $_SESSION['order_success']];
+                unset($_SESSION['order_success']);
+            }
+            if (isset($_SESSION['order_error'])) {
+                $sessionAlerts[] = ['type' => 'error', 'message' => $_SESSION['order_error']];
+                unset($_SESSION['order_error']);
+            }
+            if (isset($_SESSION['order_warning'])) {
+                $sessionAlerts[] = ['type' => 'warning', 'message' => $_SESSION['order_warning']];
+                unset($_SESSION['order_warning']);
+            }
+            if (isset($_SESSION['order_info'])) {
+                $sessionAlerts[] = ['type' => 'info', 'message' => $_SESSION['order_info']];
+                unset($_SESSION['order_info']);
+            }
+            ?>
             <script>
-                setTimeout(function() {
-                    const successAlert = document.getElementById('success-alert');
-                    const infoAlert = document.getElementById('info-alert');
-                    if (successAlert) {
-                        successAlert.style.opacity = '0';
-                        setTimeout(() => successAlert.remove(), 300);
-                    }
-                    if (infoAlert) {
-                        infoAlert.style.opacity = '0';
-                        setTimeout(() => infoAlert.remove(), 300);
-                    }
-                }, 5000);
-
-                setTimeout(function() {
-                    const errorAlert = document.getElementById('error-alert');
-                    const warningAlert = document.getElementById('warning-alert');
-                    if (errorAlert) {
-                        errorAlert.style.opacity = '0';
-                        setTimeout(() => errorAlert.remove(), 300);
-                    }
-                    if (warningAlert) {
-                        warningAlert.style.opacity = '0';
-                        setTimeout(() => warningAlert.remove(), 300);
-                    }
-                }, 10000);
+                // Show session alerts as toasts after page loads
+                document.addEventListener('DOMContentLoaded', function() {
+                    var sessionAlerts = <?php echo json_encode($sessionAlerts); ?>;
+                    sessionAlerts.forEach(function(alert) {
+                        if (typeof toastManager !== 'undefined') {
+                            toastManager[alert.type](alert.message);
+                        }
+                    });
+                });
             </script>
 
             <div class="main-content-wrapper">
@@ -465,9 +430,21 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                             </select>
                         </div>
 
+                        <div class="form-group">
+                            <label for="condition_filter">Success Rate</label>
+                            <select id="condition_filter" name="condition_filter">
+                                <option value="">All Success Rates</option>
+                                <option value="0" <?php echo ($condition_filter === '0') ? 'selected' : ''; ?>>Excellent</option>
+                                <option value="1" <?php echo ($condition_filter === '1') ? 'selected' : ''; ?>>Good</option>
+                                <option value="2" <?php echo ($condition_filter === '2') ? 'selected' : ''; ?>>Average</option>
+                                <option value="3" <?php echo ($condition_filter === '3') ? 'selected' : ''; ?>>Bad</option>
+                                <option value="4" <?php echo ($condition_filter === '4') ? 'selected' : ''; ?>>New</option>
+                            </select>
+                        </div>
+
                         <?php if (($is_admin == 1) && $is_main_admin) { ?>
                         <div class="form-group">
-                            <label for="tenant_id_filter">TENENT</label>
+                            <label for="tenant_id_filter">Tenant</label>
                             <select id="tenant_id_filter" name="tenant_id_filter">
                                 <option value="">All Companies</option>
                                 <?php foreach ($tenants as $tenant): ?>
@@ -479,7 +456,6 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                             </select>
                         </div>
                         <?php } else { ?>
-                        <!--<input type="hidden" name="teanetID" value="0">-->
                         <?php } ?>
 
                         <div class="form-group">
@@ -536,15 +512,15 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                 </th>
                                 <?php endif; ?>
                                 <th>Order ID</th>
+                                <th >Issue Date</th>
                                 <th>Customer Name</th>
-                                <th>Issue Date</th>
                                 <th>Total Amount</th>
                                 <?php if ($is_main_admin == 1) { ?>
                                 <th>Tenant Company</th>
                                 <?php } else { ?>
-                                <!--<input type="hidden" name="teanetID" value="0">-->
-                                <?php } ?>
-                                <th>Created By</th>
+                                        <?php } ?>
+                                <th>Processed By</th>
+                                <th>Success Rate</th>
                                 <th>Call note</th>
                                 <th>Actions</th>
                             </tr>
@@ -553,19 +529,20 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                             <?php if ($result && $result->num_rows > 0): ?>
                             <?php while ($row = $result->fetch_assoc()): ?>
                                 <tr data-tenant-id="<?php echo isset($row['tenant_id']) ? (int)$row['tenant_id'] : 0; ?>">
-                            <tr>
                                 <!-- Bulk Selection Checkbox -->
                               <?php if ($show_checkboxes): ?>
                                 <td>
                                     <input type="checkbox" class="order-checkbox"
                                         value="<?php echo isset($row['order_id']) ? htmlspecialchars($row['order_id']) : ''; ?>"
-                                        onchange="updateBulkSelection()">
+                                        onchange="updateBulkSelection()"
+                                        <?php echo !empty($row['upload_error']) ? 'disabled' : ''; ?>>
                                 </td>
                                 <?php endif; ?>
 
                                 <!-- Order ID -->
                                 <td class="order-id">
                                     <?php echo isset($row['order_id']) ? htmlspecialchars($row['order_id']) : ''; ?>
+                                    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/leads_badge.php'); ?>
                                     <?php if (!empty($row['upload_error'])): ?>
                                         <br>
                                         <span class="badge bg-warning text-dark" style="font-size: 10px; cursor: help;" title="<?php echo htmlspecialchars($row['upload_error']); ?>">
@@ -573,6 +550,20 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                         </span>
                                     <?php endif; ?>
                                 </td>
+
+                                <!-- NEW: Issue Date Column -->
+                                        <td class="issued-time">
+                                            <?php
+                                            if (isset($row['created_at']) && !empty($row['created_at'])) {
+                                                $createdAt = new DateTime($row['created_at']);
+                                                echo '<span class="issued-date">' . $createdAt->format('Y-m-d') . '</span>';
+                                                echo '<span class="issued-time-only">' . $createdAt->format('H:i:s') . '</span>';
+                                            } else {
+                                                echo '<span style="color: #999; font-style: italic;">N/A</span>';
+                                            }
+                                            ?>
+                                        </td>
+                                        
                                 <!-- Customer Name with ID -->
                                 <td class="customer-name">
                                     <?php
@@ -584,12 +575,6 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
         echo '<br><span class="badge badge-danger" style="background-color: #dc3545; color: white; padding: 2px 6px; border-radius: 4px; font-size: 11px; margin-top: 4px; display: inline-block;">Duplicate (' . $row['duplicate_count'] . ')</span>';
     }
     ?>
-                                <td class="date-range">
-    <?php
-    $issueDate = !empty($row['issue_date']) ? date('Y-m-d', strtotime($row['issue_date'])) : 'N/A';
-    $createdTime = !empty($row['created_at']) ? date('H:i:s', strtotime($row['created_at'])) : 'N/A';
-    echo $issueDate." ".$createdTime;?>
-</td>
 
 
                                 <!-- Total Amount with Currency -->
@@ -608,7 +593,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                             <?php endif; ?>
                         </td>
 
-                                <!-- Teanaent Company Name -->
+                                <!-- Tenant Company Name -->
                                 <?php if ($is_main_admin == 1) { ?>
                                 <td class="customer-name">
                                     <div class="customer-info">
@@ -617,23 +602,50 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                     </div>
                                 </td>
                                 <?php } else { ?>
-                                <!--<input type="hidden" name="teanetID" value="0">-->
-                                <?php } ?>
+                                        <?php } ?>
 
 
-                                <!-- Created By User -->
+                                <!-- Processed By (who marked paid + payment method) -->
                                 <td>
                                     <?php
-    $creatorName = isset($row['creator_name']) ? htmlspecialchars($row['creator_name']) : 'N/A';
-    $interface = isset($row['interface']) ? $row['interface'] : '';
-    
-    echo $creatorName;
-    
-    // Display (leads) if interface is 'leads'
-    if ($interface == 'leads') {
-        echo "<br><span style='color: #666; font-size: 0.9em;'>(leads)</span>";
-    }
-    ?>
+                                    $paidByName = isset($row['paid_by_name']) ? htmlspecialchars($row['paid_by_name']) : '';
+                                    $paymentMethod = isset($row['payment_method']) ? htmlspecialchars($row['payment_method']) : '';
+                                    
+                                    if ($payStatus == 'paid' && !empty($paidByName)) {
+                                        echo '<span style="font-weight: 600; color: #28a745;">' . $paidByName . '</span>';
+                                        if (!empty($paymentMethod)) {
+                                            $methodDisplay = ucwords(str_replace('_', ' ', $paymentMethod));
+                                            echo '<br><span style="font-size: 11px; color: #6c757d;">' . $methodDisplay . '</span>';
+                                        }
+                                    } else {
+                                        echo '<span style="color: #adb5bd;">-</span>';
+                                    }
+                                    ?>
+                                </td>
+                                <!-- Success Rate Badge -->
+                                <td>
+                                    <?php
+                                    $condition = isset($row['condition']) ? (int)$row['condition'] : 0;
+                                    switch ($condition) {
+                                        case 0:
+                                            echo '<span class="status-badge rate-excellent">Excellent</span>';
+                                            break;
+                                        case 1:
+                                            echo '<span class="status-badge rate-good">Good</span>';
+                                            break;
+                                        case 2:
+                                            echo '<span class="status-badge rate-average">Average</span>';
+                                            break;
+                                        case 3:
+                                            echo '<span class="status-badge rate-bad">Bad</span>';
+                                            break;
+                                        case 4:
+                                            echo '<span class="status-badge rate-new">New</span>';
+                                            break;
+                                        default:
+                                            echo '<span class="status-badge rate-new">New</span>';
+                                    }
+                                    ?>
                                 </td>
                                 <td>
     <?php
@@ -683,15 +695,15 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                         <?php endif; ?>
 
 
-                                        <!-- <button class="action-btn dispatch-btn" title="Mark as Dispatched"
+                                        <button class="action-btn dispatch-btn" title="Mark as Dispatched"
                                             onclick="openDispatchModal('<?php echo isset($row['order_id']) ? htmlspecialchars($row['order_id']) : ''; ?>')">
                                             <i class="fas fa-truck"></i>
-                                        </button> -->
+                                        </button>
 
                                         <button
                                             class="action-btn <?php echo ($row['call_log'] == 0) ? 'answer-btn' : 'no-answer-btn'; ?>"
                                             title="<?php echo ($row['call_log'] == 0) ? 'Mark as Answered' : 'Mark as No Answer'; ?>"
-                                            onclick="openAnswerModal('<?php echo isset($row['order_id']) ? htmlspecialchars($row['order_id']) : ''; ?>', <?php echo $row['call_log']; ?>)">
+                                            onclick="openAnswerModal('<?php echo isset($row['order_id']) ? htmlspecialchars($row['order_id']) : ''; ?>', <?php echo $row['call_log']; ?>, '<?php echo isset($row['answer_reason']) ? addslashes(htmlspecialchars($row['answer_reason'])) : ''; ?>', '<?php echo isset($row['no_answer_reason']) ? addslashes(htmlspecialchars($row['no_answer_reason'])) : ''; ?>')">
                                             <i
                                                 class="fas <?php echo ($row['call_log'] == 0) ? 'fas fa-phone-slash' : 'fas fa-phone'; ?>"></i>
                                         </button>
@@ -704,13 +716,17 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                             onclick="printOrder('<?php echo isset($row['order_id']) ? htmlspecialchars($row['order_id']) : ''; ?>')">
                                             <i class="fas fa-print"></i>
                                         </button>
+                                        <button class="action-btn condition-btn" title="Update Success Rate"
+                                            onclick="openConditionModal('<?php echo isset($row['order_id']) ? htmlspecialchars($row['order_id']) : ''; ?>', <?php echo $condition; ?>)">
+                                            <i class="fas fa-user-shield"></i>
+                                        </button>
                                     </div>
                                 </td>
                             </tr>
                             <?php endwhile; ?>
                             <?php else: ?>
                             <tr>
-                              <td colspan="<?php echo $show_checkboxes ? '9' : '8'; ?>" class="text-center"
+                              <td colspan="<?php echo ($show_checkboxes ? 9 : 8) + 1; ?>" class="text-center"
                                 style="padding: 40px; text-align: center; color: #666;">
                                 No pending orders found
                             </td>
@@ -730,21 +746,21 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                     <div class="pagination-controls">
                         <?php if ($page > 1): ?>
                         <button class="page-btn"
-                            onclick="window.location.href='?page=<?php echo $page - 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&search=<?php echo urlencode($search); ?>'">
+                            onclick="window.location.href='?page=<?php echo $page - 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&call_status_filter=<?php echo urlencode($call_status_filter); ?>&condition_filter=<?php echo urlencode($condition_filter); ?>&search=<?php echo urlencode($search); ?>'">
                             <i class="fas fa-chevron-left"></i>
                         </button>
                         <?php endif; ?>
 
                         <?php for ($i = max(1, $page - 2); $i <= min($totalPages, $page + 2); $i++): ?>
                         <button class="page-btn <?php echo ($i == $page) ? 'active' : ''; ?>"
-                            onclick="window.location.href='?page=<?php echo $i; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&search=<?php echo urlencode($search); ?>'">
+                            onclick="window.location.href='?page=<?php echo $i; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&call_status_filter=<?php echo urlencode($call_status_filter); ?>&condition_filter=<?php echo urlencode($condition_filter); ?>&search=<?php echo urlencode($search); ?>'">
                             <?php echo $i; ?>
                         </button>
                         <?php endfor; ?>
 
                         <?php if ($page < $totalPages): ?>
                         <button class="page-btn"
-                            onclick="window.location.href='?page=<?php echo $page + 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&search=<?php echo urlencode($search); ?>'">
+                            onclick="window.location.href='?page=<?php echo $page + 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&call_status_filter=<?php echo urlencode($call_status_filter); ?>&condition_filter=<?php echo urlencode($condition_filter); ?>&search=<?php echo urlencode($search); ?>'">
                             <i class="fas fa-chevron-right"></i>
                         </button>
                         <?php endif; ?>
@@ -758,24 +774,17 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
     <!-- Include MODAL for View Order -->
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/order_view_modal.php'); ?>
 
-    <!-- Modal for Marking Order as Paid -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/paid_mark_modal.php'); ?>
-
     <!-- DISPATCH MODAL HTML -->
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/dispatch_modal.php'); ?>
 
     <!-- BULK DISPATCH MODAL HTML  -->
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/bulk_dispatch_modal.php'); ?>
 
-    <!-- ANSWER STATUS MODAL -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/answer_status_modal.php'); ?>
-
-
-    <!-- Cancel Order Modal  -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/cancel_order_modal.php'); ?>
-
     <!--  ADD THE API DISPATCH MODAL HTML -->
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/api_dispatch.php'); ?>
+
+    <!-- ANSWER STATUS MODAL -->
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/answer_status_modal.php'); ?>
 
     <script>
     /**
@@ -788,20 +797,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
     let currentPayStatus = null; // Store payment status
 
     function showAlert(type, message) {
-        const container = document.querySelector('.alert-container');
-        if (!container) return;
-        const alert = document.createElement('div');
-        alert.className = 'alert alert-' + type;
-        const iconMap = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
-        alert.innerHTML =
-            '<div><span class="alert-icon">' + (iconMap[type] || '') + '</span><span>' + message + '</span></div>' +
-            '<button class="alert-close" onclick="this.parentElement.remove()">&times;</button>';
-        container.appendChild(alert);
-        setTimeout(function() {
-            alert.style.opacity = '0';
-            alert.style.transition = 'opacity 0.3s';
-            setTimeout(function() { if (alert.parentElement) alert.remove(); }, 300);
-        }, 5000);
+        toastManager[type](message);
     }
 
     // Clear all filter inputs
@@ -811,16 +807,20 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
         document.getElementById('date_from').value = '';
         document.getElementById('date_to').value = '';
         document.getElementById('pay_status_filter').value = '';
+        document.getElementById('call_status_filter').value = '';
+        document.getElementById('condition_filter').value = '';
+        if (document.getElementById('tenant_id_filter')) {
+            document.getElementById('tenant_id_filter').value = '';
+        }
 
         // Submit the form to clear filters
         window.location.href = window.location.pathname;
     }
 
-
     // MODIFIED: Enhanced openOrderModal function
     function openOrderModal(orderId, interface = null) {
         if (!orderId || orderId.trim() === '') {
-            alert('Order ID is required to view order details.');
+            toastManager.warning('Order ID is required to view order details.');
             return;
         }
 
@@ -836,7 +836,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
 
         // Show modal
         modal.style.display = 'flex';
-        document.body.style.overflow = 'hidden';
+        document.body.style.overflow = 'clip';
 
         // Show loading state
         modalContent.innerHTML = `
@@ -849,7 +849,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
         viewPaymentSlipBtn.style.display = 'none';
 
         // Determine which PHP file to use based on interface
-        const phpFile = (interface === 'leads') ? '../leads/leads_download.php' : 'download_order_page.php';
+        const phpFile = 'download_order_page.php';
         const fetchUrl = phpFile + '?id=' + encodeURIComponent(currentOrderId);
 
         console.log('Fetching from:', fetchUrl);
@@ -917,9 +917,19 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
 
                     // MODIFIED: Show button for all paid orders, regardless of slip availability
                     if (currentPayStatus === 'paid') {
-                        viewPaymentSlipBtn.style.display = 'inline-flex';
+                        if (currentPaymentSlip && currentPaymentSlip.trim() !== '') {
+                            viewPaymentSlipBtn.style.display = 'inline-flex';
+                            const noSlipMsg = document.getElementById('noPaymentSlipMsg');
+                            if (noSlipMsg) noSlipMsg.style.display = 'none';
+                        } else {
+                            viewPaymentSlipBtn.style.display = 'none';
+                            const noSlipMsg = document.getElementById('noPaymentSlipMsg');
+                            if (noSlipMsg) noSlipMsg.style.display = 'inline-flex';
+                        }
                     } else {
                         viewPaymentSlipBtn.style.display = 'none';
+                        const noSlipMsg = document.getElementById('noPaymentSlipMsg');
+                        if (noSlipMsg) noSlipMsg.style.display = 'none';
                     }
                 } else {
                     console.log('No payment slip information available');
@@ -934,7 +944,10 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
     function viewPaymentSlip() {
         // Check if payment slip exists
         if (!currentPaymentSlip || currentPaymentSlip.trim() === '') {
-            alert('This order has no payment slip.');
+            const slipBtn = document.getElementById('viewPaymentSlipBtn');
+            const noSlipMsg = document.getElementById('noPaymentSlipMsg');
+            if (slipBtn) slipBtn.style.display = 'none';
+            if (noSlipMsg) noSlipMsg.style.display = 'inline-flex';
             return;
         }
 
@@ -956,7 +969,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
     function closeOrderModal() {
         const modal = document.getElementById('orderModal');
         modal.style.display = 'none';
-        document.body.style.overflow = 'auto';
+        document.body.style.overflow = '';
         currentOrderId = null;
         currentInterface = null;
         currentPaymentSlip = null;
@@ -970,7 +983,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
             return;
         }
 
-        const phpFile = (currentInterface === 'leads') ? '../leads/leads_download.php' : 'download_order.php';
+        const phpFile = 'download_order.php';
         const downloadUrl = phpFile + '?id=' + encodeURIComponent(currentOrderId) + '&download=1';
 
         console.log('Downloading from:', downloadUrl);
@@ -1013,198 +1026,12 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
         }
     });
 
-    // Mark as Paid Modal Functionality
-    function markAsPaid(orderId) {
-        if (!orderId || orderId.trim() === '') {
-            alert('Order ID is required to mark as paid.');
-            return;
-        }
-
-        console.log('Opening mark as paid modal for Order ID:', orderId);
-
-        // Set the order ID in the hidden input
-        document.getElementById('modal_order_id').value = orderId.trim();
-
-        // Reset the form
-        document.getElementById('markPaidForm').reset();
-        document.getElementById('fileInfo').style.display = 'none';
-
-        // Show the modal
-        const modal = document.getElementById('markPaidModal');
-        modal.classList.add('show');
-        modal.style.display = 'flex';
-        document.body.style.overflow = 'hidden';
-    }
-
-    // Close the Mark as Paid modal
-    function closePaidModal() {
-        const modal = document.getElementById('markPaidModal');
-        modal.classList.remove('show');
-        modal.style.display = 'none';
-        document.body.style.overflow = 'auto';
-
-        // Reset form
-        document.getElementById('markPaidForm').reset();
-        document.getElementById('fileInfo').style.display = 'none';
-    }
-
-    // Handle file selection
-    document.addEventListener('DOMContentLoaded', function() {
-        const fileInput = document.getElementById('payment_slip');
-        const fileInfo = document.getElementById('fileInfo');
-        const fileName = document.getElementById('fileName');
-
-        fileInput.addEventListener('change', function(e) {
-            const file = e.target.files[0];
-            if (file) {
-                // Validate file size (2MB limit)
-                if (file.size > 2 * 1024 * 1024) {
-                    alert('File size must be less than 2MB');
-                    fileInput.value = '';
-                    fileInfo.style.display = 'none';
-                    return;
-                }
-
-                // Validate file type
-                const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'application/pdf'];
-                if (!allowedTypes.includes(file.type)) {
-                    alert('Please select a valid file format (JPG, JPEG, PNG, PDF)');
-                    fileInput.value = '';
-                    fileInfo.style.display = 'none';
-                    return;
-                }
-
-                // Show file info
-                fileName.textContent = file.name + ' (' + formatFileSize(file.size) + ')';
-                fileInfo.style.display = 'block';
-            } else {
-                fileInfo.style.display = 'none';
-            }
-        });
-    });
-
-    // Remove selected file
-    function removeFile() {
-        document.getElementById('payment_slip').value = '';
-        document.getElementById('fileInfo').style.display = 'none';
-    }
-
-    // Format file size
-    function formatFileSize(bytes) {
-        if (bytes === 0) return '0 Bytes';
-        const k = 1024;
-        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-        const i = Math.floor(Math.log(bytes) / Math.log(k));
-        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-    }
-
-    // Handle form submission
-    document.getElementById('markPaidForm').addEventListener('submit', function(e) {
-        e.preventDefault();
-
-        const orderId = document.getElementById('modal_order_id').value;
-        const fileInput = document.getElementById('payment_slip');
-        const submitBtn = document.getElementById('submitPaidBtn');
-
-        // Optional: Alert the user if no file is selected, but proceed
-        /*
-        if (!fileInput.files[0]) {
-            alert('Please select a payment slip file');
-            return;
-        }
-        */
-
-        // Show loading state
-        submitBtn.innerHTML = '<span class="loading-spinner"></span> Processing...';
-        submitBtn.disabled = true;
-
-        // Create FormData object
-        const formData = new FormData();
-        formData.append('order_id', orderId);
-        formData.append('payment_slip', fileInput.files[0]);
-        formData.append('action', 'mark_paid');
-
-        // Send the request
-        fetch('mark_paid.php', {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    showAlert('success', 'Order marked as paid successfully!');
-                    closePaidModal();
-                    setTimeout(function() { window.location.reload(); }, 1500);
-                } else {
-                    showAlert('error', data.message || 'Failed to mark order as paid');
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                showAlert('error', 'An error occurred while processing the payment. Please try again.');
-            })
-            .finally(() => {
-                // Reset button state
-                submitBtn.innerHTML = '<i class="fas fa-check me-1"></i>Mark as Paid';
-                submitBtn.disabled = false;
-            });
-    });
-
-    // Unmark as Paid Functionality
-    function unmarkPaid(orderId) {
-        if (!orderId || orderId.trim() === '') {
-            alert('Order ID is required to unmark as paid.');
-            return;
-        }
-
-        if (confirm('Are you sure you want to unmark this order as paid? This will delete the payment record and set the order back to unpaid.')) {
-            const formData = new FormData();
-            formData.append('order_id', orderId);
-            formData.append('action', 'unmark_paid');
-
-            fetch('unmark_paid.php', {
-                    method: 'POST',
-                    body: formData
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        showAlert('success', 'Order unmarked as paid successfully!');
-                        setTimeout(function() { window.location.reload(); }, 1500);
-                    } else {
-                        showAlert('error', data.message || 'Failed to unmark order as paid');
-                    }
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    showAlert('error', 'An error occurred while unmarking the payment. Please try again.');
-                });
-        }
-    }
-
-    // Close modal when clicking outside
-    document.getElementById('markPaidModal').addEventListener('click', function(e) {
-        if (e.target === this) {
-            closePaidModal();
-        }
-    });
-
-    // Close modal with Escape key
-    document.addEventListener('keydown', function(e) {
-        if (e.key === 'Escape') {
-            const modal = document.getElementById('markPaidModal');
-            if (modal.classList.contains('show')) {
-                closePaidModal();
-            }
-        }
-    });
-
 
     // Open Dispatch Modal
   // Open Dispatch Modal - UPDATED VERSION
 function openDispatchModal(orderId) {
     if (!orderId || orderId.trim() === '') {
-        alert('Order ID is required to dispatch order.');
+        toastManager.warning('Order ID is required to dispatch order.');
         return;
     }
 
@@ -1227,7 +1054,7 @@ function openDispatchModal(orderId) {
     // Show the modal
     const modal = document.getElementById('dispatchOrderModal');
     modal.style.display = 'flex';
-    document.body.style.overflow = 'hidden';
+    document.body.style.overflow = 'clip';
 
     // **NEW: Load couriers for this specific order**
     loadCouriersForOrder(orderId);
@@ -1291,7 +1118,7 @@ function loadCouriersForOrder(orderId) {
     function closeDispatchModal() {
         const modal = document.getElementById('dispatchOrderModal');
         modal.style.display = 'none';
-        document.body.style.overflow = 'auto';
+        document.body.style.overflow = '';
 
         // Reset form
         document.getElementById('dispatch-order-form').reset();
@@ -1305,21 +1132,20 @@ function loadCouriersForOrder(orderId) {
 function fetchTrackingNumber(courierId) {
     const trackingDisplay = document.getElementById('tracking_number_display');
     const submitBtn = document.getElementById('dispatch-submit-btn');
-    const orderId = document.getElementById('dispatch_order_id').value; // Get order_id
+    const orderId = document.getElementById('dispatch_order_id').value;
 
     if (!courierId) {
         trackingDisplay.innerHTML =
-            '<span class="text-muted">Select a courier to see available tracking number</span>';
+            '<div class="info-box" style="margin-bottom:0;"><i class="fas fa-info-circle"></i>Select a courier to see available tracking number</div>';
         submitBtn.disabled = true;
         return;
     }
 
     // Show loading state
     trackingDisplay.innerHTML =
-        '<span class="text-info"><i class="fas fa-spinner fa-spin me-1"></i>Loading tracking number...</span>';
+        '<div class="info-box" style="margin-bottom:0;"><i class="fas fa-spinner fa-spin"></i>Loading tracking number...</div>';
     submitBtn.disabled = true;
 
-    // **UPDATED: Pass both courier_id and order_id**
     fetch(`get_tracking_number.php?courier_id=${courierId}&order_id=${encodeURIComponent(orderId)}`, {
             method: 'GET',
             headers: {
@@ -1334,20 +1160,64 @@ function fetchTrackingNumber(courierId) {
         })
         .then(data => {
             if (data.status === 'success') {
-                trackingDisplay.innerHTML =
-                    `<span class="text-success"><i class="fas fa-check-circle me-1"></i>Next tracking number: <strong>${data.tracking_number}</strong></span>
-            <small class="d-block text-muted mt-1">${data.available_count} tracking numbers available</small>`;
+                const tn = data.tracking_number;
+                const available = data.available_count || 0;
+                const headerBg   = available > 0 ? '#d4edda' : '#fff3cd';
+                const headerIcon = available > 0 ? '<i class="fas fa-check-circle me-1"></i>' : '<i class="fas fa-exclamation-triangle me-1"></i>';
+                const headerText = available > 0
+                    ? `<strong>${available}</strong> tracking numbers available`
+                    : `<strong>No</strong> tracking numbers available for this courier`;
+
+                // Get customer name from the order row in the main table
+                const orderCell = Array.from(document.querySelectorAll('.orders-table .order-id'))
+                    .find(cell => cell.textContent.trim() === orderId);
+                let customerName = '';
+                if (orderCell) {
+                    const nameCell = orderCell.closest('tr').querySelector('.customer-name');
+                    if (nameCell) customerName = nameCell.textContent.trim().split('\n')[0].trim();
+                }
+
+                trackingDisplay.innerHTML = `
+                    <div style="background:${headerBg};padding:8px 10px;border-radius:4px 4px 0 0;font-size:13px;">
+                        ${headerIcon}${headerText}
+                    </div>
+                    <div style="max-height:150px;overflow-y:auto;">
+                        <table style="width:100%;table-layout:fixed;border-collapse:collapse;font-size:13px;background:#fff;border:1px solid #dee2e6;">
+                            <colgroup>
+                                <col style="width:40px;">
+                                <col style="width:100px;">
+                                <col>
+                                <col style="width:130px;">
+                            </colgroup>
+                            <thead>
+                                <tr style="background:#f8f9fa;">
+                                    <th style="padding:6px 8px;text-align:center;border-bottom:2px solid #dee2e6;">#</th>
+                                    <th style="padding:6px 8px;text-align:left;border-bottom:2px solid #dee2e6;">Order ID</th>
+                                    <th style="padding:6px 8px;text-align:left;border-bottom:2px solid #dee2e6;">Customer</th>
+                                    <th style="padding:6px 8px;text-align:left;border-bottom:2px solid #dee2e6;">Tracking Number</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td style="padding:5px 8px;text-align:center;border-bottom:1px solid #eee;">1</td>
+                                    <td style="padding:5px 8px;text-align:left;font-weight:600;border-bottom:1px solid #eee;">${orderId}</td>
+                                    <td style="padding:5px 8px;text-align:left;border-bottom:1px solid #eee;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${customerName}">${customerName || '-'}</td>
+                                    <td style="padding:5px 8px;text-align:left;font-family:monospace;color:#155724;border-bottom:1px solid #eee;"><strong>${tn}</strong></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>`;
                 submitBtn.disabled = false;
             } else {
                 trackingDisplay.innerHTML =
-                    `<span class="text-danger"><i class="fas fa-exclamation-circle me-1"></i>${data.message}</span>`;
+                    `<div class="info-box info-box--warning"><i class="fas fa-exclamation-circle"></i>${data.message}</div>`;
                 submitBtn.disabled = true;
             }
         })
         .catch(error => {
             console.error('Error fetching tracking number:', error);
             trackingDisplay.innerHTML =
-                '<span class="text-danger"><i class="fas fa-exclamation-triangle me-1"></i>Error loading tracking number. Please try again.</span>';
+                '<div class="info-box info-box--warning"><i class="fas fa-exclamation-triangle"></i>Error loading tracking number. Please try again.</div>';
             submitBtn.disabled = true;
         });
 }
@@ -1471,479 +1341,8 @@ function fetchTrackingNumber(courierId) {
         openDispatchModal(orderId);
     }
 
-    // Add this debug script to help identify the modal footer issue
-    // Place this in your existing JavaScript section or in the console
-
-    function debugModalFooter() {
-        console.log('=== Modal Footer Debug ===');
-
-        const modal = document.getElementById('dispatchOrderModal');
-        const modalFooter = modal?.querySelector('.modal-footer');
-        const cancelBtn = modalFooter?.querySelector('.modal-btn-secondary');
-        const confirmBtn = modalFooter?.querySelector('.modal-btn-primary');
-
-        console.log('Modal element:', modal);
-        console.log('Modal footer element:', modalFooter);
-        console.log('Cancel button:', cancelBtn);
-        console.log('Confirm button:', confirmBtn);
-
-        if (modalFooter) {
-            const footerStyles = window.getComputedStyle(modalFooter);
-            console.log('Footer display:', footerStyles.display);
-            console.log('Footer visibility:', footerStyles.visibility);
-            console.log('Footer height:', footerStyles.height);
-            console.log('Footer padding:', footerStyles.padding);
-            console.log('Footer background:', footerStyles.backgroundColor);
-        }
-
-        if (cancelBtn) {
-            const cancelStyles = window.getComputedStyle(cancelBtn);
-            console.log('Cancel button display:', cancelStyles.display);
-            console.log('Cancel button visibility:', cancelStyles.visibility);
-            console.log('Cancel button background:', cancelStyles.backgroundColor);
-            console.log('Cancel button color:', cancelStyles.color);
-        }
-
-        if (confirmBtn) {
-            const confirmStyles = window.getComputedStyle(confirmBtn);
-            console.log('Confirm button display:', confirmStyles.display);
-            console.log('Confirm button visibility:', confirmStyles.visibility);
-            console.log('Confirm button background:', confirmStyles.backgroundColor);
-            console.log('Confirm button color:', confirmStyles.color);
-            console.log('Confirm button disabled:', confirmBtn.disabled);
-        }
-    }
-
-    // Call this function after opening the modal to debug
-    // Add this line to your openDispatchModal function temporarily:
-    // setTimeout(() => debugModalFooter(), 100);
 
 
-
-    /**
-     * JAVASCRIPT FUNCTIONS - Add these functions to your existing script section
-     * Handles the Answer/No Answer modal functionality
-     */
-
-    // Global variable to store current modal state
-    let currentAnswerOrderId = null;
-    let currentCallLog = null;
-
-    /**
-     * Open Answer Status Modal
-     * @param {string} orderId - The order ID to update
-     * @param {number} callLogStatus - Current call_log status (0 or 1)
-     */
-    function openAnswerModal(orderId, callLogStatus) {
-        if (!orderId || orderId.trim() === '') {
-            alert('Order ID is required to update call status.');
-            return;
-        }
-
-        console.log('Opening answer modal for Order ID:', orderId, 'Current call_log:', callLogStatus);
-
-        // Store current values
-        currentAnswerOrderId = orderId.trim();
-        currentCallLog = parseInt(callLogStatus);
-
-        // Set form values
-        document.getElementById('answer_order_id').value = currentAnswerOrderId;
-        document.getElementById('current_call_log').value = currentCallLog;
-        document.getElementById('displayOrderId').textContent = currentAnswerOrderId;
-
-        // Determine new status (toggle: 0->1, 1->0)
-        // const selectedCallLog = currentCallLog === 0 ? 1 : 0;
-        // document.getElementById('new_call_log').value = selectedCallLog;
-
-        // // Update modal content based on action
-        // updateModalContent(currentCallLog, selectedCallLog);
-
-        // Reset form
-        document.getElementById('answer-status-form').reset();
-        // Re-set the hidden fields after reset
-        document.getElementById('answer_order_id').value = currentAnswerOrderId;
-        document.getElementById('current_call_log').value = currentCallLog;
-        document.getElementById('displayOrderId').textContent = currentAnswerOrderId;
-        // Pre-select the current status or suggestion
-    const statusAnswer = document.getElementById('status_answer');
-    const statusNoAnswer = document.getElementById('status_no_answer');
-    
-    // Clear previous selection
-    if(statusAnswer) statusAnswer.checked = false;
-    if(statusNoAnswer) statusNoAnswer.checked = false;
-
-    // Set to opposite of current status as default suggestion if applicable
-    const suggestedStatus = (currentCallLog === 0) ? 1 : 0;
-    
-    if (suggestedStatus === 1 && statusAnswer) {
-        statusAnswer.checked = true;
-    } else if (suggestedStatus === 0 && statusNoAnswer) {
-        statusNoAnswer.checked = true;
-    }
-    
-    // Trigger update content
-    updateModalContentBySelection();
-
-        // Show the modal
-    const modal = document.getElementById('answerStatusModal');
-    if (modal) {
-        modal.style.display = 'flex';
-        document.body.style.overflow = 'hidden';
-    }
-}
-
-/**
- * Update Modal Content Based on Selected Status
- * This function is called when the user changes the call status dropdown
- */
-function updateModalContentBySelection() {
-    let selectedStatus = null;
-    const answerRadio = document.getElementById('status_answer');
-    const noAnswerRadio = document.getElementById('status_no_answer');
-    
-    if (answerRadio && answerRadio.checked) selectedStatus = 1;
-    if (noAnswerRadio && noAnswerRadio.checked) selectedStatus = 0;
-    
-    const reasonLabel = document.getElementById('reasonLabel');
-    const reasonHelp = document.getElementById('reasonHelp');
-    const answerReason = document.getElementById('answer_reason');
-    
-    if (selectedStatus === 1) {
-        // ANSWERED (call_log = 1)
-        reasonLabel.innerHTML = 'Answer Notes';
-        reasonHelp.textContent = 'Please provide details about the customer conversation';
-        answerReason.placeholder = 'Enter details about customer conversation...';
-    } else if (selectedStatus === 0) {
-        // NO ANSWER (call_log = 0)
-        reasonLabel.innerHTML = 'No Answer Reason';
-        reasonHelp.textContent = 'Please specify why the customer did not answer';
-        answerReason.placeholder = 'Enter reason for no answer (busy, unreachable, etc.)...';
-    } else {
-        // Default state
-        reasonLabel.innerHTML = 'Call Notes';
-        reasonHelp.textContent = 'Please provide details about the call interaction';
-        answerReason.placeholder = 'Enter call notes or reason...';
-    }
-}
-
-    /**
-     * Close Answer Status Modal
-     */
-    function closeAnswerModal() {
-        const modal = document.getElementById('answerStatusModal');
-        modal.style.display = 'none';
-        document.body.style.overflow = 'auto';
-
-        // Reset form and variables
-        document.getElementById('answer-status-form').reset();
-        currentAnswerOrderId = null;
-        currentCallLog = null;
-    }
-
-    /**
-     * Initialize Answer Status Functionality
-     */
-    document.addEventListener('DOMContentLoaded', function() {
-    const answerForm = document.getElementById('answer-status-form');
-    const modal = document.getElementById('answerStatusModal');
-    
-    // Handle radio button changes
-    const radioButtons = document.querySelectorAll('.call-status-radio');
-    radioButtons.forEach(radio => {
-        radio.addEventListener('change', updateModalContentBySelection);
-    });
-    
-    // Handle answer form submission
-    if (answerForm) {
-        answerForm.addEventListener('submit', function(e) {
-            e.preventDefault();
-            
-            const orderId = document.getElementById('answer_order_id').value;
-            let selectedCallLog = '';
-            const answerRadio = document.getElementById('status_answer');
-            const noAnswerRadio = document.getElementById('status_no_answer');
-            
-            if (answerRadio && answerRadio.checked) selectedCallLog = '1';
-            if (noAnswerRadio && noAnswerRadio.checked) selectedCallLog = '0';
-            const answerReason = document.getElementById('answer_reason').value.trim();
-            const submitBtn = document.getElementById('answer-submit-btn');
-            
-            // Validation
-            if (!orderId) {
-                alert('Order ID is missing');
-                return;
-            }
-            
-            if (selectedCallLog !== '1' && selectedCallLog !== '0') {
-                alert('Please select a call status (Answer or No Answer)');
-                return;
-            }
-            
-            // Confirm action
-            const actionText = (selectedCallLog == 1) ? 'mark as answered' : 'mark as no answer';
-            if (!confirm(`Are you sure you want to ${actionText} for Order ID: ${orderId}?`)) {
-                return;
-            }
-            
-            // Show loading state
-            const originalText = submitBtn.innerHTML;
-            submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Updating...';
-            submitBtn.disabled = true;
-            
-            // Create FormData object
-            const formData = new FormData();
-            formData.append('order_id', orderId);
-            formData.append('call_log', selectedCallLog);
-            formData.append('answer_reason', answerReason);
-            formData.append('action', 'update_call_status');
-            
-            // Send the request
-            fetch('update_call_status.php', {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                return response.json();
-            })
-            .then(data => {
-                if (data.success) {
-                    const statusText = (selectedCallLog == 1) ? 'answered' : 'no answer';
-                    showAlert('success', `Order marked as ${statusText} successfully!`);
-                    closeAnswerModal();
-                    setTimeout(function() { window.location.reload(); }, 1500);
-                } else {
-                    showAlert('error', data.message || 'Failed to update call status');
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                showAlert('error', 'An error occurred while updating call status. Please try again.');
-            })
-            .finally(() => {
-                // Reset button state
-                submitBtn.innerHTML = originalText;
-                submitBtn.disabled = false;
-            });
-        });
-    }
-
-        // Close modal when clicking outside
-        if (modal) {
-            modal.addEventListener('click', function(e) {
-                if (e.target === this) {
-                    closeAnswerModal();
-                }
-            });
-        }
-
-        // Close modal with Escape key
-        document.addEventListener('keydown', function(e) {
-            if (e.key === 'Escape') {
-                const modal = document.getElementById('answerStatusModal');
-                if (modal && modal.style.display === 'flex') {
-                    closeAnswerModal();
-                }
-            }
-        });
-    });
-
-    /**
-     * Backward compatibility function
-     * Keep this if you have existing calls to markAsAnswered()
-     */
-    function markAsAnswered(orderId) {
-        // Default to call_log = 0 (no answer) for backward compatibility
-        openAnswerModal(orderId, 0);
-    }
-
-    /**
-     * CANCEL ORDER MODAL FUNCTIONALITY
-     * Add these functions to your existing JavaScript code
-     */
-
-    // Global variable to store current order being cancelled
-    let currentCancelOrderId = null;
-
-    /**
-     * Open Cancel Order Modal
-     * @param {string} orderId - The order ID to cancel
-     */
-    function openCancelModal(orderId) {
-        if (!orderId || orderId.trim() === '') {
-            alert('Order ID is required to cancel order.');
-            return;
-        }
-
-        console.log('Opening cancel modal for Order ID:', orderId);
-
-        // Store current order ID
-        currentCancelOrderId = orderId.trim();
-
-        // Reset the cancellation reason textarea
-        document.getElementById('cancellationReason').value = '';
-
-        // Show the modal
-        const modal = document.getElementById('cancelModal');
-        modal.style.display = 'block';
-        modal.classList.add('show');
-        document.body.style.overflow = 'hidden';
-
-        // Focus on textarea
-        setTimeout(() => {
-            document.getElementById('cancellationReason').focus();
-        }, 100);
-    }
-
-    /**
-     * Close Cancel Order Modal
-     */
-    function closeCancelModal() {
-        const modal = document.getElementById('cancelModal');
-        modal.style.display = 'none';
-        modal.classList.remove('show');
-        document.body.style.overflow = 'auto';
-
-        // Reset form and variables
-        document.getElementById('cancellationReason').value = '';
-        currentCancelOrderId = null;
-    }
-
-    /**
-     * Handle Cancel Order Confirmation
-     */
-    function confirmCancelOrder() {
-        const cancellationReason = document.getElementById('cancellationReason').value.trim();
-        const confirmBtn = document.getElementById('confirmCancelBtn');
-
-        // Validation
-        if (!currentCancelOrderId) {
-            alert('No order selected for cancellation.');
-            return;
-        }
-
-        /* Cancellation reason is now optional
-        if (!cancellationReason) {
-            alert('Please provide a reason for cancellation.');
-            document.getElementById('cancellationReason').focus();
-            return;
-        }
-
-        if (cancellationReason.length < 10) {
-            alert('Please provide a more detailed reason (minimum 10 characters).');
-            document.getElementById('cancellationReason').focus();
-            return;
-        }
-        */
-
-        // Final confirmation
-        if (!confirm(
-            `Are you sure you want to cancel Order ID: ${currentCancelOrderId}? This action cannot be undone.`)) {
-            return;
-        }
-
-        // Show loading state
-        const originalText = confirmBtn.innerHTML;
-        confirmBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Cancelling...';
-        confirmBtn.disabled = true;
-
-        // Create FormData object
-        const formData = new FormData();
-        formData.append('order_id', currentCancelOrderId);
-        formData.append('cancellation_reason', cancellationReason);
-        formData.append('action', 'cancel_order');
-
-        // Send the request
-        fetch('cancel_order.php', {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                return response.json();
-            })
-            .then(data => {
-                if (data.success) {
-                    showAlert('success', 'Order cancelled successfully!');
-                    closeCancelModal();
-                    setTimeout(function() { window.location.reload(); }, 1500);
-                } else {
-                    showAlert('error', data.message || 'Failed to cancel order');
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                showAlert('error', 'An error occurred while cancelling the order. Please try again.');
-            })
-            .finally(() => {
-                // Reset button state
-                confirmBtn.innerHTML = originalText;
-                confirmBtn.disabled = false;
-            });
-    }
-
-    /**
-     * Initialize Cancel Order Functionality
-     * Add this to your existing DOMContentLoaded event listener
-     */
-    // Add this inside your existing DOMContentLoaded function
-    document.addEventListener('DOMContentLoaded', function() {
-        const cancelModal = document.getElementById('cancelModal');
-        const confirmCancelBtn = document.getElementById('confirmCancelBtn');
-        const cancellationReason = document.getElementById('cancellationReason');
-
-        // Handle confirm cancel button click
-        if (confirmCancelBtn) {
-            confirmCancelBtn.addEventListener('click', confirmCancelOrder);
-        }
-
-        // Handle close button clicks
-        const closeButtons = cancelModal?.querySelectorAll('[data-dismiss="modal"], .close');
-        if (closeButtons) {
-            closeButtons.forEach(btn => {
-                btn.addEventListener('click', closeCancelModal);
-            });
-        }
-
-        // Close modal when clicking outside
-        if (cancelModal) {
-            cancelModal.addEventListener('click', function(e) {
-                if (e.target === this) {
-                    closeCancelModal();
-                }
-            });
-        }
-
-        // Auto-resize textarea
-        if (cancellationReason) {
-            cancellationReason.addEventListener('input', function() {
-                this.style.height = 'auto';
-                this.style.height = (this.scrollHeight) + 'px';
-            });
-        }
-
-        // Close modal with Escape key
-        document.addEventListener('keydown', function(e) {
-            if (e.key === 'Escape') {
-                const modal = document.getElementById('cancelModal');
-                if (modal && (modal.style.display === 'block' || modal.classList.contains('show'))) {
-                    closeCancelModal();
-                }
-            }
-        });
-    });
-
-    /**
-     * Backward compatibility function
-     * Call this function from your cancel button: onclick="cancelOrder('ORDER_ID')"
-     */
-    function cancelOrder(orderId) {
-        openCancelModal(orderId);
-    }
 
     /**
      * Edit Order function
@@ -1951,7 +1350,7 @@ function updateModalContentBySelection() {
      */
     function editOrder(orderId) {
         if (!orderId) {
-            alert('Order ID is required to edit order.');
+            toastManager.warning('Order ID is required to edit order.');
             return;
         }
         window.location.href = 'edit_order.php?id=' + encodeURIComponent(orderId);
@@ -1964,15 +1363,17 @@ function updateModalContentBySelection() {
         const orderCheckboxes = document.querySelectorAll('.order-checkbox');
 
         orderCheckboxes.forEach(checkbox => {
-            checkbox.checked = selectAllCheckbox.checked;
+            if (!checkbox.disabled) {
+                checkbox.checked = selectAllCheckbox.checked;
+            }
         });
 
         updateBulkSelection();
     }
 
     function updateBulkSelection() {
-        const orderCheckboxes = document.querySelectorAll('.order-checkbox');
-        const checkedBoxes = document.querySelectorAll('.order-checkbox:checked');
+        const orderCheckboxes = document.querySelectorAll('.order-checkbox:not(:disabled)');
+        const checkedBoxes = document.querySelectorAll('.order-checkbox:checked:not(:disabled)');
         const selectAllCheckbox = document.getElementById('selectAll');
         const bulkActionsBar = document.getElementById('bulkActionsBar');
         const selectedCount = document.getElementById('selectedCount');
@@ -1999,7 +1400,7 @@ function updateModalContentBySelection() {
     }
 
     function getSelectedOrderIds() {
-        const checkedBoxes = document.querySelectorAll('.order-checkbox:checked');
+        const checkedBoxes = document.querySelectorAll('.order-checkbox:checked:not(:disabled)');
         return Array.from(checkedBoxes).map(checkbox => checkbox.value);
     }
 
@@ -2008,7 +1409,9 @@ function updateModalContentBySelection() {
         const selectAllCheckbox = document.getElementById('selectAll');
 
         orderCheckboxes.forEach(checkbox => {
-            checkbox.checked = false;
+            if (!checkbox.disabled) {
+                checkbox.checked = false;
+            }
         });
         selectAllCheckbox.checked = false;
         selectAllCheckbox.indeterminate = false;
@@ -2031,7 +1434,9 @@ function updateModalContentBySelection() {
         const orderCheckboxes = document.querySelectorAll('.order-checkbox');
 
         orderCheckboxes.forEach(checkbox => {
-            checkbox.checked = selectAllCheckbox.checked;
+            if (!checkbox.disabled) {
+                checkbox.checked = selectAllCheckbox.checked;
+            }
         });
 
         updateBulkSelection();
@@ -2041,7 +1446,8 @@ function updateModalContentBySelection() {
      * Update Bulk Selection Display
      */
     function updateBulkSelection() {
-        const orderCheckboxes = document.querySelectorAll('.order-checkbox:checked');
+        const totalCheckboxes = document.querySelectorAll('.order-checkbox:not(:disabled)');
+        const orderCheckboxes = document.querySelectorAll('.order-checkbox:checked:not(:disabled)');
         const selectedCount = orderCheckboxes.length;
         const bulkActionsBar = document.getElementById('bulkActionsBar');
         const selectedCountElement = document.getElementById('selectedCount');
@@ -2058,10 +1464,9 @@ function updateModalContentBySelection() {
         }
 
         // Update select all checkbox state
-        const totalCheckboxes = document.querySelectorAll('.order-checkbox').length;
         if (selectAllCheckbox) {
-            selectAllCheckbox.checked = selectedCount === totalCheckboxes && totalCheckboxes > 0;
-            selectAllCheckbox.indeterminate = selectedCount > 0 && selectedCount < totalCheckboxes;
+            selectAllCheckbox.checked = selectedCount === totalCheckboxes.length && totalCheckboxes.length > 0;
+            selectAllCheckbox.indeterminate = selectedCount > 0 && selectedCount < totalCheckboxes.length;
         }
 
         // Store selected orders for bulk dispatch
@@ -2076,7 +1481,9 @@ function updateModalContentBySelection() {
         const selectAllCheckbox = document.getElementById('selectAll');
 
         orderCheckboxes.forEach(checkbox => {
-            checkbox.checked = false;
+            if (!checkbox.disabled) {
+                checkbox.checked = false;
+            }
         });
 
         if (selectAllCheckbox) {
@@ -2115,7 +1522,7 @@ function bulkMarkAsDispatched() {
     // Show modal
     const modal = document.getElementById('bulkDispatchModal');
     modal.style.display = 'flex';
-    document.body.style.overflow = 'hidden';
+    document.body.style.overflow = 'clip';
 
     // **NEW: Load couriers based on selected orders' tenant**
     loadCouriersForBulkDispatch();
@@ -2239,7 +1646,7 @@ function loadCouriersForBulkDispatch() {
     function closeBulkDispatchModal() {
         const modal = document.getElementById('bulkDispatchModal');
         modal.style.display = 'none';
-        document.body.style.overflow = 'auto';
+        document.body.style.overflow = '';
 
         // Reset form
         document.getElementById('bulk-dispatch-form').reset();
@@ -2254,22 +1661,39 @@ function loadCouriersForBulkDispatch() {
 function fetchBulkTrackingNumbers(courierId) {
     const trackingDisplay = document.getElementById('bulk_tracking_numbers_display');
     const submitBtn = document.getElementById('bulk-dispatch-submit-btn');
-    const selectedCount = selectedOrdersForBulkDispatch.length;
+    const selectedCheckboxes = document.querySelectorAll('.order-checkbox:checked');
+    const selectedCount = selectedCheckboxes.length;
 
     if (!courierId) {
         trackingDisplay.innerHTML =
-            '<span class="text-muted">Select a courier to see available tracking numbers</span>';
+            '<div class="info-box" style="margin-bottom:0;"><i class="fas fa-info-circle"></i>Select a courier to see available tracking numbers</div>';
         submitBtn.disabled = true;
         return;
     }
 
+    if (selectedCount === 0) {
+        trackingDisplay.innerHTML =
+            '<div class="info-box info-box--warning" style="margin-bottom:0;"><i class="fas fa-exclamation-triangle"></i>No orders selected</div>';
+        submitBtn.disabled = true;
+        return;
+    }
+
+    // Collect order ID + customer name from each selected checkbox row
+    const selectedOrders = Array.from(selectedCheckboxes).map(checkbox => {
+        const row = checkbox.closest('tr');
+        const orderId = checkbox.value;
+        const customerCell = row ? row.querySelector('td.customer-name') : null;
+        const customerName = customerCell ? customerCell.textContent.trim().split('\n')[0].trim() : '';
+        return { orderId, customerName };
+    });
+
+    // Pass first order_id for tenant-specific tracking numbers
+    const firstOrderId = selectedCheckboxes[0].value;
+
     // Show loading state
     trackingDisplay.innerHTML =
-        '<span class="text-info"><i class="fas fa-spinner fa-spin me-1"></i>Loading tracking numbers...</span>';
+        '<div class="info-box" style="margin-bottom:0;"><i class="fas fa-spinner fa-spin"></i>Loading tracking numbers...</div>';
     submitBtn.disabled = true;
-
-    // **UPDATED: Pass first order_id to get tenant-specific tracking numbers**
-    const firstOrderId = selectedOrdersForBulkDispatch[0];
 
     fetch(`get_bulk_tracking_numbers.php?courier_id=${courierId}&count=${selectedCount}&order_id=${encodeURIComponent(firstOrderId)}`, {
             method: 'GET',
@@ -2287,40 +1711,75 @@ function fetchBulkTrackingNumbers(courierId) {
             console.log('Tracking numbers response:', data);
             
             if (data.status === 'success') {
-                let trackingHtml =
-                    `<span class="text-success"><i class="fas fa-check-circle me-1"></i>Available tracking numbers: <strong>${data.tracking_numbers.length}</strong></span>`;
+                const trackingNumbers = data.tracking_numbers;
+                const availableCount = data.available_count || trackingNumbers.length;
 
-                if (data.tracking_numbers.length >= selectedCount) {
-                    trackingHtml += `<div class="tracking-numbers-preview mt-2" style="max-height: 200px; overflow-y: auto; background: #f8f9fa; padding: 10px; border-radius: 4px;">`;
-                    data.tracking_numbers.slice(0, selectedCount).forEach((trackingNumber, index) => {
-                        trackingHtml +=
-                            `<div class="tracking-item" style="padding: 2px 0; font-family: monospace;">${index + 1}. <strong>${trackingNumber}</strong></div>`;
-                    });
-                    trackingHtml += `</div>`;
-                    trackingHtml +=
-                        `<small class="d-block text-muted mt-1">${data.available_count} total tracking numbers available</small>`;
-                    submitBtn.disabled = false;
-                } else {
-                    trackingHtml +=
-                        `<div class="alert alert-warning mt-2">
-                            <i class="fas fa-exclamation-triangle me-1"></i>
-                            <strong>Insufficient tracking numbers!</strong><br>
-                            Only ${data.tracking_numbers.length} tracking numbers available, but ${selectedCount} orders selected.
-                        </div>`;
-                    submitBtn.disabled = true;
-                }
+                // Build paired table rows
+                let rowsHtml = '';
+                selectedOrders.forEach((order, index) => {
+                    const tn = trackingNumbers[index] || null;
+                    if (tn) {
+                        rowsHtml += `
+                            <tr>
+                                <td style="padding:5px 8px;text-align:center;border-bottom:1px solid #eee;">${index + 1}</td>
+                                <td style="padding:5px 8px;text-align:left;font-weight:600;border-bottom:1px solid #eee;">${order.orderId}</td>
+                                <td style="padding:5px 8px;text-align:left;border-bottom:1px solid #eee;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${order.customerName}">${order.customerName}</td>
+                                <td style="padding:5px 8px;text-align:left;font-family:monospace;color:#155724;border-bottom:1px solid #eee;"><strong>${tn}</strong></td>
+                            </tr>`;
+                    } else {
+                        rowsHtml += `
+                            <tr style="background:#fff3cd;">
+                                <td style="padding:5px 8px;text-align:center;border-bottom:1px solid #eee;">${index + 1}</td>
+                                <td style="padding:5px 8px;text-align:left;font-weight:600;border-bottom:1px solid #eee;">${order.orderId}</td>
+                                <td style="padding:5px 8px;text-align:left;border-bottom:1px solid #eee;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${order.customerName}">${order.customerName}</td>
+                                <td style="padding:5px 8px;text-align:left;color:#856404;border-bottom:1px solid #eee;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><i class="fas fa-exclamation-triangle me-1"></i>No tracking</td>
+                            </tr>`;
+                    }
+                });
 
-                trackingDisplay.innerHTML = trackingHtml;
+                const isSufficient = availableCount >= selectedCount;
+                const headerBg   = isSufficient ? '#d4edda' : '#fff3cd';
+                const headerIcon = isSufficient ? '<i class="fas fa-check-circle me-1"></i>' : '<i class="fas fa-exclamation-triangle me-1"></i>';
+                const headerText = isSufficient
+                    ? `<strong>${availableCount}</strong> tracking numbers available &mdash; all ${selectedCount} orders will be dispatched`
+                    : `Only <strong>${availableCount}</strong> of ${selectedCount} orders will be dispatched (insufficient tracking numbers)`;
+
+                trackingDisplay.innerHTML = `
+                    <div style="background:${headerBg};padding:8px 10px;border-radius:4px 4px 0 0;font-size:13px;">
+                        ${headerIcon}${headerText}
+                    </div>
+                    <div style="max-height:220px;overflow-y:auto;">
+                        <table style="width:100%;table-layout:fixed;border-collapse:collapse;font-size:13px;background:#fff;border:1px solid #dee2e6;">
+                            <colgroup>
+                                <col style="width:40px;">
+                                <col style="width:100px;">
+                                <col>
+                                <col style="width:130px;">
+                            </colgroup>
+                            <thead>
+                                <tr style="background:#f8f9fa;">
+                                    <th style="padding:6px 8px;text-align:center;border-bottom:2px solid #dee2e6;">#</th>
+                                    <th style="padding:6px 8px;text-align:left;border-bottom:2px solid #dee2e6;">Order ID</th>
+                                    <th style="padding:6px 8px;text-align:left;border-bottom:2px solid #dee2e6;">Customer</th>
+                                    <th style="padding:6px 8px;text-align:left;border-bottom:2px solid #dee2e6;">Tracking Number</th>
+                                </tr>
+                            </thead>
+                            <tbody>${rowsHtml}</tbody>
+                        </table>
+                    </div>`;
+
+                // Allow dispatch as long as at least one tracking number is available
+                submitBtn.disabled = availableCount === 0;
             } else {
                 trackingDisplay.innerHTML =
-                    `<span class="text-danger"><i class="fas fa-exclamation-circle me-1"></i>${data.message}</span>`;
+                    `<div class="info-box info-box--warning"><i class="fas fa-exclamation-circle"></i>${data.message}</div>`;
                 submitBtn.disabled = true;
             }
         })
         .catch(error => {
             console.error('Error fetching tracking numbers:', error);
             trackingDisplay.innerHTML =
-                '<span class="text-danger"><i class="fas fa-exclamation-triangle me-1"></i>Error loading tracking numbers. Please try again.</span>';
+                '<div class="info-box info-box--warning"><i class="fas fa-exclamation-triangle"></i>Error loading tracking numbers. Please try again.</div>';
             submitBtn.disabled = true;
         });
 }
@@ -2543,7 +2002,8 @@ if (bulkDispatchForm) {
     // Update the existing updateBulkSelection function to include action button control
     // Replace your existing updateBulkSelection function with this enhanced version:
     function updateBulkSelection() {
-        const orderCheckboxes = document.querySelectorAll('.order-checkbox:checked');
+        const allCheckboxes = document.querySelectorAll('.order-checkbox:not(:disabled)');
+        const orderCheckboxes = document.querySelectorAll('.order-checkbox:checked:not(:disabled)');
         const selectedCount = orderCheckboxes.length;
         const bulkActionsBar = document.getElementById('bulkActionsBar');
         const selectedCountElement = document.getElementById('selectedCount');
@@ -2560,10 +2020,9 @@ if (bulkDispatchForm) {
         }
 
         // Update select all checkbox state
-        const totalCheckboxes = document.querySelectorAll('.order-checkbox').length;
         if (selectAllCheckbox) {
-            selectAllCheckbox.checked = selectedCount === totalCheckboxes && totalCheckboxes > 0;
-            selectAllCheckbox.indeterminate = selectedCount > 0 && selectedCount < totalCheckboxes;
+            selectAllCheckbox.checked = selectedCount === allCheckboxes.length && allCheckboxes.length > 0;
+            selectAllCheckbox.indeterminate = selectedCount > 0 && selectedCount < allCheckboxes.length;
         }
 
         // Store selected orders for bulk dispatch
@@ -2576,7 +2035,7 @@ if (bulkDispatchForm) {
     // Print order function
     function printOrder(orderId) {
         if (!orderId || orderId.trim() === '') {
-            alert('Order ID is required to print order.');
+            toastManager.warning('Order ID is required to print order.');
             return;
         }
 
@@ -2619,7 +2078,7 @@ function openApiDispatchModal() {
     // Show modal
     const modal = document.getElementById('apiDispatchModal');
     modal.style.display = 'flex';
-    document.body.style.overflow = 'hidden';
+    document.body.style.overflow = 'clip';
 
     // **NEW: Load API couriers for selected orders**
     loadApiCouriersForOrders();
@@ -2733,7 +2192,7 @@ function loadApiCouriersForOrders() {
     function closeApiDispatchModal() {
         const modal = document.getElementById('apiDispatchModal');
         modal.style.display = 'none';
-        document.body.style.overflow = 'auto';
+        document.body.style.overflow = '';
 
         // Reset form
         document.getElementById('api-dispatch-form').reset();
@@ -2785,115 +2244,134 @@ function loadApiCouriersForOrders() {
 function fetchApiTrackingNumbers(courierId) {
     const trackingDisplay = document.getElementById('api_tracking_numbers_display');
     const submitBtn = document.getElementById('api-dispatch-submit-btn');
-    const selectedOrders = document.querySelectorAll('.order-checkbox:checked');
-    const selectedCount = selectedOrders.length;
+    const selectedCheckboxes = document.querySelectorAll('.order-checkbox:checked');
+    const selectedCount = selectedCheckboxes.length;
 
     console.log('Fetching tracking numbers for courier:', courierId, 'Count:', selectedCount);
 
     if (!courierId) {
-        trackingDisplay.innerHTML =
-            '<span class="text-muted">Select a courier to see available tracking numbers</span>';
+        trackingDisplay.innerHTML = '<span class="text-muted">Select a courier to see available tracking numbers</span>';
         submitBtn.disabled = true;
         return;
     }
 
     if (selectedCount === 0) {
-        trackingDisplay.innerHTML =
-            '<span class="text-warning"><i class="fas fa-exclamation-triangle me-1"></i>No orders selected</span>';
+        trackingDisplay.innerHTML = '<span class="text-warning"><i class="fas fa-exclamation-triangle me-1"></i>No orders selected</span>';
         submitBtn.disabled = true;
         return;
     }
 
-    // **UPDATED: Pass first order_id to get tenant-specific tracking numbers**
-    const firstOrderId = selectedOrders[0].value;
+    // Collect order ID + customer name from each selected checkbox row
+    const selectedOrders = Array.from(selectedCheckboxes).map(checkbox => {
+        const row = checkbox.closest('tr');
+        const orderId = checkbox.value;
+        const customerCell = row ? row.querySelector('td.customer-name') : null;
+        const customerName = customerCell ? customerCell.textContent.trim().split('\n')[0].trim() : '';
+        return { orderId, customerName };
+    });
+
+    // Pass first order_id for tenant-specific tracking numbers
+    const firstOrderId = selectedCheckboxes[0].value;
 
     // Show loading state
-    trackingDisplay.innerHTML =
-        '<span class="text-info"><i class="fas fa-spinner fa-spin me-1"></i>Loading tracking numbers...</span>';
+    trackingDisplay.innerHTML = '<span class="text-info"><i class="fas fa-spinner fa-spin me-1"></i>Loading tracking numbers...</span>';
     submitBtn.disabled = true;
 
-    // **UPDATED: Include order_id in request**
+    // Include order_id for tenant-specific tracking
     fetch(`get_api_tracking_numbers.php?courier_id=${courierId}&count=${selectedCount}&order_id=${encodeURIComponent(firstOrderId)}`, {
-            method: 'GET',
-            headers: {
-                'Content-Type': 'application/json',
-            }
-        })
-        .then(response => {
-            console.log('Response status:', response.status);
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            return response.json();
-        })
-        .then(data => {
-            console.log('API Response:', data);
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' }
+    })
+    .then(response => {
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        return response.json();
+    })
+    .then(data => {
+        console.log('API Response:', data);
 
-            if (data.status === 'success') {
-                let trackingHtml = '';
+        const trackingNumbers = data.tracking_numbers || [];
+        const availableCount = trackingNumbers.length;
 
-                if (data.tracking_numbers.length >= selectedCount) {
-                    trackingHtml =
-                        `<span class="text-success"><i class="fas fa-check-circle me-1"></i>Available tracking numbers: <strong>${data.tracking_numbers.length}</strong></span>`;
-
-                    trackingHtml +=
-                        `<div class="tracking-numbers-preview mt-2" style="max-height: 200px; overflow-y: auto; background: #f8f9fa; padding: 10px; border-radius: 4px;">`;
-                    data.tracking_numbers.slice(0, selectedCount).forEach((trackingNumber, index) => {
-                        trackingHtml +=
-                            `<div class="tracking-item" style="padding: 2px 0; font-family: monospace;">${index + 1}. <strong>${trackingNumber}</strong></div>`;
-                    });
-                    trackingHtml += `</div>`;
-
-                    if (data.available_count > selectedCount) {
-                        trackingHtml +=
-                            `<small class="d-block text-muted mt-1">${data.available_count} total tracking numbers available (Tenant: ${data.tenant_id})</small>`;
-                    }
-
-                    submitBtn.disabled = false;
-                } else {
-                    trackingHtml = `<div class="alert alert-warning mt-2">
-                    <i class="fas fa-exclamation-triangle me-1"></i>
-                    <strong>Insufficient tracking numbers!</strong><br>
-                    Only <strong>${data.tracking_numbers.length}</strong> tracking numbers available, 
-                    but <strong>${selectedCount}</strong> orders selected.
-                </div>`;
-
-                    if (data.tracking_numbers.length > 0) {
-                        trackingHtml +=
-                            `<div class="tracking-numbers-preview mt-2" style="max-height: 150px; overflow-y: auto; background: #fff3cd; padding: 10px; border-radius: 4px;">`;
-                        trackingHtml += `<small class="text-muted">Available tracking numbers:</small>`;
-                        data.tracking_numbers.forEach((trackingNumber, index) => {
-                            trackingHtml +=
-                                `<div class="tracking-item" style="padding: 2px 0; font-family: monospace;">${index + 1}. <strong>${trackingNumber}</strong></div>`;
-                        });
-                        trackingHtml += `</div>`;
-                    }
-
-                    submitBtn.disabled = true;
-                }
-
-                trackingDisplay.innerHTML = trackingHtml;
-            } else {
-                trackingDisplay.innerHTML =
-                    `<div class="alert alert-danger">
-                    <i class="fas fa-exclamation-circle me-1"></i>
-                    <strong>Error:</strong> ${data.message}
-                </div>`;
-                submitBtn.disabled = true;
-            }
-        })
-        .catch(error => {
-            console.error('Error fetching tracking numbers:', error);
+        // No tracking numbers at all — block dispatch
+        if (data.status === 'error' || availableCount === 0) {
             trackingDisplay.innerHTML =
-                `<div class="alert alert-danger">
+                `<div class="info-box info-box--warning">
+                    <i class="fas fa-exclamation-circle"></i>
+                    ${data.message || 'No tracking numbers available for this courier.'}
+                </div>`;
+            submitBtn.disabled = true;
+            return;
+        }
+
+        // Build paired table rows
+        let rowsHtml = '';
+        selectedOrders.forEach((order, index) => {
+            const trackingNumber = trackingNumbers[index] || null;
+            if (trackingNumber) {
+                rowsHtml += `
+                    <tr>
+                        <td style="padding:5px 8px;text-align:center;border-bottom:1px solid #eee;">${index + 1}</td>
+                        <td style="padding:5px 8px;text-align:left;font-weight:600;border-bottom:1px solid #eee;">${order.orderId}</td>
+                        <td style="padding:5px 8px;text-align:left;border-bottom:1px solid #eee;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${order.customerName}">${order.customerName}</td>
+                        <td style="padding:5px 8px;text-align:left;font-family:monospace;color:#155724;border-bottom:1px solid #eee;"><strong>${trackingNumber}</strong></td>
+                    </tr>`;
+            } else {
+                rowsHtml += `
+                    <tr style="background:#fff3cd;">
+                        <td style="padding:5px 8px;text-align:center;border-bottom:1px solid #eee;">${index + 1}</td>
+                        <td style="padding:5px 8px;text-align:left;font-weight:600;border-bottom:1px solid #eee;">${order.orderId}</td>
+                        <td style="padding:5px 8px;text-align:left;border-bottom:1px solid #eee;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${order.customerName}">${order.customerName}</td>
+                        <td style="padding:5px 8px;text-align:left;color:#856404;border-bottom:1px solid #eee;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><i class="fas fa-exclamation-triangle me-1"></i>No tracking -- skipped</td>
+                    </tr>`;
+            }
+        });
+
+        const isSufficient = availableCount >= selectedCount;
+        const headerBg   = isSufficient ? '#d4edda' : '#fff3cd';
+        const headerIcon = isSufficient ? '<i class="fas fa-check-circle me-1"></i>' : '<i class="fas fa-exclamation-triangle me-1"></i>';
+        const headerText = isSufficient
+            ? `<strong>${availableCount}</strong> tracking numbers available -- all ${selectedCount} orders will be dispatched`
+            : `Only <strong>${availableCount}</strong> of ${selectedCount} selected orders will be dispatched (insufficient tracking numbers)`;
+
+        trackingDisplay.innerHTML = `
+            <div style="background:${headerBg};padding:8px 10px;border-radius:4px 4px 0 0;font-size:13px;">
+                ${headerIcon}${headerText}
+            </div>
+            <div style="max-height:220px;overflow-y:auto;">
+                <table style="width:100%;table-layout:fixed;border-collapse:collapse;font-size:13px;background:#fff;border:1px solid #dee2e6;">
+                    <colgroup>
+                        <col style="width:40px;">
+                        <col style="width:100px;">
+                        <col>
+                        <col style="width:180px;">
+                    </colgroup>
+                    <thead>
+                        <tr style="background:#f1f3f5;border-bottom:2px solid #dee2e6;">
+                            <th style="padding:6px 8px;text-align:center;">#</th>
+                            <th style="padding:6px 8px;text-align:left;">Order ID</th>
+                            <th style="padding:6px 8px;text-align:left;">Customer</th>
+                            <th style="padding:6px 8px;text-align:left;">Tracking Number</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rowsHtml}</tbody>
+                </table>
+            </div>`;
+
+        // Allow dispatch as long as at least one order can be dispatched
+        submitBtn.disabled = false;
+    })
+    .catch(error => {
+        console.error('Error fetching tracking numbers:', error);
+        trackingDisplay.innerHTML =
+            `<div class="alert alert-danger">
                 <i class="fas fa-exclamation-triangle me-1"></i>
                 <strong>Network Error:</strong> Could not load tracking numbers. Please check your connection and try again.
             </div>`;
-            submitBtn.disabled = true;
-        });
+        submitBtn.disabled = true;
+    });
 }
 
-    // Enhanced API Dispatch functionality with dynamic dispatch type control
+// Enhanced API Dispatch functionality with dynamic dispatch type control
   document.addEventListener('DOMContentLoaded', function() {
     const apiCarrierSelect = document.getElementById('api_carrier');
     const apiDispatchForm = document.getElementById('api-dispatch-form');
@@ -3246,9 +2724,9 @@ if (apiDispatchForm) {
                     let message = `Successfully processed ${data.processed_count || selectedOrders.length} orders via API!`;
                     
                     // Add co_id info if available
-                    if (data.co_id) {
-                        message += `\nCourier CO_ID: ${data.co_id}`;
-                    }
+                    // if (data.co_id) {
+                    //     message += `\nCourier CO_ID: ${data.co_id}`;
+                    // }
                     
                     // Add tracking info if available
                     if (data.processed_orders && data.processed_orders.length > 0) {

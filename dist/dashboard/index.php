@@ -17,7 +17,7 @@ include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
 // Check if user is main admin
 $is_main_admin = $_SESSION['is_main_admin'];
-$teanent_id = $_SESSION['tenant_id'];
+$tenant_id = $_SESSION['tenant_id'] ?? 0;
 
 /**
  * Role-Based Access Control Helper Class for Dashboard
@@ -140,7 +140,7 @@ if ($rbac->isAdmin()) {
     if ($is_main_admin == 1) {
     $stats['total_users'] = safeQuery($conn, "SELECT COUNT(*) as count FROM users");
     } else {
-    $stats['total_users'] = safeQuery($conn, "SELECT COUNT(*) as count FROM users WHERE tenant_id = $teanent_id");
+    $stats['total_users'] = safeQuery($conn, "SELECT COUNT(*) as count FROM users WHERE tenant_id = $tenant_id");
     }
 }
 
@@ -155,7 +155,7 @@ if ($rbac->isAdmin()) {
     } else {
     $tableExists = $conn->query("SHOW TABLES LIKE 'customers'");
     if ($tableExists && $tableExists->num_rows > 0) {
-        $stats['total_customers'] = safeQuery($conn, "SELECT COUNT(*) as count FROM customers WHERE tenant_id = $teanent_id");
+        $stats['total_customers'] = safeQuery($conn, "SELECT COUNT(*) as count FROM customers WHERE tenant_id = $tenant_id");
     }
     }
 } else {
@@ -166,7 +166,7 @@ if ($rbac->isAdmin()) {
         $stats['total_customers'] = safeQuery($conn, 
             "SELECT COUNT(DISTINCT c.customer_id) as count 
              FROM customers c
-             WHERE c.tenant_id = $teanent_id"
+             WHERE c.tenant_id = $tenant_id"
         );
     }
     } else {
@@ -175,27 +175,11 @@ if ($rbac->isAdmin()) {
         $stats['total_customers'] = safeQuery($conn, 
             "SELECT COUNT(DISTINCT c.customer_id) as count 
              FROM customers c
-             WHERE c.tenant_id = $teanent_id"
+             WHERE c.tenant_id = $tenant_id"
         );
     }
 }
 }
-
-// // Total Products - Only admin can see all products
-// if ($rbac->isAdmin()) {
-//     // Check if products table exists
-//     if ($is_main_admin == 1) {
-//     $tableExists = $conn->query("SHOW TABLES LIKE 'products'");
-//     if ($tableExists && $tableExists->num_rows > 0) {
-//         $stats['total_products'] = safeQuery($conn, "SELECT COUNT(*) as count FROM products");
-//     }
-//     } else {
-//     $tableExists = $conn->query("SHOW TABLES LIKE 'products'");
-//     if ($tableExists && $tableExists->num_rows > 0) {
-//         $stats['total_products'] = safeQuery($conn, "SELECT COUNT(*) as count FROM products");
-//     }
-//     }
-// }
 
 $tableExists = $conn->query("SHOW TABLES LIKE 'products'");
      if ($tableExists && $tableExists->num_rows > 0) {
@@ -216,7 +200,7 @@ if ($tableExists && $tableExists->num_rows > 0) {
     $stats['total_orders'] = safeQuery($conn, $total_orders_query);
     } else {
     // Base query for total orders with role-based filtering
-    $total_orders_query = "SELECT COUNT(*) as count FROM order_header WHERE tenant_id = $teanent_id";
+    $total_orders_query = "SELECT COUNT(*) as count FROM order_header WHERE tenant_id = $tenant_id";
     
     // Apply role-based condition and date filter  
     $total_orders_query .= $role_based_condition . $date_condition;
@@ -231,7 +215,7 @@ if ($tableExists && $tableExists->num_rows > 0) {
     $stats['complete_orders'] = safeQuery($conn, $complete_orders_query);
     } else {
         // Count for complete orders
-    $complete_orders_query = "SELECT COUNT(*) as count FROM order_header WHERE status = 'done' AND tenant_id = $teanent_id";
+    $complete_orders_query = "SELECT COUNT(*) as count FROM order_header WHERE status = 'done' AND tenant_id = $tenant_id";
     $complete_orders_query .= $role_based_condition . $date_condition;
     $stats['complete_orders'] = safeQuery($conn, $complete_orders_query);
     }
@@ -244,7 +228,7 @@ if ($tableExists && $tableExists->num_rows > 0) {
     $stats['pending_orders'] = safeQuery($conn, $pending_orders_query);
     } else {
         // Count for pending orders
-    $pending_orders_query = "SELECT COUNT(*) as count FROM order_header WHERE status = 'pending' AND tenant_id = $teanent_id";
+    $pending_orders_query = "SELECT COUNT(*) as count FROM order_header WHERE status = 'pending' AND tenant_id = $tenant_id";
     $pending_orders_query .= $role_based_condition . $date_condition;
     $stats['pending_orders'] = safeQuery($conn, $pending_orders_query);
     }
@@ -256,7 +240,7 @@ if ($tableExists && $tableExists->num_rows > 0) {
     $stats['cancel_orders'] = safeQuery($conn, $cancel_orders_query);
     } else {
         // Count for cancel orders
-    $cancel_orders_query = "SELECT COUNT(*) as count FROM order_header WHERE status = 'cancel' AND tenant_id = $teanent_id";
+    $cancel_orders_query = "SELECT COUNT(*) as count FROM order_header WHERE status = 'cancel' AND tenant_id = $tenant_id";
     $cancel_orders_query .= $role_based_condition . $date_condition;
     $stats['cancel_orders'] = safeQuery($conn, $cancel_orders_query);
     }
@@ -276,7 +260,7 @@ if ($tableExists && $tableExists->num_rows > 0) {
     $dispatch_orders_query = "SELECT COUNT(*) as count FROM order_header 
                               WHERE status = 'dispatch' 
                               AND DATE(updated_at) = '$today_date'
-                              AND tenant_id = $teanent_id";
+                              AND tenant_id = $tenant_id";
     $dispatch_orders_query .= $role_based_condition; // Apply role-based filtering but NO date filter
     $stats['dispatch_orders'] = safeQuery($conn, $dispatch_orders_query);
     }
@@ -289,7 +273,7 @@ if ($tableExists && $tableExists->num_rows > 0) {
     $stats['return_complete_orders'] = safeQuery($conn, $return_complete_orders_query);
     } else {
         // Count for return complete orders
-    $return_complete_orders_query = "SELECT COUNT(*) as count FROM order_header WHERE status = 'return_complete' AND tenant_id = $teanent_id";
+    $return_complete_orders_query = "SELECT COUNT(*) as count FROM order_header WHERE status = 'return_complete' AND tenant_id = $tenant_id";
     $return_complete_orders_query .= $role_based_condition . $date_condition;
     $stats['return_complete_orders'] = safeQuery($conn, $return_complete_orders_query);
     }
@@ -302,7 +286,7 @@ if ($tableExists && $tableExists->num_rows > 0) {
     $stats['return_handover_orders'] = safeQuery($conn, $return_handover_orders_query);
     } else {
         // Count for return handover orders
-    $return_handover_orders_query = "SELECT COUNT(*) as count FROM order_header WHERE status = 'return_handover' AND tenant_id = $teanent_id";
+    $return_handover_orders_query = "SELECT COUNT(*) as count FROM order_header WHERE status = 'return_handover' AND tenant_id = $tenant_id";
     $return_handover_orders_query .= $role_based_condition . $date_condition;
     $stats['return_handover_orders'] = safeQuery($conn, $return_handover_orders_query);
     }

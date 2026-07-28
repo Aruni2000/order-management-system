@@ -260,7 +260,6 @@ if (!$courierResult) {
                                         ?>
                                     </select>
                                     <div class="error-feedback" id="tenant_id-error"></div>
-                                    <div class="field-hint">Select the tenant/company for this courier account</div>
                                 </div>
 
                                 <div class="customer-form-group">
@@ -284,7 +283,6 @@ if (!$courierResult) {
                                         ?>
                                     </select>
                                     <div class="error-feedback" id="courier_id-error"></div>
-                                    <div class="field-hint">Choose the courier company to add for this tenant</div>
                                 </div>
                             </div>
 
@@ -440,7 +438,7 @@ if (!$courierResult) {
                     $submitBtn.prop('disabled', false).html(originalText);
                     
                     if (response.success) {
-                        showSuccessNotification(response.message || 'Courier account added successfully!');
+                        toastManager.success(response.message || 'Courier account added successfully!');
                         setTimeout(() => {
                             window.location.href = 'couriers.php';
                         }, 2000);
@@ -448,7 +446,7 @@ if (!$courierResult) {
                         if (response.errors) {
                             showFieldErrors(response.errors);
                         }
-                        showErrorNotification(response.message || 'Failed to add courier account.');
+                        toastManager.error(response.message || 'Failed to add courier account.');
                     }
                 },
                 error: function(xhr, status, error) {
@@ -463,7 +461,7 @@ if (!$courierResult) {
                         errorMessage = xhr.responseJSON.message;
                     }
                     
-                    showErrorNotification(errorMessage);
+                    toastManager.error(errorMessage);
                     console.error('AJAX Error:', xhr, status, error);
                 }
             });
@@ -608,7 +606,7 @@ if (!$courierResult) {
 
         function showLoading() {
             $('#loadingOverlay').css('display', 'flex');
-            $('body').css('overflow', 'hidden');
+            $('body').css('overflow', 'clip');
         }
 
         function hideLoading() {
@@ -616,44 +614,6 @@ if (!$courierResult) {
             $('body').css('overflow', 'auto');
         }
 
-        function showSuccessNotification(message) {
-            showNotification(message, 'success');
-        }
-
-        function showErrorNotification(message) {
-            showNotification(message, 'danger');
-        }
-
-        function showNotification(message, type) {
-            const notificationId = 'notification_' + Date.now();
-            const iconClass = type === 'success' ? 'fas fa-check-circle' : 'fas fa-exclamation-circle';
-            
-            const notification = `
-                <div class="alert alert-${type} alert-dismissible fade show ajax-notification" id="${notificationId}" role="alert">
-                    <div class="d-flex align-items-center">
-                        <i class="${iconClass} me-2"></i>
-                        <div>${message}</div>
-                    </div>
-                    <button type="button" class="btn-close" onclick="hideNotification('${notificationId}')" aria-label="Close"></button>
-                </div>
-            `;
-            
-            $('body').append(notification);
-            
-            setTimeout(() => {
-                hideNotification(notificationId);
-            }, 5000);
-        }
-
-        function hideNotification(notificationId) {
-            const $notification = $('#' + notificationId);
-            if ($notification.length) {
-                $notification.removeClass('show');
-                setTimeout(() => {
-                    $notification.remove();
-                }, 300);
-            }
-        }
     </script>
 
 </body>

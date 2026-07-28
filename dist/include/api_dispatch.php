@@ -1,4 +1,43 @@
 
+<style>
+/* Clean info box - matches system design */
+.info-box {
+    background: #e8f4fd;
+    border: 1px solid #bee5eb;
+    border-radius: 8px;
+    padding: 14px 18px;
+    margin-bottom: 18px;
+    color: #0c5460;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    line-height: 1.5;
+}
+
+.info-box i {
+    font-size: 16px;
+    flex-shrink: 0;
+}
+
+.info-box--warning {
+    background: #fff3cd;
+    border-color: #ffeaa7;
+    color: #856404;
+}
+
+.modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 10px;
+    padding: 16px 24px;
+    background: #f8f9fa;
+    border-top: 1px solid #e5e7eb;
+    border-radius: 0 0 12px 12px;
+}
+</style>
+
 <!-- 3. API DISPATCH MODAL -->
 <div class="modal-overlay" id="apiDispatchModal" style="display: none;">
     <div class="modal-container">
@@ -13,8 +52,8 @@
         
         <form id="api-dispatch-form">
             <div class="modal-body">
-                <div class="alert alert-info mb-3">
-                    <i class="fas fa-info-circle me-2"></i>
+                <div class="info-box">
+                    <i class="fas fa-info-circle"></i>
                     Dispatching these orders will create API parcels and update order statuses.
                 </div>
 
@@ -103,7 +142,10 @@
                 <div class="form-group mb-3" id="existingTrackingSection" style="display: none;">
                     <label class="form-label">Tracking Numbers</label>
                     <div class="tracking-preview" id="api_tracking_numbers_display">
-                        <span class="text-muted">Select a courier to see available tracking numbers</span>
+                        <div class="info-box" style="margin-bottom: 0;">
+                            <i class="fas fa-info-circle"></i>
+                            Select a courier to see available tracking numbers
+                        </div>
                     </div>
                     <small class="form-text text-muted">Available tracking numbers will be assigned to each order</small>
                 </div>
@@ -116,13 +158,11 @@
                 </div>
             </div>
             
-            <div class="modal-footer" style="display: flex !important; justify-content: flex-end; padding: 15px; background: #f8f9fa; border-top: 1px solid #ddd;">
-                <button type="button" class="modal-btn modal-btn-secondary" onclick="closeApiDispatchModal()" 
-                        style="display: inline-flex !important; padding: 8px 16px; background: #6c757d !important; color: white !important; border: none; border-radius: 4px; margin-right: 10px;">
+            <div class="modal-footer">
+                <button type="button" class="modal-btn modal-btn-secondary" onclick="closeApiDispatchModal()">
                     <i class="fas fa-times me-1"></i>Cancel
                 </button>
-                <button type="submit" class="modal-btn modal-btn-primary" id="api-dispatch-submit-btn" disabled
-                        style="display: inline-flex !important; padding: 8px 16px; background: #007bff !important; color: white !important; border: none; border-radius: 4px;">
+                <button type="submit" class="modal-btn modal-btn-primary" id="api-dispatch-submit-btn" disabled>
                     <i class="fas fa-cloud-upload-alt me-1"></i>Confirm API Dispatch
                 </button>
             </div>

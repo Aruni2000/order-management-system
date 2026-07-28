@@ -23,8 +23,8 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
 include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
 // Check if user is main admin
-$is_main_admin = $_SESSION['is_main_admin'];
-$teanent_id = $_SESSION['tenant_id'];
+$is_main_admin = $_SESSION['is_main_admin'] ?? 0;
+$tenant_id = $_SESSION['tenant_id'] ?? 0;
 
 // NEW: Get current user's role information
 $current_user_id = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
@@ -121,7 +121,8 @@ $sql = "SELECT i.*,
                
                -- Order details
                i.slip as payment_slip, 
-               i.pay_status as order_pay_status
+               i.pay_status as order_pay_status,
+               (SELECT courier_name FROM couriers WHERE courier_id = i.courier_id LIMIT 1) as courier_name
         FROM order_header i 
         LEFT JOIN payments p ON i.order_id = p.order_id
         LEFT JOIN users u1 ON p.pay_by = u1.id
@@ -136,7 +137,7 @@ if ($is_main_admin == 1){
 
 }else{
     // Add ordering and pagination
-    $sql .= "  AND i.tenant_id = $teanent_id";
+    $sql .= "  AND i.tenant_id = $tenant_id";
 }
 
 // Build search conditions
@@ -290,6 +291,23 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
     .actions {
         white-space: nowrap;
     }
+    /* NEW: Issue Date Styling */
+.issued-time {
+    font-size: 0.9em;
+    color: #333;
+    line-height: 1.2;
+}
+
+.issued-date {
+    display: block;
+    font-weight: 600;
+}
+
+.issued-time-only {
+    display: block;
+    color: #666;
+    font-size: 0.85em;
+}
     </style>
 </head>
 
@@ -337,24 +355,6 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                             <input type="text" id="tracking_id" name="tracking_id" placeholder="Enter tracking ID"
                                 value="<?php echo htmlspecialchars($tracking_id); ?>">
                         </div>
-
-                        <!-- User ID Filter - Only show for admin users -->
-                        <?php if ($current_user_role == 1): ?>
-                        <div class="form-group">
-                            <label for="user_id_filter">User</label>
-                            <select id="user_id_filter" name="user_id_filter">
-                                <option value="">All Users</option>
-                                <?php if ($usersResult && $usersResult->num_rows > 0): ?>
-                                <?php while ($userRow = $usersResult->fetch_assoc()): ?>
-                                <option value="<?php echo htmlspecialchars($userRow['id']); ?>"
-                                    <?php echo ($user_id_filter == $userRow['id']) ? 'selected' : ''; ?>>
-                                    <?php echo htmlspecialchars($userRow['name']) . ' (ID: ' . $userRow['id'] . ')'; ?>
-                                </option>
-                                <?php endwhile; ?>
-                                <?php endif; ?>
-                            </select>
-                        </div>
-                        <?php endif; ?>
 
                         <div class="form-group">
                             <label for="date_from">Date From</label>
@@ -409,7 +409,6 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                             </select>
                         </div>
                         <?php } else { ?>
-                        <!--<input type="hidden" name="teanetID" value="0">-->
                         <?php } ?>
 
                         <div class="form-group">
@@ -455,20 +454,15 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                         <thead>
                             <tr>
                                 <th>Order ID</th>
+                                <th>Issue Date</th>
                                 <th>Customer Name</th>
-                                <th>Total Amount</th>
+                                <th>Amount</th>
                                 <th>Status</th>
-                                <th>Pay Status</th>
                                 <th>Tracking Number</th>
                                 <?php if ($is_main_admin == 1) { ?>
                                 <th>Tenant Company</th>
-                                <?php } else { ?>
-                                <!--<input type="hidden" name="teanetID" value="0">-->
                                 <?php } ?>
                                 <th>Processed By</th>
-                                <?php if ($current_user_role == 1): ?>
-                                <th>User</th>
-                                <?php endif; ?>
                                 <th>Actions</th>
                             </tr>
                         </thead>
@@ -479,7 +473,23 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                 <!-- Order ID -->
                                 <td class="order-id">
                                     <?php echo isset($row['order_id']) ? htmlspecialchars($row['order_id']) : ''; ?>
+                                    <?php if ($row['interface'] === 'leads'): ?>
+                                        <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/leads_badge.php'); ?>
+                                    <?php endif; ?>
                                 </td>
+
+                                <!-- NEW: Issue Date Column -->
+                                        <td class="issued-time">
+                                            <?php
+                                            if (isset($row['created_at']) && !empty($row['created_at'])) {
+                                                $createdAt = new DateTime($row['created_at']);
+                                                echo '<span class="issued-date">' . $createdAt->format('Y-m-d') . '</span>';
+                                                echo '<span class="issued-time-only">' . $createdAt->format('H:i:s') . '</span>';
+                                            } else {
+                                                echo '<span style="color: #999; font-style: italic;">N/A</span>';
+                                            }
+                                            ?>
+                                        </td>
 
                                 <!-- Customer Name with ID -->
                                 <td class="customer-name">
@@ -490,14 +500,20 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                             ?>
                                 </td>
 
-                                <!-- Total Amount with Currency -->
+                                <!-- Total Amount with Pay Status -->
                                 <td class="amount">
                                     <?php
                                             $amount = isset($row['total_amount']) ? (float)$row['total_amount'] : 0;
                                             $currency = isset($row['currency']) ? $row['currency'] : 'lkr';
                                             $currencySymbol = ($currency == 'usd') ? '$' : 'Rs';
                                             echo $currencySymbol . number_format($amount, 2);
-                                            ?>
+
+                                            $payStatus = isset($row['pay_status']) ? $row['pay_status'] : 'unpaid';
+                                            if ($payStatus == 'paid'): ?>
+                                    <br><span class="status-badge pay-status-paid">Paid</span>
+                                    <?php else: ?>
+                                    <br><span class="status-badge pay-status-unpaid">Unpaid</span>
+                                    <?php endif; ?>
                                 </td>
 
                                 <!-- Order Status Badge -->
@@ -602,29 +618,22 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                         class="status-badge <?php echo $badgeClass; ?>"><?php echo $statusText; ?></span>
                                 </td>
 
-                                <!-- Payment Status Badge -->
-                                <td>
-                                    <?php
-                                            $payStatus = isset($row['pay_status']) ? $row['pay_status'] : 'unpaid';
-                                            if ($payStatus == 'paid'): ?>
-                                    <span class="status-badge pay-status-paid">Paid</span>
-                                    <?php else: ?>
-                                    <span class="status-badge pay-status-unpaid">Unpaid</span>
-                                    <?php endif; ?>
-                                </td>
-
-                                <!-- Tracking Number -->
+                                <!-- Tracking Number + Courier -->
                                 <td class="tracking-number">
                                     <?php
                                             if (isset($row['tracking_number']) && !empty($row['tracking_number'])) {
                                                 echo htmlspecialchars($row['tracking_number']);
+                                                $courierName = isset($row['courier_name']) ? $row['courier_name'] : '';
+                                                if (!empty($courierName)) {
+                                                    echo '<br><span style="font-size: 11px; color: #6c757d;">' . htmlspecialchars($courierName) . '</span>';
+                                                }
                                             } else {
                                                 echo '<span style="color: #999; font-style: italic;">Not assigned</span>';
                                             }
                                             ?>
                                 </td>
 
-                                <!-- Teanaent Company Name -->
+                                <!-- Tenant Company Name -->
                                 <?php if ($is_main_admin == 1) { ?>
                                 <td class="customer-name">
                                     <div class="customer-info">
@@ -632,39 +641,25 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                             <?php echo htmlspecialchars($row['company_name']); ?></h6>
                                     </div>
                                 </td>
-                                <?php } else { ?>
-                                <!--<input type="hidden" name="teanetID" value="0">-->
                                 <?php } ?>
 
-                                <!-- Processed By User -->
+                                <!-- Processed By (who marked paid + payment method) -->
                                 <td>
                                     <?php
-                                            echo isset($row['paid_by_name']) ? htmlspecialchars($row['paid_by_name']) : 'N/A';
-                                            ?>
+                                    $paidByName = isset($row['paid_by_name']) ? htmlspecialchars($row['paid_by_name']) : '';
+                                    $paymentMethod = isset($row['payment_method']) ? htmlspecialchars($row['payment_method']) : '';
+                                    
+                                    if ($payStatus == 'paid' && !empty($paidByName)) {
+                                        echo '<span style="font-weight: 600; color: #28a745;">' . $paidByName . '</span>';
+                                        if (!empty($paymentMethod)) {
+                                            $methodDisplay = ucwords(str_replace('_', ' ', $paymentMethod));
+                                            echo '<br><span style="font-size: 11px; color: #6c757d;">' . $methodDisplay . '</span>';
+                                        }
+                                    } else {
+                                        echo '<span style="color: #adb5bd;">-</span>';
+                                    }
+                                    ?>
                                 </td>
-
-                                <!-- User Column - CONDITIONAL: Only show for admin users -->
-                                <?php if ($current_user_role == 1): ?>
-                                <td>
-                                    <?php
-                                                $userName = isset($row['user_name']) ? htmlspecialchars($row['user_name']) : 'N/A';
-                                                $interface = isset($row['interface']) ? $row['interface'] : '';
-                                                $userId = isset($row['user_id']) ? htmlspecialchars($row['user_id']) : '';
-                                                
-                                                echo $userName;
-                                                
-                                                // Display user ID in small text
-                                                if ($userId) {
-                                                    echo "<br><span style='color: #666; font-size: 0.8em;'>ID: $userId</span>";
-                                                }
-                                                
-                                                // Display (leads) if interface is 'leads'
-                                                if ($interface == 'leads') {
-                                                    echo "<br><span style='color: #666; font-size: 0.9em;'>(leads)</span>";
-                                                }
-                                                ?>
-                                </td>
-                                <?php endif; ?>
 
                                 <!-- Action Buttons -->
                                 <td class="actions">
@@ -673,7 +668,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                         <i class="fas fa-eye"></i>
                                     </button>
 
-                                    <!-- NEW PRINT BUTTON -->
+                                    <!-- PRINT BUTTON -->
                                     <button class="action-btn print-btn" title="Print Order"
                                         onclick="printOrder('<?php echo isset($row['order_id']) ? htmlspecialchars($row['order_id']) : ''; ?>')">
                                         <i class="fas fa-print"></i>
@@ -684,7 +679,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                             <?php endwhile; ?>
                             <?php else: ?>
                             <tr>
-                                <td colspan="9" class="text-center"
+                                <td colspan="8" class="text-center"
                                     style="padding: 40px; text-align: center; color: #666;">
                                     No orders found (excluding pending and canceled orders)
                                 </td>
@@ -703,21 +698,21 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                     <div class="pagination-controls">
                         <?php if ($page > 1): ?>
                         <button class="page-btn"
-                            onclick="window.location.href='?page=<?php echo $page - 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&tracking_id=<?php echo urlencode($tracking_id); ?>&user_id_filter=<?php echo urlencode($user_id_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&status_filter=<?php echo urlencode($status_filter); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&search=<?php echo urlencode($search); ?>'">
+                            onclick="window.location.href='?page=<?php echo $page - 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&tracking_id=<?php echo urlencode($tracking_id); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&status_filter=<?php echo urlencode($status_filter); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&search=<?php echo urlencode($search); ?>'">
                             <i class="fas fa-chevron-left"></i>
                         </button>
                         <?php endif; ?>
 
                         <?php for ($i = max(1, $page - 2); $i <= min($totalPages, $page + 2); $i++): ?>
                         <button class="page-btn <?php echo ($i == $page) ? 'active' : ''; ?>"
-                            onclick="window.location.href='?page=<?php echo $i; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&tracking_id=<?php echo urlencode($tracking_id); ?>&user_id_filter=<?php echo urlencode($user_id_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&status_filter=<?php echo urlencode($status_filter); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&search=<?php echo urlencode($search); ?>'">
+                            onclick="window.location.href='?page=<?php echo $i; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&tracking_id=<?php echo urlencode($tracking_id); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&status_filter=<?php echo urlencode($status_filter); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&search=<?php echo urlencode($search); ?>'">
                             <?php echo $i; ?>
                         </button>
                         <?php endfor; ?>
 
                         <?php if ($page < $totalPages): ?>
                         <button class="page-btn"
-                            onclick="window.location.href='?page=<?php echo $page + 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&tracking_id=<?php echo urlencode($tracking_id); ?>&user_id_filter=<?php echo urlencode($user_id_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&status_filter=<?php echo urlencode($status_filter); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&search=<?php echo urlencode($search); ?>'">
+                            onclick="window.location.href='?page=<?php echo $page + 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&tracking_id=<?php echo urlencode($tracking_id); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&status_filter=<?php echo urlencode($status_filter); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&search=<?php echo urlencode($search); ?>'">
                             <i class="fas fa-chevron-right"></i>
                         </button>
                         <?php endif; ?>
@@ -748,17 +743,10 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
         document.getElementById('order_id_filter').value = '';
         document.getElementById('customer_name_filter').value = '';
         document.getElementById('tracking_id').value = '';
-        document.getElementById('user_id_filter').value = ''; // NEW: Clear user filter
         document.getElementById('date_from').value = '';
         document.getElementById('date_to').value = '';
         document.getElementById('status_filter').value = '';
         document.getElementById('pay_status_filter').value = '';
-
-        // Only clear user_id_filter for admin users (if it exists)
-        const userIdFilter = document.getElementById('user_id_filter');
-        if (userIdFilter && currentUserRole == 1) {
-            userIdFilter.value = '';
-        }
 
         // Submit the form to clear filters
         window.location.href = window.location.pathname;
@@ -783,7 +771,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
 
         // Show modal
         modal.style.display = 'flex';
-        document.body.style.overflow = 'hidden';
+        document.body.style.overflow = 'clip';
 
         // Show loading state
         modalContent.innerHTML = `
@@ -796,7 +784,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
         viewPaymentSlipBtn.style.display = 'none';
 
         // Determine which PHP file to use based on interface
-        const phpFile = (interface === 'leads') ? '../leads/leads_download.php' : 'download_order_page.php';
+        const phpFile = 'download_order_page.php';
         const fetchUrl = phpFile + '?id=' + encodeURIComponent(currentOrderId);
 
         console.log('Fetching from:', fetchUrl);
@@ -864,9 +852,19 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
 
                     // MODIFIED: Show button for all paid orders, regardless of slip availability
                     if (currentPayStatus === 'paid') {
-                        viewPaymentSlipBtn.style.display = 'inline-flex';
+                        if (currentPaymentSlip && currentPaymentSlip.trim() !== '') {
+                            viewPaymentSlipBtn.style.display = 'inline-flex';
+                            const noSlipMsg = document.getElementById('noPaymentSlipMsg');
+                            if (noSlipMsg) noSlipMsg.style.display = 'none';
+                        } else {
+                            viewPaymentSlipBtn.style.display = 'none';
+                            const noSlipMsg = document.getElementById('noPaymentSlipMsg');
+                            if (noSlipMsg) noSlipMsg.style.display = 'inline-flex';
+                        }
                     } else {
                         viewPaymentSlipBtn.style.display = 'none';
+                        const noSlipMsg = document.getElementById('noPaymentSlipMsg');
+                        if (noSlipMsg) noSlipMsg.style.display = 'none';
                     }
                 } else {
                     console.log('No payment slip information available');
@@ -881,7 +879,10 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
     function viewPaymentSlip() {
         // Check if payment slip exists
         if (!currentPaymentSlip || currentPaymentSlip.trim() === '') {
-            alert('This order has no payment slip.');
+            const slipBtn = document.getElementById('viewPaymentSlipBtn');
+            const noSlipMsg = document.getElementById('noPaymentSlipMsg');
+            if (slipBtn) slipBtn.style.display = 'none';
+            if (noSlipMsg) noSlipMsg.style.display = 'inline-flex';
             return;
         }
 
@@ -903,7 +904,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
     function closeOrderModal() {
         const modal = document.getElementById('orderModal');
         modal.style.display = 'none';
-        document.body.style.overflow = 'auto';
+        document.body.style.overflow = '';
         currentOrderId = null;
         currentInterface = null;
         currentPaymentSlip = null;
@@ -917,7 +918,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
             return;
         }
 
-        const phpFile = (currentInterface === 'leads') ? '../leads/leads_download.php' : 'download_order.php';
+        const phpFile = 'download_order.php';
         const downloadUrl = phpFile + '?id=' + encodeURIComponent(currentOrderId) + '&download=1';
 
         console.log('Downloading from:', downloadUrl);

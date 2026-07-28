@@ -1,7 +1,7 @@
 <?php
 /**
- * Koombiyo Bulk Existing Parcel API Handler - COMPLETE FIXED VERSION
- * @version 3.0
+ * Koombiyo Bulk Existing Parcel API Handler - CORRECTED VERSION
+ * @version 3.1
  * @date 2025
  * 
  * FEATURES:
@@ -10,6 +10,11 @@
  * - ✅ Multi-tenant validation
  * - ✅ Enhanced error handling and logging
  * - ✅ Proper transaction management
+ * - ✅ Correct city/district from order header (oh.city_id, oh.district_id)
+ * - ✅ Proper address formatting with comma+space
+ * - ✅ Order sequence preservation
+ * - ✅ str_replace on description/special notes
+ * - ✅ Graceful fallback for insufficient tracking
  */
 
 session_start();
@@ -27,7 +32,7 @@ function logAction($conn, $user_id, $action, $order_id, $details) {
 }
 
 // API submission function
-function addKoombiyoOrder($orderData, $apiKey = 'muABqMKZgkaZDAnbBWev') {
+function addKoombiyoOrder($orderData, $apiKey) {
     $url = 'https://application.koombiyodelivery.lk/api/Addorders/users';
     
     // Required fields validation
@@ -47,8 +52,8 @@ function addKoombiyoOrder($orderData, $apiKey = 'muABqMKZgkaZDAnbBWev') {
         'receiverDistrict' => $orderData['receiverDistrict'],
         'receiverCity' => $orderData['receiverCity'],
         'receiverPhone' => $orderData['receiverPhone'],
-        'description' => $orderData['description'] ?? '',
-        'spclNote' => $orderData['spclNote'] ?? '',
+        'description' => str_replace('#', 'No.', $orderData['description'] ?? ''),
+        'spclNote' => str_replace('#', 'No.', $orderData['spclNote'] ?? ''),
         'getCod' => $orderData['getCod'] ?? '0'
     ];
     
@@ -95,40 +100,11 @@ function getParcelData($orderId, $conn) {
     $stmt->execute();
     $result = $stmt->get_result()->fetch_assoc();
     
-    $desc = $result['description_text'] ?? 'General Items';
-    $desc = strlen($desc) > 100 ? substr($desc, 0, 97) . '...' : $desc;
-    $weight = max(0.5, min(10, ($result['total_qty'] ?? 1) * 0.5));
+    $totalItems = $result['total_qty'] ?? 1;
+    $desc = "Order #$orderId - $totalItems item" . ($totalItems == 1 ? '' : 's');
+    $weight = max(0.5, min(10, $totalItems * 0.5));
     
     return ['description' => $desc, 'weight' => number_format($weight, 1)];
-}
-
-// Get district and city for Koombiyo
-function getKoombiyoLocation($cityName) {
-    $districtMap = [
-        'colombo' => 1, 'gampaha' => 2, 'kalutara' => 3, 'kandy' => 4,
-        'matale' => 5, 'nuwara eliya' => 6, 'galle' => 7, 'matara' => 8,
-        'hambantota' => 9, 'jaffna' => 10, 'kilinochchi' => 11,
-        'mannar' => 12, 'vavuniya' => 13, 'mullaitivu' => 14,
-        'batticaloa' => 15, 'ampara' => 16, 'trincomalee' => 17,
-        'kurunegala' => 18, 'puttalam' => 19, 'anuradhapura' => 20,
-        'polonnaruwa' => 21, 'badulla' => 22, 'moneragala' => 23,
-        'ratnapura' => 24, 'kegalle' => 25
-    ];
-    
-    $cityLower = strtolower(trim($cityName));
-    
-    $district = 1; // Default to Colombo
-    foreach ($districtMap as $districtName => $districtId) {
-        if (strpos($cityLower, $districtName) !== false) {
-            $district = $districtId;
-            break;
-        }
-    }
-    
-    return [
-        'district' => $district,
-        'city' => $cityName ?: 'Colombo'
-    ];
 }
 
 try {
@@ -240,28 +216,49 @@ try {
     
     error_log("Found " . count($tracking) . " tracking numbers for tenant $tenantId, courier $carrierId");
     
+    // Graceful fallback if insufficient tracking numbers
+    $failedOrders = [];
+    if (count($tracking) === 0) {
+        throw new Exception("No unused tracking numbers available for this courier and tenant");
+    }
+    
     if (count($tracking) < $orderCount) {
-        throw new Exception("Need $orderCount tracking numbers for tenant $tenantId, only " . count($tracking) . " available");
+        $availableCount = count($tracking);
+        $skippedOrderIds = array_slice($orderIds, $availableCount);
+        $orderIds = array_slice($orderIds, 0, $availableCount);
+        $orderCount = count($orderIds);
+        
+        foreach ($skippedOrderIds as $skippedId) {
+            $failedOrders[] = [
+                'order_id' => $skippedId,
+                'tracking_number' => 'N/A',
+                'error' => 'Insufficient tracking numbers available'
+            ];
+            logAction($conn, $userId, 'api_existing_dispatch_failed', $skippedId,
+                "Order $skippedId skipped - Insufficient unused tracking numbers");
+        }
     }
     
     // ============================================
-    // STEP 3: GET ORDERS
+    // STEP 3: GET ORDERS (corrected joins)
     // ============================================
-    $placeholders = str_repeat('?,', count($orderIds) - 1) . '?';
+    $placeholders = str_repeat('?,', $orderCount - 1) . '?';
     $stmt = $conn->prepare("
         SELECT oh.*, 
                c.name as customer_name, 
                c.phone as customer_phone, 
                c.address_line1 as customer_address1, 
                c.address_line2 as customer_address2, 
-               ct.city_name
+               ct.city_name,
+               dt.district_name
         FROM order_header oh 
         LEFT JOIN customers c ON oh.customer_id = c.customer_id 
-        LEFT JOIN city_table ct ON c.city_id = ct.city_id
+        LEFT JOIN city_table ct ON oh.city_id = ct.city_id
+        LEFT JOIN district_table dt ON oh.district_id = dt.district_id
         WHERE oh.order_id IN ($placeholders) 
         AND oh.status = 'pending'
     ");
-    $stmt->bind_param(str_repeat('i', count($orderIds)), ...$orderIds);
+    $stmt->bind_param(str_repeat('i', $orderCount), ...$orderIds);
     $stmt->execute();
     $orders = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
     $stmt->close();
@@ -271,7 +268,22 @@ try {
     }
     
     // ============================================
-    // STEP 4: VERIFY ALL ORDERS BELONG TO SAME TENANT
+    // STEP 4: PRESERVE ORDER SEQUENCE
+    // ============================================
+    $orderedResults = [];
+    $orderMap = [];
+    foreach ($orders as $order) {
+        $orderMap[$order['order_id']] = $order;
+    }
+    foreach ($orderIds as $id) {
+        if (isset($orderMap[$id])) {
+            $orderedResults[] = $orderMap[$id];
+        }
+    }
+    $orders = $orderedResults;
+    
+    // ============================================
+    // STEP 5: VERIFY ALL ORDERS BELONG TO SAME TENANT
     // ============================================
     foreach ($orders as $order) {
         if ((int)$order['tenant_id'] !== $tenantId) {
@@ -287,7 +299,6 @@ try {
     $conn->begin_transaction();
     
     $successCount = 0;
-    $failedOrders = [];
     $processedOrders = [];
     
     foreach ($orders as $index => $order) {
@@ -296,29 +307,45 @@ try {
         
         try {
             $parcelData = getParcelData($orderId, $conn);
-            $location = getKoombiyoLocation($order['city_name'] ?? '');
             
-            // Determine COD amount
+            $districtName = trim($order['district_name'] ?? '');
+            $cityName = trim($order['city_name'] ?? '');
+            
+            if (empty($districtName)) $districtName = 'Colombo';
+            if (empty($cityName)) $cityName = 'Colombo';
+            
+            // Determine COD amount based on pay_status
             $codAmount = ($order['pay_status'] === 'paid') ? '0' : (string)$order['total_amount'];
             
-            // Prepare full address
-            $fullAddress = trim(($order['address_line1'] ?? $order['customer_address1'] ?? '') . ' ' . 
-                               ($order['address_line2'] ?? $order['customer_address2'] ?? ''));
+            // Prepare full address with comma+space separator
+            $addr1 = trim($order['address_line1'] ?? '');
+            $addr2 = trim($order['address_line2'] ?? '');
+            if (empty($addr1)) {
+                $addr1 = trim($order['customer_address1'] ?? '');
+                if (empty($addr2)) {
+                    $addr2 = trim($order['customer_address2'] ?? '');
+                }
+            }
+            
+            $fullAddress = trim($addr1 . ($addr2 ? ', ' . $addr2 : ''));
+            if ($cityName && strpos($fullAddress, $cityName) === false) {
+                $fullAddress .= ', ' . $cityName;
+            }
             
             $orderData = [
                 'orderWaybillid' => $trackingNumber,
                 'orderNo' => (string)$orderId,
                 'receiverName' => $order['full_name'] ?: $order['customer_name'],
                 'receiverStreet' => $fullAddress,
-                'receiverDistrict' => $location['district'],
-                'receiverCity' => $location['city'],
+                'receiverDistrict' => $districtName,
+                'receiverCity' => $cityName,
                 'receiverPhone' => $order['mobile'] ?: $order['customer_phone'],
                 'description' => $parcelData['description'],
                 'spclNote' => $dispatchNotes ?: 'Bulk dispatch order',
                 'getCod' => $codAmount
             ];
             
-            error_log("DEBUG - Order $orderId: Tracking=$trackingNumber, COD=$codAmount, City={$location['city']}");
+            error_log("DEBUG - Order $orderId: Tracking=$trackingNumber, COD=$codAmount, District=$districtName, City=$cityName");
             
             // Submit to Koombiyo API
             $result = addKoombiyoOrder($orderData, $courier['api_key']);
@@ -402,7 +429,7 @@ try {
         $conn->commit();
         
         $trackingList = implode(', ', array_column($processedOrders, 'tracking_number'));
-        $details = "Koombiyo bulk dispatch: $successCount/" . count($orderIds) . " orders dispatched, Tenant: $tenantId, CO_ID: $coId, Tracking: $trackingList";
+        $details = "Koombiyo bulk dispatch: $successCount/" . $orderCount . " orders dispatched, Tenant: $tenantId, CO_ID: $coId, Tracking: $trackingList";
         
         if (!empty($failedOrders)) {
             $errorList = array_map(fn($f) => "Order {$f['order_id']}: {$f['error']}", $failedOrders);
@@ -415,7 +442,7 @@ try {
         
         $errorList = array_map(fn($f) => "Order {$f['order_id']}: {$f['error']}", $failedOrders);
         logAction($conn, $userId, 'bulk_api_existing_dispatch_failed', 0, 
-            "Koombiyo bulk dispatch failed: All " . count($orderIds) . " orders failed. Errors: " . implode('; ', $errorList));
+            "Koombiyo bulk dispatch failed: All " . $orderCount . " orders failed. Errors: " . implode('; ', $errorList));
     }
     
     // ============================================
@@ -424,7 +451,7 @@ try {
     $response = [
         'success' => $successCount > 0,
         'processed_count' => $successCount,
-        'total_count' => count($orderIds),
+        'total_count' => $orderCount,
         'failed_count' => count($failedOrders),
         'processed_orders' => $processedOrders,
         'tenant_id' => $tenantId,

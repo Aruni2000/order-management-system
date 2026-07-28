@@ -288,11 +288,6 @@ try {
         'tenant_id' => $existingUser['tenant_id']
     ];
 
-    // Tenant change is no longer allowed via edit form
-    // if ($is_main_admin && !empty($input_tenant_id)) {
-    //     $newData['tenant_id'] = (int)$input_tenant_id;
-    // }
-    
     // Check if any field has actually changed (excluding password for now)
     $hasChanges = false;
     foreach ($newData as $field => $newValue) {
@@ -309,7 +304,7 @@ try {
     
     // If no changes detected, return early without logging
     if (!$hasChanges) {
-        jsonResponse(false, 'No changes detected. Please modify at least one field to update the user.');
+        jsonResponse(true, 'No changes were made to the user.');
     }
 
     // Begin database transaction

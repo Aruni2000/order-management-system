@@ -308,7 +308,6 @@ try {
                                     <input type="number" class="form-control" id="lkr_price" name="lkr_price"
                                         placeholder="0.00" required min="0"  step="0.01">
                                     <div class="error-feedback" id="lkr_price-error"></div>
-                                    <div class="price-hint">Enter price in Sri Lankan Rupees (e.g., 1500.00)</div>
                                 </div>
 
                                 <div class="product-form-group">
@@ -318,7 +317,6 @@ try {
                                     <input type="text" class="form-control" id="product_code" name="product_code"
                                         placeholder="Enter product code" required maxlength="50">
                                     <div class="error-feedback" id="product_code-error"></div>
-                                    <div class="code-hint">Unique identifier for the product</div>
                                 </div>
                             </div>
 
@@ -450,7 +448,7 @@ try {
                     $submitBtn.prop('disabled', false).html(originalText);
                     
                     if (response.success) {
-                        showSuccessNotification(response.message || 'Product added successfully!');
+                        toastManager.success(response.message || 'Product added successfully!');
                         
                         // Reset form after success
                         resetForm();
@@ -460,7 +458,7 @@ try {
                             showFieldErrors(response.errors);
                         }
                         
-                        showErrorNotification(response.message || 'Failed to add product. Please try again.');
+                        toastManager.error(response.message || 'Failed to add product. Please try again.');
                     }
                 },
                 error: function(xhr, status, error) {
@@ -479,7 +477,7 @@ try {
                         errorMessage = 'No internet connection. Please check your connection.';
                     }
                     
-                    showErrorNotification(errorMessage);
+                    toastManager.error(errorMessage);
                     console.error('AJAX Error:', {
                         status: xhr.status,
                         statusText: xhr.statusText,
@@ -500,7 +498,7 @@ try {
         // Loading functions
         function showLoading() {
             $('#loadingOverlay').css('display', 'flex');
-            $('body').css('overflow', 'hidden');
+            $('body').css('overflow', 'clip');
         }
         
         function hideLoading() {
@@ -508,58 +506,6 @@ try {
             $('body').css('overflow', 'auto');
         }
         
-        // Notification functions
-        function showSuccessNotification(message) {
-            showNotification(message, 'success');
-        }
-        
-        function showErrorNotification(message) {
-            showNotification(message, 'danger');
-        }
-        
-        function showWarningNotification(message) {
-            showNotification(message, 'warning');
-        }
-        
-        function showNotification(message, type) {
-            const notificationId = 'notification_' + Date.now();
-            const alertClasses = {
-                'success': 'alert-success',
-                'danger': 'alert-danger',
-                'warning': 'alert-warning'
-            };
-            
-            const iconClass = type === 'success' ? 'fas fa-check-circle' : 
-                            type === 'danger' ? 'fas fa-exclamation-circle' : 
-                            'fas fa-exclamation-triangle';
-            
-            const notification = `
-                <div class="alert ${alertClasses[type]} alert-dismissible fade show ajax-notification" id="${notificationId}" role="alert">
-                    <div class="d-flex align-items-center">
-                        <i class="${iconClass} me-2"></i>
-                        <div>${message}</div>
-                    </div>
-                    <button type="button" class="btn-close" onclick="hideNotification('${notificationId}')" aria-label="Close"></button>
-                </div>
-            `;
-            
-            $('body').append(notification);
-            
-            // Auto-hide after 5 seconds
-            setTimeout(() => {
-                hideNotification(notificationId);
-            }, 5000);
-        }
-        
-        function hideNotification(notificationId) {
-            const $notification = $('#' + notificationId);
-            if ($notification.length) {
-                $notification.addClass('hide');
-                setTimeout(() => {
-                    $notification.remove();
-                }, 300);
-            }
-        }
         
         // Form reset function
         function resetForm() {

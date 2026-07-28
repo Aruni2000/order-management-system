@@ -25,8 +25,8 @@ $is_main_admin_tenant = (isset($_SESSION['is_main_admin']) && $_SESSION['is_main
 $tenant_id = isset($_SESSION['tenant_id']) ? $_SESSION['tenant_id'] : 0;
 $tenant_filter = isset($_GET['tenant_filter']) ? $_GET['tenant_filter'] : 0;
 
-// Access control - Only ($is_admin == 1 && $is_main_admin_tenant == 1) can access this page
-if ($is_admin != 1 || $is_main_admin_tenant != 1) {
+// Access control - Only admins (role_id=1) can access this page
+if ($is_admin != 1) {
     header("Location: /OMS/dist/dashboard/index.php");
     exit();
 }
@@ -55,11 +55,17 @@ $offset = ($page - 1) * $limit;
  * Main query to fetch leads (orders with interface='leads')
  */
 
-// Access Control logic - For All Leads page, main admins see everything or selected tenant
+// Access Control logic - Main admin sees everything or selected tenant, company admin sees only their tenant
 $accessFilter = "";
-if ($tenant_filter > 0) {
-    $tenantTerm = (int)$tenant_filter;
-    $accessFilter = " AND i.tenant_id = $tenantTerm";
+if ($is_main_admin_tenant == 1) {
+    // Main admin can filter by tenant via dropdown or see all
+    if ($tenant_filter > 0) {
+        $tenantTerm = (int)$tenant_filter;
+        $accessFilter = " AND i.tenant_id = $tenantTerm";
+    }
+} else {
+    // Company admin sees only their own tenant's leads
+    $accessFilter = " AND i.tenant_id = " . (int)$tenant_id;
 }
 
 // Base SQL for counting total records - Updated for better user filtering
@@ -90,6 +96,7 @@ $sql = "SELECT i.order_id,
                i.full_name,
                i.address_line1,
                i.address_line2,
+               i.condition,
                c.name as customer_name, 
                c.phone as customer_phone,
                c.email as customer_email,
@@ -97,11 +104,15 @@ $sql = "SELECT i.order_id,
                u.name as user_name,
                u.email as user_email,
                u.status as user_status,
-               t.company_name as tenant_name
+               t.company_name as tenant_name,
+               p.payment_method,
+               u1.name as paid_by_name
         FROM order_header i 
         LEFT JOIN customers c ON i.customer_id = c.customer_id
         LEFT JOIN users u ON i.user_id = u.id
         LEFT JOIN tenants t ON i.tenant_id = t.tenant_id
+        LEFT JOIN payments p ON i.order_id = p.order_id
+        LEFT JOIN users u1 ON p.pay_by = u1.id
         WHERE i.interface = 'leads' $accessFilter";
 
 // Build search conditions
@@ -225,32 +236,10 @@ $result = $conn->query($sql);
 .actions {
     white-space: nowrap;
 }
-
-.user-info {
-    font-size: 13px;
-}
-
-.user-name {
-    font-weight: 600;
-    color: #333;
-}
-
-.user-id {
-    color: #666;
-    font-size: 11px;
-}
-
-.user-email {
-    color: #888;
-    font-size: 11px;
-    font-style: italic;
-}
-
-.search-helper {
-    font-size: 11px;
-    color: #666;
-    margin-top: 2px;
-    font-style: italic;
+.status-badge.pay-status-paid,
+.status-badge.pay-status-unpaid {
+    font-size: 0.65rem;
+    padding: 2px 8px;
 }
 </style>
 </head>
@@ -282,19 +271,22 @@ $result = $conn->query($sql);
                    
                     <form class="tracking-form" method="GET" action="">
                         <?php 
-                        // Fetch tenants for superadmin filter
+                        // Fetch tenants for superadmin filter - only show for main admin
                         $tenants = [];
-                        $tenantsQuery = "SELECT tenant_id, company_name FROM tenants WHERE status = 'active' ORDER BY company_name ASC";
-                        $tenantsResult = $conn->query($tenantsQuery);
-                        if ($tenantsResult && $tenantsResult->num_rows > 0) {
-                            while ($t = $tenantsResult->fetch_assoc()) {
-                                $tenants[] = $t;
+                        if ($is_main_admin_tenant == 1) {
+                            $tenantsQuery = "SELECT tenant_id, company_name FROM tenants WHERE status = 'active' ORDER BY company_name ASC";
+                            $tenantsResult = $conn->query($tenantsQuery);
+                            if ($tenantsResult && $tenantsResult->num_rows > 0) {
+                                while ($t = $tenantsResult->fetch_assoc()) {
+                                    $tenants[] = $t;
+                                }
                             }
                         }
                         ?>
+                        <?php if ($is_main_admin_tenant == 1 && count($tenants) > 0): ?>
                         <div class="form-group">
                             <label for="tenant_filter">Tenant Company</label>
-                            <select id="tenant_filter" name="tenant_filter" onchange="this.form.submit()">
+                            <select id="tenant_filter" name="tenant_filter">
                                 <option value="">All Companies</option>
                                 <?php foreach ($tenants as $t): ?>
                                     <option value="<?php echo $t['tenant_id']; ?>" <?php echo ($tenant_filter == $t['tenant_id']) ? 'selected' : ''; ?>>
@@ -303,6 +295,7 @@ $result = $conn->query($sql);
                                 <?php endforeach; ?>
                             </select>
                         </div>
+                        <?php endif; ?>
 
                         <div class="form-group">
                             <label for="order_id_filter">Order ID</label>
@@ -316,13 +309,6 @@ $result = $conn->query($sql);
                             <input type="text" id="customer_name_filter" name="customer_name_filter" 
                                    placeholder="Enter customer name" 
                                    value="<?php echo htmlspecialchars($customer_name_filter); ?>">
-                        </div>
-                        
-                        <div class="form-group">
-                            <label for="phone_filter">Phone Number</label>
-                            <input type="text" id="phone_filter" name="phone_filter" 
-                                   placeholder="Enter phone number" 
-                                   value="<?php echo htmlspecialchars($phone_filter); ?>">
                         </div>
                         
                         
@@ -404,11 +390,13 @@ $result = $conn->query($sql);
                             <tr>
                                 <th>Order ID</th>
                                 <th>Customer Name</th>
-                                <th>Phone Number</th>
+                                <?php if ($is_main_admin_tenant == 1): ?>
                                 <th>Tenant</th>
+                                <?php endif; ?>
                                 <th>Total Amount</th>
-                                <th>Pay Status</th>
                                 <th>Status</th>
+                                <th>Processed By</th>
+                                <th>Success Rate</th>
                                 <th>Assigned User</th>
                                 <th>Actions</th>
                             </tr>
@@ -422,8 +410,7 @@ $result = $conn->query($sql);
                                             <?php echo isset($row['order_id']) ? htmlspecialchars($row['order_id']) : ''; ?>
                                         </td>
                                         
-                                        <!-- Customer Name - Enhanced to show both customer table name and order full_name -->
-                                    <!-- Customer Name - Prioritize order_header full_name for leads -->
+                                        <!-- Customer Name with ID - Prioritize order_header full_name for leads -->
                                             <td class="customer-name">
                                                 <?php 
                                                 // For leads interface, prioritize full_name from order_header
@@ -437,56 +424,31 @@ $result = $conn->query($sql);
                                                 } else {
                                                     $customerName = 'N/A';
                                                 }
-                                                echo htmlspecialchars($customerName);
+                                                $customerId = isset($row['customer_id']) ? htmlspecialchars($row['customer_id']) : '';
+                                                echo htmlspecialchars($customerName) . ($customerId ? " ($customerId)" : "");
                                                 ?>
                                             </td>
-                                        
-                                       
-                                        <!-- Phone Number - Prioritize order_header mobile for leads -->
-                                        <td class="phone-number">
-                                            <?php 
-                                            // For leads interface, prioritize mobile from order_header
-                                            $phoneNumber = '';
-                                            if (!empty($row['mobile'])) {
-                                                // Primary: Use mobile from order_header (leads data)
-                                                $phoneNumber = $row['mobile'];
-                                                // If mobile_2 exists, show both
-                                                if (!empty($row['mobile_2'])) {
-                                                    $phoneNumber .= ' / ' . $row['mobile_2'];
-                                                }
-                                            } elseif (!empty($row['customer_phone'])) {
-                                                // Fallback: Use customer table phone if available
-                                                $phoneNumber = $row['customer_phone'];
-                                            } else {
-                                                $phoneNumber = 'N/A';
-                                            }
-                                            echo htmlspecialchars($phoneNumber);
-                                            ?>
-                                        </td>
 
+                                        <?php if ($is_main_admin_tenant == 1): ?>
                                         <!-- Tenant Column -->
                                         <td class="tenant-info">
                                             <?php echo isset($row['tenant_name']) ? htmlspecialchars($row['tenant_name']) : 'N/A'; ?>
                                         </td>
+                                        <?php endif; ?>
                                        
-                                        <!-- Total Amount with Currency -->
+                                        <!-- Total Amount with Currency + Pay Status -->
                                         <td class="amount">
                                             <?php
                                             $amount = isset($row['total_amount']) ? (float)$row['total_amount'] : 0;
                                             $currency = isset($row['currency']) ? $row['currency'] : 'lkr';
                                             $currencySymbol = ($currency == 'usd') ? '$' : 'Rs';
                                             echo $currencySymbol . number_format($amount, 2);
-                                            ?>
-                                        </td>
-                                        
-                                        <!-- Payment Status Badge -->
-                                        <td>
-                                            <?php
+                                            
                                             $payStatus = isset($row['pay_status']) ? $row['pay_status'] : 'unpaid';
                                             if ($payStatus == 'paid'): ?>
-                                                <span class="status-badge pay-status-paid">Paid</span>
+                                                <br><span class="status-badge pay-status-paid">Paid</span>
                                             <?php else: ?>
-                                                <span class="status-badge pay-status-unpaid">Unpaid</span>
+                                                <br><span class="status-badge pay-status-unpaid">Unpaid</span>
                                             <?php endif; ?>
                                         </td>
                                         
@@ -559,18 +521,60 @@ $result = $conn->query($sql);
                                             ?>
                                             <span class="status-badge <?php echo $badgeClass; ?>"><?php echo $statusText; ?></span>
                                         </td>
-                                        
-                                        <!-- Enhanced User Information -->
-                                        <td class="user-info">
-                                            <?php if (isset($row['user_name']) && !empty($row['user_name'])): ?>
-                                                <div class="user-name"><?php echo htmlspecialchars($row['user_name']); ?></div>
-                                                <div class="user-id">ID: <?php echo htmlspecialchars($row['user_id']); ?></div>
-                                                <?php if (!empty($row['user_email'])): ?>
-                                                    <div class="user-email"><?php echo htmlspecialchars($row['user_email']); ?></div>
-                                                <?php endif; ?>
-                                            <?php else: ?>
-                                                <span style="color: #999;">Unassigned</span>
-                                            <?php endif; ?>
+
+                                        <!-- Processed By -->
+                                        <td>
+                                            <?php
+                                            $paidByName = isset($row['paid_by_name']) ? htmlspecialchars($row['paid_by_name']) : '';
+                                            $paymentMethod = isset($row['payment_method']) ? htmlspecialchars($row['payment_method']) : '';
+                                            
+                                            if ($payStatus == 'paid' && !empty($paidByName)) {
+                                                echo '<span style="font-weight: 600; color: #28a745;">' . $paidByName . '</span>';
+                                                if (!empty($paymentMethod)) {
+                                                    $methodDisplay = ucwords(str_replace('_', ' ', $paymentMethod));
+                                                    echo '<br><span style="font-size: 11px; color: #6c757d;">' . $methodDisplay . '</span>';
+                                                }
+                                            } else {
+                                                echo '<span style="color: #adb5bd;">-</span>';
+                                            }
+                                            ?>
+                                        </td>
+
+                                        <!-- Success Rate Badge -->
+                                        <td>
+                                            <?php
+                                            $condition = isset($row['condition']) ? (int)$row['condition'] : 4;
+                                            switch ($condition) {
+                                                case 0:
+                                                    echo '<span class="status-badge rate-excellent">Excellent</span>';
+                                                    break;
+                                                case 1:
+                                                    echo '<span class="status-badge rate-good">Good</span>';
+                                                    break;
+                                                case 2:
+                                                    echo '<span class="status-badge rate-average">Average</span>';
+                                                    break;
+                                                case 3:
+                                                    echo '<span class="status-badge rate-bad">Bad</span>';
+                                                    break;
+                                                case 4:
+                                                default:
+                                                    echo '<span class="status-badge rate-new">New</span>';
+                                            }
+                                            ?>
+                                        </td>
+
+                                        <!-- Assigned User with ID -->
+                                        <td>
+                                            <?php
+                                            $assignedUser = isset($row['user_name']) ? htmlspecialchars($row['user_name']) : '';
+                                            $assignedUserId = isset($row['user_id']) ? htmlspecialchars($row['user_id']) : '';
+                                            if ($assignedUser) {
+                                                echo $assignedUser . ($assignedUserId ? " ($assignedUserId)" : "");
+                                            } else {
+                                                echo '<span style="color: #adb5bd;">-</span>';
+                                            }
+                                            ?>
                                         </td>
                                         
                                         <!-- Action Buttons -->
@@ -639,16 +643,10 @@ $result = $conn->query($sql);
     // Lead-specific JavaScript functionality
     let currentLeadId = null;
 
-    // Handle user filter selection - simplified
-    function handleUserSelection() {
-        // No longer needed with simple dropdown
-    }
-
     // Clear all filter inputs
     function clearFilters() {
         document.getElementById('order_id_filter').value = '';
         document.getElementById('customer_name_filter').value = '';
-        document.getElementById('phone_filter').value = '';
         document.getElementById('date_from').value = '';
         document.getElementById('date_to').value = '';
         document.getElementById('status_filter').value = '';
@@ -678,7 +676,7 @@ $result = $conn->query($sql);
         
         // Show modal
         modal.style.display = 'flex';
-        document.body.style.overflow = 'hidden';
+        document.body.style.overflow = 'clip';
         
         // Show loading state
         modalContent.innerHTML = `
@@ -691,7 +689,7 @@ $result = $conn->query($sql);
         viewPaymentSlipBtn.style.display = 'none';
         
         // Use leads download PHP file
-        const fetchUrl = '../leads/leads_download.php?id=' + encodeURIComponent(currentLeadId);
+        const fetchUrl = '../orders/download_order_page.php?id=' + encodeURIComponent(currentLeadId);
         
         console.log('Fetching from:', fetchUrl);
         
@@ -727,7 +725,7 @@ $result = $conn->query($sql);
                     <h4>Error Loading Lead Details</h4>
                     <p>Lead ID: ${currentLeadId}</p>
                     <p>Error: ${error.message}</p>
-                    <p>Please check if the leads_download.php file exists and is accessible.</p>
+                    <p>Please check if the download_order_page.php file exists and is accessible.</p>
                     <button onclick="retryLoadLead()" class="btn btn-primary" style="margin-top: 10px;">
                         <i class="fas fa-redo"></i> Retry
                     </button>
@@ -791,7 +789,7 @@ $result = $conn->query($sql);
     function closeOrderModal() {
         const modal = document.getElementById('orderModal');
         modal.style.display = 'none';
-        document.body.style.overflow = 'auto';
+        document.body.style.overflow = '';
         currentLeadId = null;
     }
 
@@ -802,7 +800,7 @@ $result = $conn->query($sql);
             return;
         }
         
-        const downloadUrl = '../leads/leads_download.php?id=' + encodeURIComponent(currentLeadId) + '&download=1';
+        const downloadUrl = '../orders/download_order.php?id=' + encodeURIComponent(currentLeadId) + '&download=1';
         
         console.log('Downloading from:', downloadUrl);
         window.open(downloadUrl, '_blank');

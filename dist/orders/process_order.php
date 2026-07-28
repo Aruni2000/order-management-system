@@ -177,19 +177,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         // Get tenant_id from POST data (this is what user selected in the form)
         $tenant_id = isset($_POST['tenant_id']) ? intval($_POST['tenant_id']) : ($_SESSION['tenant_id'] ?? 1);
 
-        error_log("DEBUG - POST tenant_id: " . ($_POST['tenant_id'] ?? 'NOT_SET'));
-        error_log("DEBUG - Session tenant_id: " . ($_SESSION['tenant_id'] ?? 'NOT_SET'));
-        error_log("DEBUG - Final tenant_id being used: $tenant_id");
-        error_log("DEBUG - User ID: $user_id");
-        
         // Handle address fields according to actual database schema
         $address_line1 = trim($_POST['address_line1'] ?? '');
         $address_line2 = trim($_POST['address_line2'] ?? '');
         $city_id = !empty($_POST['city_id']) ? intval($_POST['city_id']) : null;
-        
-        // Debug log for city_id from POST
-        error_log("DEBUG - POST city_id: " . ($_POST['city_id'] ?? 'NOT_SET'));
-        error_log("DEBUG - Processed city_id: " . ($city_id ?? 'NULL'));
         
         // ==========================================
         // CUSTOMER MATCHING LOGIC - FIXED VERSION
@@ -249,40 +240,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 
                 $stmt->close();
             }
-
-            // STEP 2: If phone not found, check email (optional - frontend should prevent duplicate email)
-    //         if ($is_new_customer && !empty($customer_email)) {
-                
-    //             $checkEmailSql = "SELECT customer_id, name, email, phone, phone_2 
-    //                 FROM customers 
-    //                 WHERE email = ? 
-    //                 AND tenant_id = ?
-    //                 AND status = 'Active'
-    //                 LIMIT 1";
-
-    // $stmt = $conn->prepare($checkEmailSql);
-
-    // if (!$stmt) {
-    //     throw new Exception("Failed to prepare email check query: " . $conn->error);
-    // }
-
-    // $stmt->bind_param("si", $customer_email, $tenant_id); // UPDATED: Added tenant_id
-                
-    //             if (!$stmt->execute()) {
-    //                 throw new Exception("Failed to execute email check: " . $stmt->error);
-    //             }
-                
-    //             $result = $stmt->get_result();
-                
-    //             if ($result->num_rows > 0) {
-    //                 $existing_customer = $result->fetch_assoc();
-    //                 $customer_id = $existing_customer['customer_id'];
-    //                 $is_new_customer = false;
-    //                 error_log("DEBUG - Email found in customer_id: $customer_id (using existing customer)");
-    //             }
-                
-    //             $stmt->close();
-    //         }
 
             // ==========================================
             // STEP 3: CREATE NEW CUSTOMER (Only if both phone and email are new)
@@ -1224,13 +1181,19 @@ $updateOrderStmt->bind_param("iisi", $co_id, $default_courier_id, $tracking_numb
                                     // Get delivery instructions from notes if available
                                     $delivery_instructions = $notes ?? '';
                                     
+                                    // Format full address (Koombiyo requires city in the string to extract destination)
+                                    $full_address = trim($address_line1 . (!empty(trim($address_line2)) ? ', ' . trim($address_line2) : ''));
+                                    if (!empty($city_name) && strpos($full_address, $city_name) === false) {
+                                        $full_address .= ', ' . $city_name;
+                                    }
+
                                     // Prepare data for Koombiyo API
                                     $koombiyo_api_data = array(
                                         'apikey' => $api_key,
                                         'orderWaybillid' => $waybill_id,
                                         'orderNo' => strval($order_id),
                                         'receiverName' => $customer_name,
-                                        'receiverStreet' => trim($address_line1 . ' ' . $address_line2),
+                                        'receiverStreet' => $full_address,
                                         'receiverDistrict' => $district_name,
                                         'receiverCity' => $city_name,
                                         'receiverPhone' => $customer_phone,
@@ -1284,7 +1247,7 @@ $updateOrderStmt->bind_param("iisi", $co_id, $default_courier_id, $tracking_numb
                                                 if (!$updateOrderStmt) {
                                                     throw new Exception("Failed to prepare order header update: " . $conn->error);
                                                 }
-                                                $updateOrderStmt->bind_param("iisi", $co_id, $default_courier_id, $tracking_number, $order_id);
+$updateOrderStmt->bind_param("iisi", $co_id, $default_courier_id, $waybill_id, $order_id);
                                                 if (!$updateOrderStmt->execute()) {
                                                     throw new Exception("Failed to update order header: " . $updateOrderStmt->error);
                                                 }

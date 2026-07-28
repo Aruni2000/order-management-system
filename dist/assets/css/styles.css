@@ -296,8 +296,9 @@ Additional CSS for Order Creation page - (create_order.php) Start
     left: 0;
     width: 100vw;
     height: 100vh;
-    background: rgba(0, 0, 0, 0.8);
+    background: rgba(0, 0, 0, 0.5);
     backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
     z-index: 9999;
     align-items: center; /* CHANGED: from flex-start to center */
     justify-content: center;

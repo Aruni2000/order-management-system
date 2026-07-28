@@ -65,8 +65,9 @@ try {
     }
     
     // Check if order is in valid status for payment
-    if (!in_array($orderData['status'], ['pending', 'dispatch'])) {
-        throw new Exception('Order is not in a valid status for payment processing. Current status: ' . $orderData['status']);
+    // Allow marking as paid for any status except cancel and removed
+    if (in_array($orderData['status'], ['cancel', 'removed'])) {
+        throw new Exception('Order cannot be marked as paid. Current status: ' . $orderData['status']);
     }
     
     $fileName = null; // Default to null if no file is uploaded or if there's an issue
@@ -116,7 +117,7 @@ try {
 
         // Get company name for filename prefix
         $companyName = '';
-        $brandQuery = "SELECT company_name FROM branding WHERE active = 1 LIMIT 1";
+        $brandQuery = "SELECT company_name FROM tenants WHERE status = 'active' LIMIT 1";
         $brandResult = $conn->query($brandQuery);
 
         if ($brandResult && $brandRow = $brandResult->fetch_assoc()) {
@@ -224,16 +225,22 @@ try {
         // Get the number of items updated
         $itemsUpdated = $updateItemsStmt->affected_rows;
         
+        // Get payment method from form data
+        $paymentMethod = isset($_POST['payment_method']) ? trim($_POST['payment_method']) : 'Cash';
+        if (!in_array($paymentMethod, ['Cash', 'bank_transfer'])) {
+            $paymentMethod = 'Cash';
+        }
+        
         // Insert payment record into payments table and get the actual payment_id
         $insertPaymentSql = "INSERT INTO payments (order_id, amount_paid, payment_method, payment_date, pay_by) 
-                            SELECT order_id, total_amount, 'bank_transfer', ?, ? FROM order_header WHERE order_id = ?";
+                            SELECT order_id, total_amount, ?, ?, ? FROM order_header WHERE order_id = ?";
         
         $insertPaymentStmt = $conn->prepare($insertPaymentSql);
         if (!$insertPaymentStmt) {
             throw new Exception('Failed to prepare payment insert statement: ' . $conn->error);
         }
         
-        $insertPaymentStmt->bind_param("sss", $paymentDate, $currentUserId, $orderId);
+        $insertPaymentStmt->bind_param("ssss", $paymentMethod, $paymentDate, $currentUserId, $orderId);
         
         if (!$insertPaymentStmt->execute()) {
             throw new Exception('Failed to insert payment record: ' . $insertPaymentStmt->error);

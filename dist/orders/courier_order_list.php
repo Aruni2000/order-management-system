@@ -22,9 +22,9 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
 include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
 // Check if user is main admin
-$is_main_admin = $_SESSION['is_main_admin'];
-$teanent_id = $_SESSION['tenant_id'];
-$is_admin = $_SESSION['role_id'];
+$is_main_admin = $_SESSION['is_main_admin'] ?? 0;
+$tenant_id = $_SESSION['tenant_id'] ?? 0;
+$is_admin = $_SESSION['role_id'] ?? 0;
 
 /**
  * SEARCH AND PAGINATION PARAMETERS
@@ -58,7 +58,8 @@ $sql = "SELECT i.*, c.name as customer_name,
                p.payment_id, p.amount_paid, p.payment_method, p.payment_date, p.pay_by,
                u1.name as paid_by_name,
                u2.name as creator_name,
-               t.company_name
+               t.company_name,
+               (SELECT courier_name FROM couriers WHERE courier_id = i.courier_id LIMIT 1) as courier_name
         FROM order_header i 
         LEFT JOIN customers c ON i.customer_id = c.customer_id
         LEFT JOIN payments p ON i.order_id = p.order_id
@@ -69,8 +70,8 @@ $sql = "SELECT i.*, c.name as customer_name,
 
 // Add tenant filter for non-main admin users
 if ($is_main_admin != 1) {
-    $countSql .= " AND i.tenant_id = $teanent_id";
-    $sql .= " AND i.tenant_id = $teanent_id";
+    $countSql .= " AND i.tenant_id = $tenant_id";
+    $sql .= " AND i.tenant_id = $tenant_id";
 }
 
 // Build search conditions
@@ -273,11 +274,9 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                 <th>Order ID</th>
                                 <th>Updated Time</th>
                                 <th>Customer Name</th>
-                                <th>Issue Date</th>
                                 <th>Total Amount</th>
                                 <th>Status</th>
-                                <th>Pay Status</th>
-                                <th>Created By</th>
+                                <th>Tracking Number</th>
                                 <?php if ($is_main_admin == 1): ?>
                                 <th>Tenant Company</th>
                                 <?php endif; ?>
@@ -314,22 +313,23 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                             echo $customerName . ($customerId ? " ($customerId)" : "");
                                             ?>
                                         </td>
-                                       
-                                        <!-- Issue Date - Due Date -->
-                                        <td class="issue-date">
-                                            <?php
-                                            echo isset($row['issue_date']) ? date('Y-m-d', strtotime($row['issue_date'])) : 'N/A';
-                                            ?>
-                                        </td>
                                         
-                                        <!-- Total Amount with Currency -->
+                                        <!-- Total Amount with Pay Status -->
                                         <td class="amount">
                                             <?php
                                             $amount = isset($row['total_amount']) ? (float)$row['total_amount'] : 0;
                                             $currency = isset($row['currency']) ? $row['currency'] : 'lkr';
                                             $currencySymbol = ($currency == 'usd') ? '$' : 'Rs';
                                             echo $currencySymbol . number_format($amount, 2);
-                                            ?>
+
+                                            $payStatus = isset($row['pay_status']) ? $row['pay_status'] : 'unpaid';
+                                            if ($payStatus == 'paid'): ?>
+                                                <br><span class="status-badge pay-status-paid">Paid</span>
+                                            <?php elseif ($payStatus == 'partial'): ?>
+                                                <br><span class="status-badge pay-status-partial">Partial</span>
+                                            <?php else: ?>
+                                                <br><span class="status-badge pay-status-unpaid">Unpaid</span>
+                                            <?php endif; ?>
                                         </td>
                                         
                                         <!-- Order Status Badge -->
@@ -396,23 +396,20 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                             <span class="status-badge <?php echo $badgeClass; ?>"><?php echo $statusText; ?></span>
                                         </td>
                                         
-                                        <!-- Payment Status Badge -->
-                                        <td>
+                                        <!-- Tracking Number + Courier -->
+                                        <td class="tracking-number">
                                             <?php
-                                            $payStatus = isset($row['pay_status']) ? $row['pay_status'] : 'unpaid';
-                                            if ($payStatus == 'paid'): ?>
-                                                <span class="status-badge pay-status-paid">Paid</span>
-                                            <?php elseif ($payStatus == 'partial'): ?>
-                                                <span class="status-badge pay-status-partial">Partial</span>
-                                            <?php else: ?>
-                                                <span class="status-badge pay-status-unpaid">Unpaid</span>
-                                            <?php endif; ?>
-                                        </td>
-                                        
-                                        <!-- Created By User -->
-                                        <td>
-                                            <?php
-                                            echo isset($row['creator_name']) ? htmlspecialchars($row['creator_name']) : 'N/A';
+                                            $trackingNumber = isset($row['tracking_number']) ? $row['tracking_number'] : '';
+                                            $courierName = isset($row['courier_name']) ? $row['courier_name'] : '';
+                                            
+                                            if (!empty($trackingNumber)) {
+                                                echo htmlspecialchars($trackingNumber);
+                                                if (!empty($courierName)) {
+                                                    echo '<br><span style="font-size: 11px; color: #6c757d;">' . htmlspecialchars($courierName) . '</span>';
+                                                }
+                                            } else {
+                                                echo '<span style="color: #999; font-style: italic;">Not assigned</span>';
+                                            }
                                             ?>
                                         </td>
                                         
@@ -429,7 +426,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                         <td class="actions">
                                             <div class="action-buttons-group">
                                                 <button class="action-btn view-btn" title="View Order Details" 
-                                                        onclick="openOrderModal('<?php echo isset($row['order_id']) ? htmlspecialchars($row['order_id']) : ''; ?>')">
+                                                        onclick="openOrderModal('<?php echo isset($row['order_id']) ? htmlspecialchars($row['order_id']) : ''; ?>', '<?php echo isset($row['interface']) ? htmlspecialchars($row['interface']) : ''; ?>')">
                                                     <i class="fas fa-eye"></i>
                                                 </button>
                                             </div>
@@ -438,7 +435,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                 <?php endwhile; ?>
                             <?php else: ?>
                                 <tr>
-                                    <td colspan="<?php echo ($is_main_admin == 1) ? '9' : '8'; ?>" class="text-center" style="padding: 40px; text-align: center; color: #666;">
+                                    <td colspan="<?php echo ($is_main_admin == 1) ? '8' : '7'; ?>" class="text-center" style="padding: 40px; text-align: center; color: #666;">
                                         No courier orders found
                                     </td>
                                 </tr>
@@ -498,32 +495,25 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                     <i class="fas fa-download"></i>
                     Download
                 </button>
-                <button class="modal-btn modal-btn-warning" onclick="updateOrderStatus()" id="updateStatusBtn" style="display:none;">
-                    <i class="fas fa-edit"></i>
-                    Update Status
-                </button>
             </div>
         </div>
     </div>
 
     <style>
         .updated-time {
-            white-space: nowrap;
-            font-size: 0.9em;
-            color: #666;
-        }
-
-        .updated-date {
-            display: block;
-            font-weight: 500;
-            color: #333;
-        }
-
-        .updated-time-only {
-            display: block;
-            font-size: 0.8em;
-            color: #999;
-        }
+        font-size: 0.9em;
+        color: #333;
+        line-height: 1.2;
+    }
+    .updated-date {
+        display: block;
+        font-weight: 600;
+    }
+    .updated-time-only {
+        display: block;
+        color: #666;
+        font-size: 0.85em;
+    }
     </style>
 
     <script>
@@ -532,6 +522,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
          */
         
         let currentOrderId = null;
+        let currentInterface = null;
 
         // Clear all filter inputs
         function clearFilters() {
@@ -549,37 +540,37 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
         }
 
         // Open order modal and load details
-        function openOrderModal(orderId) {
+        function openOrderModal(orderId, interface = null) {
             // Enhanced validation
             if (!orderId || orderId.trim() === '') {
                 alert('Order ID is required to view order details.');
                 return;
             }
             
-            console.log('Opening modal for Order ID:', orderId);
+            console.log('Opening modal for Order ID:', orderId, 'Interface:', interface);
             
             currentOrderId = orderId.trim();
+            currentInterface = interface;
             const modal = document.getElementById('orderModal');
             const modalContent = document.getElementById('modalContent');
             const downloadBtn = document.getElementById('downloadBtn');
-            const updateStatusBtn = document.getElementById('updateStatusBtn');
             
             // Show modal
             modal.style.display = 'flex';
-            document.body.style.overflow = 'hidden';
+            document.body.style.overflow = 'clip';
             
             // Show loading state
             modalContent.innerHTML = `
                 <div class="modal-loading">
                     <i class="fas fa-spinner fa-spin"></i>
-                    Loading order details for Order ID: ${currentOrderId}...
+                    Loading ${interface === 'leads' ? 'lead' : 'order'} details for Order ID: ${currentOrderId}...
                 </div>
             `;
             downloadBtn.style.display = 'none';
-            updateStatusBtn.style.display = 'none';
             
             // Fetch order details
-            const fetchUrl = 'download_order.php?id=' + encodeURIComponent(currentOrderId);
+            const phpFile = 'download_order.php';
+            const fetchUrl = phpFile + '?id=' + encodeURIComponent(currentOrderId);
             console.log('Fetching from:', fetchUrl);
             
             fetch(fetchUrl, {
@@ -602,7 +593,6 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                 }
                 modalContent.innerHTML = data;
                 downloadBtn.style.display = 'inline-flex';
-                updateStatusBtn.style.display = 'inline-flex';
             })
             .catch(error => {
                 console.error('Error loading order details:', error);
@@ -643,64 +633,10 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
             window.open('track_order.php?id=' + encodeURIComponent(orderId), '_blank');
         }
 
-        // Update order status function
-        function updateOrderStatus() {
-            if (!currentOrderId) {
-                alert('No order selected for status update.');
-                return;
-            }
-            
-            // Show status update options
-            const statusOptions = [
-                'done','pending','cancel','dispatch','no_answer','return_handover','waiting','pickup','processing','pending to deliver','return','delivered','removed','transfer','damaged','hold','courier dispatch','return pending','return transfer','return complete','rearrange'
-            ];
-            
-            let statusSelect = '<div style="margin: 20px 0;"><label>Update Order Status:</label><br>';
-            statusSelect += '<select id="newStatus" style="width: 100%; padding: 8px; margin-top: 5px;">';
-            statusOptions.forEach(status => {
-                statusSelect += `<option value="${status}">${status.charAt(0).toUpperCase() + status.slice(1)}</option>`;
-            });
-            statusSelect += '</select></div>';
-            statusSelect += '<button onclick="saveStatusUpdate()" style="background: #28a745; color: white; padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer;">Save Status</button>';
-            
-            document.getElementById('modalContent').innerHTML += statusSelect;
-        }
-
-        // Save status update
-        function saveStatusUpdate() {
-            const newStatus = document.getElementById('newStatus').value;
-            if (!newStatus || !currentOrderId) {
-                alert('Please select a status.');
-                return;
-            }
-            
-            // Send update request
-            fetch('update_order_status.php', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                },
-                body: `order_id=${encodeURIComponent(currentOrderId)}&status=${encodeURIComponent(newStatus)}`
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    alert('Order status updated successfully!');
-                    location.reload();
-                } else {
-                    alert('Error updating status: ' + data.message);
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                alert('Error updating order status.');
-            });
-        }
-
         // Retry loading order
         function retryLoadOrder() {
             if (currentOrderId) {
-                openOrderModal(currentOrderId);
+                openOrderModal(currentOrderId, currentInterface);
             }
         }
 
@@ -708,8 +644,9 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
         function closeOrderModal() {
             const modal = document.getElementById('orderModal');
             modal.style.display = 'none';
-            document.body.style.overflow = 'auto';
+            document.body.style.overflow = '';
             currentOrderId = null;
+            currentInterface = null;
         }
 
         // Download order
@@ -719,7 +656,8 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                 return;
             }
             
-            const downloadUrl = 'download_order.php?id=' + encodeURIComponent(currentOrderId) + '&download=1';
+            const phpFile = 'download_order.php';
+            const downloadUrl = phpFile + '?id=' + encodeURIComponent(currentOrderId) + '&download=1';
             console.log('Downloading from:', downloadUrl);
             window.open(downloadUrl, '_blank');
         }

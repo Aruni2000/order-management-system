@@ -505,32 +505,7 @@ $result = $conn->query($sql);
         </div>
     </div>
 
-    <!-- Status Confirmation Modal -->
-    <div id="statusConfirmationModal" class="modal confirmation-modal">
-        <div class="modal-content confirmation-modal-content">
-            <div class="modal-header">
-                <h4>Are you sure?</h4>
-                <span class="close" onclick="closeConfirmationModal()">&times;</span>
-            </div>
-            <div class="modal-body">
-                <div class="confirmation-icon">
-                    <i class="ti ti-alert-triangle"></i>
-                </div>
-                <div class="confirmation-text">
-                    You are about to <span class="action-highlight" id="action-text"></span> product:
-                </div>
-                <div class="confirmation-text">
-                    <span class="user-name-highlight" id="confirm-product-name"></span>
-                </div>
-                <div class="modal-buttons">
-                    <button class="btn-confirm" id="confirmActionBtn">
-                        <span id="confirm-button-text">Yes, deactivate product!</span>
-                    </button>
-                    <button class="btn-cancel" onclick="closeConfirmationModal()">Cancel</button>
-                </div>
-            </div>
-        </div>
-    </div>
+
 
     <!-- Footer -->
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php'); ?>
@@ -613,92 +588,72 @@ $result = $conn->query($sql);
             window.location.href = 'edit_product.php?id=' + productId;
         }
 
-        function closeConfirmationModal() {
-            document.getElementById('statusConfirmationModal').style.display = 'none';
-        }
-
         // Toggle Product Status Functionality
         document.addEventListener('DOMContentLoaded', function() {
-            // Add event listeners for toggle status buttons
             const toggleButtons = document.querySelectorAll('.toggle-status-btn');
             toggleButtons.forEach(button => {
                 button.addEventListener('click', function() {
-                    openStatusConfirmationModal(this);
+                    toggleProductStatus(this);
                 });
             });
-            
-            // Close modal when clicking outside
-            window.onclick = function(event) {
-                const productModal = document.getElementById('productDetailsModal');
-                const statusModal = document.getElementById('statusConfirmationModal');
-                
-                if (event.target === productModal) {
-                    closeProductModal();
-                }
-                if (event.target === statusModal) {
-                    closeConfirmationModal();
-                }
-            }
         });
 
-        function openStatusConfirmationModal(button) {
+        function toggleProductStatus(button) {
             const productId = button.getAttribute('data-product-id');
             const productName = button.getAttribute('data-product-name');
             const currentStatus = button.getAttribute('data-current-status');
             
-            // Determine action based on current status
             const isActive = currentStatus.toLowerCase() === 'active';
-            const actionText = isActive ? 'deactivate' : 'activate';
-            const buttonText = isActive ? 'Yes, deactivate product!' : 'Yes, activate product!';
+            const newStatus = isActive ? 'inactive' : 'active';
             
-            // Update modal content
-            document.getElementById('action-text').textContent = actionText;
-            document.getElementById('confirm-product-name').textContent = productName;
-            document.getElementById('confirm-button-text').textContent = buttonText;
-            
-            // Store data for confirmation
-            const confirmBtn = document.getElementById('confirmActionBtn');
-            confirmBtn.setAttribute('data-product-id', productId);
-            confirmBtn.setAttribute('data-new-status', isActive ? 'inactive' : 'active');
-            
-            // Add click handler to confirm button
-            confirmBtn.onclick = function() {
-                toggleProductStatus(productId, isActive ? 'inactive' : 'active');
-            };
-            
-            // Show modal
-            document.getElementById('statusConfirmationModal').style.display = 'block';
-        }
-
-        function toggleProductStatus(productId, newStatus) {
-            fetch('toggle_product_status.php', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
+            Swal.fire({
+                title: 'Are you sure?',
+                text: `You are about to ${isActive ? 'Deactivate' : 'Activate'} Product: ${productName}`,
+                icon: 'warning',
+                showCancelButton: true,
+                customClass: {
+                    confirmButton: isActive ? 'swal-danger' : 'swal-success'
                 },
-                body: JSON.stringify({
-                    product_id: productId,
-                    new_status: newStatus
-                })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    // Close confirmation modal
-                    closeConfirmationModal();
-                    
-                    // Show success message
-                    alert('Product status updated successfully!');
-                    
-                    // Reload page to reflect changes
-                    location.reload();
-                } else {
-                    alert('Error updating product status: ' + data.message);
+                confirmButtonText: isActive ? 'Yes, Deactivate it!' : 'Yes, Activate it!',
+                cancelButtonText: 'Cancel',
+                reverseButtons: true
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    fetch('toggle_product_status.php', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            product_id: productId,
+                            new_status: newStatus
+                        })
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            Swal.fire({
+                                icon: 'success',
+                                title: 'Updated!',
+                                text: `Product has been ${isActive ? 'deactivated' : 'activated'} successfully.`,
+                                showConfirmButton: false,
+                                timer: 1500
+                            }).then(() => location.reload());
+                        } else {
+                            Swal.fire({
+                                icon: 'error',
+                                title: 'Error!',
+                                text: data.message || 'Failed to update product status.'
+                            });
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        Swal.fire({
+                            icon: 'error',
+                            title: 'Error!',
+                            text: 'An error occurred while updating the product status.'
+                        });
+                    });
                 }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                alert('An error occurred while updating the product status.');
             });
         }
 
@@ -746,26 +701,6 @@ $result = $conn->query($sql);
             }
         });
 
-        // Enhanced search with debouncing
-        // let searchTimeout;
-        // function debounceSearch(func, delay) {
-        //     return function(...args) {
-        //         clearTimeout(searchTimeout);
-        //         searchTimeout = setTimeout(() => func.apply(this, args), delay);
-        //     };
-        // }
-
-        // Auto-submit search form with debouncing
-        // document.addEventListener('DOMContentLoaded', function() {
-        //     const searchInputs = document.querySelectorAll('#product_name_filter, #description_filter');
-        //     const debouncedSubmit = debounceSearch(function() {
-        //         document.querySelector('.tracking-form').submit();
-        //     }, 500);
-            
-        //     searchInputs.forEach(input => {
-        //         input.addEventListener('input', debouncedSubmit);
-        //     });
-        // });
     </script>
 
 </body>

@@ -123,10 +123,10 @@ if (!empty($order_ids)) {
 
 // Company information
 $company = [
-    'name' => 'FE IT Solutions pvt (Ltd)',
-    'address' => 'No: 04, Wijayamangalarama Road, Kohuwala',
-    'email' => 'info@feitsolutions.com',
-    'phone' => '011-2824524'
+    'name' => '',
+    'address' => '',
+    'email' => '',
+    'phone' => ''
 ];
 
 /**

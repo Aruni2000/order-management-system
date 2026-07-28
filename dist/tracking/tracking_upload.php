@@ -170,13 +170,14 @@ function getTenants($conn, $is_main_admin, $role_id, $session_tenant_id) {
     
     if ($is_main_admin === 1 && $role_id === 1) {
         // Main Admin gets all active tenants
-        $sql = "SELECT tenant_id, company_name FROM tenants WHERE status = 'active' ORDER BY company_name";
+        $result = $conn->query("SELECT tenant_id, company_name FROM tenants WHERE status = 'active' ORDER BY company_name");
     } else {
         // Others get only their assigned tenant
-        $sql = "SELECT tenant_id, company_name FROM tenants WHERE tenant_id = $session_tenant_id AND status = 'active' LIMIT 1";
+        $stmt = $conn->prepare("SELECT tenant_id, company_name FROM tenants WHERE tenant_id = ? AND status = 'active' LIMIT 1");
+        $stmt->bind_param("i", $session_tenant_id);
+        $stmt->execute();
+        $result = $stmt->get_result();
     }
-    
-    $result = $conn->query($sql);
     
     if ($result && $result->num_rows > 0) {
         while ($row = $result->fetch_assoc()) {
@@ -195,10 +196,16 @@ $errors = [];
 $warnings = [];
 $rowNumber = 2;
 
-// Access Control Variables
+// Access Control: Allow Main Admin, Company Admin (role_id=1), and Moderators (role_id=3)
 $is_main_admin = isset($_SESSION['is_main_admin']) ? (int)$_SESSION['is_main_admin'] : 0;
 $role_id = isset($_SESSION['role_id']) ? (int)$_SESSION['role_id'] : 0;
 $session_tenant_id = isset($_SESSION['tenant_id']) ? (int)$_SESSION['tenant_id'] : 0;
+
+if ($role_id !== 1 && $role_id !== 3) {
+    ob_end_clean();
+    header("Location: /OMS/dist/dashboard/index.php");
+    exit();
+}
 
 // Get tenants based on permissions
 $tenants = getTenants($conn, $is_main_admin, $role_id, $session_tenant_id);
@@ -521,6 +528,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file']) && isset
     
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
     
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css">
     <link rel="stylesheet" href="../assets/css/style.css" id="main-style-link" />
     <link rel="stylesheet" href="../assets/css/leads.css" id="main-style-link" />
 </head>
@@ -538,38 +546,58 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file']) && isset
             <div class="page-header">
                 <div class="page-block">
                     <div class="page-header-title">
-                        <h5 class="mb-0 font-medium">Tracking Numbers Upload</h5>
+                        <h5 class="mb-0 font-medium">
+                            Tracking Numbers Upload
+                            <i class="fas fa-info-circle text-primary" style="cursor: pointer; font-size: 16px; margin-left: 8px;" onclick="openInfoModal()" title="How to use this page"></i>
+                        </h5>
                     </div>
                 </div>
             </div>
             <div class="main-content-wrapper">
                 <?php if (isset($_SESSION['import_result'])): ?>
-                    <div class="alert alert-<?php echo $_SESSION['import_result']['errors'] > 0 ? 'warning' : 'success'; ?>">
-                        <h4>Processing Results</h4>
-                        <p><strong>Successfully added:</strong> <?php echo $_SESSION['import_result']['success']; ?> tracking numbers</p>
-                        <?php if ($_SESSION['import_result']['skipped'] > 0): ?>
-                            <p><strong>Skipped:</strong> <?php echo $_SESSION['import_result']['skipped']; ?> empty rows</p>
-                        <?php endif; ?>
-                        <?php if ($_SESSION['import_result']['errors'] > 0): ?>
-                            <p><strong>Failed:</strong> <?php echo $_SESSION['import_result']['errors']; ?> tracking numbers</p>
-                            <?php if (!empty($_SESSION['import_result']['messages'])): ?>
+                    <?php 
+                        $impSuccess = $_SESSION['import_result']['success'];
+                        $impErrors = $_SESSION['import_result']['errors'];
+                        $impSkipped = $_SESSION['import_result']['skipped'] ?? 0;
+                        $impMessages = $_SESSION['import_result']['messages'] ?? [];
+                    ?>
+                    <script>
+                        document.addEventListener('DOMContentLoaded', function() {
+                            <?php if ($impErrors > 0): ?>
+                                toastManager.warning('Import completed: <?php echo $impSuccess; ?> added, <?php echo $impErrors; ?> failed', 8000);
+                            <?php else: ?>
+                                toastManager.success('Successfully added <?php echo $impSuccess; ?> tracking numbers', 5000);
+                            <?php endif; ?>
+                        });
+                    </script>
+
+                    <?php if ($impErrors > 0): ?>
+                    <div style="background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 20px; margin-bottom: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.06);">
+                        <div style="margin-bottom: 16px;">
+                            <?php if (!empty($impMessages)): ?>
                                 <details>
-                                    <summary>View Error Details</summary>
-                                    <ul class="mt-2">
-                                        <?php foreach ($_SESSION['import_result']['messages'] as $message): ?>
-                                            <li><?php echo htmlspecialchars($message); ?></li>
-                                        <?php endforeach; ?>
-                                    </ul>
+                                    <summary style="cursor: pointer; font-weight: 600; color: #92400e; font-size: 0.85rem;">
+                                        <i class="fas fa-exclamation-triangle"></i> View Error Details (<?php echo count($impMessages); ?>)
+                                    </summary>
+                                    <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 12px 16px; margin-top: 8px;">
+                                        <ul style="margin-bottom: 0; padding-left: 20px; color: #991b1b; font-size: 0.82rem;">
+                                            <?php foreach ($impMessages as $message): ?>
+                                                <li style="margin-bottom: 4px;"><?php echo htmlspecialchars($message); ?></li>
+                                            <?php endforeach; ?>
+                                        </ul>
+                                    </div>
                                 </details>
                             <?php endif; ?>
-                        <?php endif; ?>
+                        </div>
                     </div>
+                    <?php endif; ?>
+
                     <?php unset($_SESSION['import_result']); ?>
                 <?php endif; ?>
-                
+
                 <?php if (isset($_SESSION['import_error'])): ?>
-                    <div class="alert alert-danger">
-                        <strong>Error:</strong> <?php echo $_SESSION['import_error']; ?>
+                    <div style="background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; padding: 1rem; margin-bottom: 1.5rem; border-radius: 5px;">
+                        <strong>Error:</strong> <?php echo htmlspecialchars($_SESSION['import_error']); ?>
                     </div>
                     <?php unset($_SESSION['import_error']); ?>
                 <?php endif; ?>
@@ -611,7 +639,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file']) && isset
                             <div class="file-section">
                                 <label class="form-label">CSV File <span class="required">*</span></label>
                                 <div class="file-input-wrapper">
-                                    <input type="file" id="csv_file" name="csv_file" accept=".csv" class="file-input" required>
+                                    <input type="file" id="csv_file" name="csv_file" accept=".csv" class="file-input">
                                     <div class="file-display">
                                         <span id="file-name">No file chosen</span>
                                         <button type="button" class="file-btn" onclick="document.getElementById('csv_file').click()">
@@ -630,33 +658,59 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file']) && isset
                         </div>
                     </form>
                 </div>
-                <div class="info-box">
-                    <h4>📋 Instructions</h4>
-                    <p><strong>How to upload tracking numbers:</strong></p>
-                    <ul>
-                        <li>Select a tenant from the dropdown menu</li>
-                        <li>Select a courier belonging to the selected tenant</li>
-                        <li>Download the CSV template below</li>
-                        <li>Fill in your tracking numbers in the template</li>
-                        <li>Upload the completed CSV file</li>
-                        <li>All tracking numbers will be added with 'unused' status</li>
-                    </ul>
-                    <p><strong>CSV Format Requirements:</strong></p>
-                    <ul>
-                        <li>Must have a header row with 'Tracking Number' column</li>
-                        <li>Tracking numbers must be 5-50 characters long</li>
-                        <li>Only alphanumeric characters, hyphens, and underscores allowed</li>
-                        <li>Maximum file size: 5MB</li>
-                        <li>Tracking numbers are unique per courier within each tenant</li>
-                    </ul>
-                </div>
             </div>
         </div>
     </div>
+    <?php
+    include_once($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/info_modal.php');
+    renderInfoModal(
+        'How Tracking Numbers Upload Works',
+        'fas fa-hashtag',
+        '<div style="font-family: system-ui, -apple-system, sans-serif;">
+
+        <div style="margin-bottom: 16px;">
+            <h6 style="margin: 0 0 10px; font-size: 14px;">📌 3 Simple Steps</h6>
+            <ol style="margin: 0; padding-left: 20px; color: #374151; font-size: 13.5px; line-height: 1.8;">
+                <li><strong>Pick a tenant & courier</strong></li>
+                <li><strong>Download the template</strong> → fill in tracking numbers</li>
+                <li><strong>Upload CSV</strong> → numbers added as <code>unused</code></li>
+            </ol>
+        </div>
+
+        <div style="margin-bottom: 16px;">
+            <h6 style="margin: 0 0 10px; font-size: 14px;">✅ CSV Requirements</h6>
+            <div style="display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; font-size: 13px; color: #374151;">
+                <span style="font-weight: 600; color: #dc2626;">Required:</span>
+                <span>Tracking Number column</span>
+                <span style="font-weight: 600; color: #6b7280;">Format:</span>
+                <span>5-50 chars, alphanumeric + - + _</span>
+                <span style="font-weight: 600; color: #6b7280;">Size:</span>
+                <span>Max 5MB · .csv only</span>
+                <span style="font-weight: 600; color: #6b7280;">Note:</span>
+                <span>Tracking numbers are unique per courier</span>
+            </div>
+        </div>
+
+        <div style="margin-bottom: 16px;">
+            <h6 style="margin: 0 0 10px; font-size: 14px;">📊 After Upload</h6>
+            <ul style="margin: 0; padding-left: 20px; color: #374151; font-size: 13px; line-height: 1.7;">
+                <li>See summary: how many added <strong>✓</strong> vs failed <strong>✗</strong></li>
+                <li>Duplicates and invalid numbers show error details</li>
+            </ul>
+        </div>
+
+        <div style="background: #fef3c7; border-radius: 6px; padding: 10px 12px; font-size: 13px; color: #92400e;">
+            💡 Use the template — only one column (tracking numbers) needed.
+        </div>
+
+        </div>'
+    );
+    ?>
 
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php'); ?>
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php'); ?>
     
+
     <script>
      // Load couriers when tenant is selected
 document.getElementById('tenant_id').addEventListener('change', function() {

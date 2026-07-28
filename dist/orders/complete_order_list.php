@@ -22,9 +22,9 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
 include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
 // Check if user is main admin
-$is_main_admin = $_SESSION['is_main_admin'];
-$teanent_id = $_SESSION['tenant_id'];
-$is_admin = $_SESSION['role_id'];
+$is_main_admin = $_SESSION['is_main_admin'] ?? 0;
+$tenant_id = $_SESSION['tenant_id'] ?? 0;
+$is_admin = $_SESSION['role_id'] ?? 0;
 
 // Get current user's role information
 $current_user_id = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
@@ -102,8 +102,8 @@ $sql = "SELECT i.*, c.name as customer_name,
 
 // Add tenant filter for non-main admin users
 if ($is_main_admin != 1) {
-    $countSql .= " AND i.tenant_id = $teanent_id";
-    $sql .= " AND i.tenant_id = $teanent_id";
+    $countSql .= " AND i.tenant_id = $tenant_id";
+    $sql .= " AND i.tenant_id = $tenant_id";
 }
 
 // Build search conditions
@@ -191,6 +191,39 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
     <!-- Stylesheets -->
     <link rel="stylesheet" href="../assets/css/style.css" id="main-style-link" />
     <link rel="stylesheet" href="../assets/css/orders.css" id="main-style-link" />
+    <style>
+        /* NEW: Issue Date Styling */
+.issued-time {
+    font-size: 0.9em;
+    color: #333;
+    line-height: 1.2;
+}
+
+.issued-date {
+    display: block;
+    font-weight: 600;
+}
+
+.issued-time-only {
+    display: block;
+    color: #666;
+    font-size: 0.85em;
+}
+.updated-time {
+        font-size: 0.9em;
+        color: #333;
+        line-height: 1.2;
+    }
+    .updated-date {
+        display: block;
+        font-weight: 600;
+    }
+    .updated-time-only {
+        display: block;
+        color: #666;
+        font-size: 0.85em;
+    }
+    </style>
 </head>
 
 <body>
@@ -285,11 +318,11 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                         <thead>
                             <tr>
                                 <th>Order ID</th>
+                                <th>Issue Date</th>
+                                <th>Updated TIme</th>
                                 <th>Customer Name</th>
-                                <th>Issue Date - Due Date</th>
                                 <th>Total Amount</th>
-                                <th>Pay Status</th>
-                                <th>Created By</th>
+                                <th>Processed By</th>
                                 <?php if ($is_main_admin == 1): ?>
                                 <th>Company</th>
                                 <?php endif; ?>
@@ -302,7 +335,33 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                     <tr>
                                         <!-- Order ID -->
                                         <td class="order-id">
-                                            <?php echo isset($row['order_id']) ? htmlspecialchars($row['order_id']) : ''; ?>
+                                            <?php echo isset($row['order_id']) ? htmlspecialchars($row['order_id']) : ''; ?>                                                <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/leads_badge.php'); ?>
+                                        </td>
+
+                                        <!-- NEW: Issue Date Column -->
+                                        <td class="issued-time">
+                                            <?php
+                                            if (isset($row['created_at']) && !empty($row['created_at'])) {
+                                                $createdAt = new DateTime($row['created_at']);
+                                                echo '<span class="issued-date">' . $createdAt->format('Y-m-d') . '</span>';
+                                                echo '<span class="issued-time-only">' . $createdAt->format('H:i:s') . '</span>';
+                                            } else {
+                                                echo '<span style="color: #999; font-style: italic;">N/A</span>';
+                                            }
+                                            ?>
+                                        </td>
+
+                                        <!-- Update Time -->
+                                        <td class="updated-time">
+                                            <?php
+                                            if (isset($row['updated_at']) && !empty($row['updated_at'])) {
+                                                $updatedAt = new DateTime($row['updated_at']);
+                                                echo '<span class="updated-date">' . $updatedAt->format('Y-m-d') . '</span>';
+                                                echo '<span class="updated-time-only">' . $updatedAt->format('H:i:s') . '</span>';
+                                            } else {
+                                                echo '<span style="color: #999; font-style: italic;">N/A</span>';
+                                            }
+                                            ?>
                                         </td>
                                         
                                         <!-- Customer Name with ID -->
@@ -313,49 +372,42 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                             echo $customerName . ($customerId ? " ($customerId)" : "");
                                             ?>
                                         </td>
-                                       
-                                        <!-- Issue Date - Due Date -->
-                                        <td class="date-range">
-                                            <?php
-                                            $issueDate = isset($row['issue_date']) ? date('Y-m-d', strtotime($row['issue_date'])) : 'N/A';
-                                            $dueDate = isset($row['due_date']) ? date('Y-m-d', strtotime($row['due_date'])) : 'N/A';
-                                            echo "<div class='date-container'>";
-                                            echo "<span class='issue-date'>" . $issueDate . "</span>";
-                                            echo "<span class='date-separator'> - </span>";
-                                            echo "<span class='due-date'>" . $dueDate . "</span>";
-                                            echo "</div>";
-                                            ?>
-                                        </td>
                                         
-                                        <!-- Total Amount with Currency -->
+                                        <!-- Total Amount with Pay Status -->
                                         <td class="amount">
                                             <?php
                                             $amount = isset($row['total_amount']) ? (float)$row['total_amount'] : 0;
                                             $currency = isset($row['currency']) ? $row['currency'] : 'lkr';
                                             $currencySymbol = ($currency == 'usd') ? '$' : 'Rs';
                                             echo $currencySymbol . number_format($amount, 2);
-                                            ?>
-                                        </td>
-                                        
-                                        <!-- Payment Status Badge -->
-                                        <td>
-                                            <?php
+
                                             $payStatus = isset($row['pay_status']) ? $row['pay_status'] : 'unpaid';
                                             if ($payStatus == 'paid'): ?>
-                                                <span class="status-badge pay-status-paid">Paid</span>
+                                                <br><span class="status-badge pay-status-paid">Paid</span>
                                             <?php elseif ($payStatus == 'partial'): ?>
-                                                <span class="status-badge pay-status-partial">Partial</span>
+                                                <br><span class="status-badge pay-status-partial">Partial</span>
                                             <?php else: ?>
-                                                <span class="status-badge pay-status-unpaid">Unpaid</span>
+                                                <br><span class="status-badge pay-status-unpaid">Unpaid</span>
                                             <?php endif; ?>
                                         </td>
-                                        
-                                        <!-- Created By User -->
+
+                                        <!-- Processed By (who marked paid + payment method) -->
                                         <td>
                                             <?php
-                                            echo isset($row['creator_name']) ? htmlspecialchars($row['creator_name']) : 'N/A';
-                                            ?>
-                                        </td>
+                                            $paidByName = isset($row['paid_by_name']) ? htmlspecialchars($row['paid_by_name']) : '';
+                                            $paymentMethod = isset($row['payment_method']) ? htmlspecialchars($row['payment_method']) : '';
+                                    
+                                    if ($payStatus == 'paid' && !empty($paidByName)) {
+                                        echo '<span style="font-weight: 600; color: #28a745;">' . $paidByName . '</span>';
+                                        if (!empty($paymentMethod)) {
+                                            $methodDisplay = ucwords(str_replace('_', ' ', $paymentMethod));
+                                            echo '<br><span style="font-size: 11px; color: #6c757d;">' . $methodDisplay . '</span>';
+                                        }
+                                    } else {
+                                        echo '<span style="color: #adb5bd;">-</span>';
+                                    }
+                                    ?>
+                                </td>
                                         
                                         <?php if ($is_main_admin == 1): ?>
                                         <!-- Company Name -->
@@ -370,7 +422,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
 <td class="actions">
     <div class="action-buttons-group">
         <button class="action-btn view-btn" title="View Order Details" 
-                onclick="openOrderModal('<?php echo isset($row['order_id']) ? htmlspecialchars($row['order_id']) : ''; ?>')">
+                onclick="openOrderModal('<?php echo isset($row['order_id']) ? htmlspecialchars($row['order_id']) : ''; ?>', '<?php echo isset($row['interface']) ? htmlspecialchars($row['interface']) : ''; ?>')">
             <i class="fas fa-eye"></i>
         </button>
     
@@ -454,6 +506,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
          */
         
         let currentOrderId = null;
+        let currentInterface = null;
 
         // Clear all filter inputs
         function clearFilters() {
@@ -470,35 +523,37 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
         }
 
         // Open order modal and load details
-        function openOrderModal(orderId) {
+        function openOrderModal(orderId, interfaceType = null) {
             // Enhanced validation
             if (!orderId || orderId.trim() === '') {
-                alert('Order ID is required to view order details.');
+                toastManager.warning('Order ID is required to view order details.');
                 return;
             }
             
-            console.log('Opening modal for Order ID:', orderId);
+            console.log('Opening modal for Order ID:', orderId, 'Interface:', interfaceType);
             
             currentOrderId = orderId.trim();
+            currentInterface = interfaceType;
             const modal = document.getElementById('orderModal');
             const modalContent = document.getElementById('modalContent');
             const downloadBtn = document.getElementById('downloadBtn');
             
             // Show modal
             modal.style.display = 'flex';
-            document.body.style.overflow = 'hidden';
+            document.body.style.overflow = 'clip';
             
             // Show loading state
             modalContent.innerHTML = `
                 <div class="modal-loading">
                     <i class="fas fa-spinner fa-spin"></i>
-                    Loading order details for Order ID: ${currentOrderId}...
+                    Loading ${interfaceType === 'leads' ? 'lead' : 'order'} details for Order ID: ${currentOrderId}...
                 </div>
             `;
             downloadBtn.style.display = 'none';
             
-            // Fetch order details
-            const fetchUrl = 'download_order.php?id=' + encodeURIComponent(currentOrderId);
+            // Fetch order details - use correct file based on interface
+            const phpFile = 'download_order.php';
+            const fetchUrl = phpFile + '?id=' + encodeURIComponent(currentOrderId);
             console.log('Fetching from:', fetchUrl);
             
             fetch(fetchUrl, {
@@ -530,7 +585,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                         <h4>Error Loading Order Details</h4>
                         <p>Order ID: ${currentOrderId}</p>
                         <p>Error: ${error.message}</p>
-                        <p>Please check if the download_order.php file exists and is accessible.</p>
+                        <p>Please check if the file exists and is accessible.</p>
                         <button onclick="retryLoadOrder()" class="btn btn-primary" style="margin-top: 10px;">
                             <i class="fas fa-redo"></i> Retry
                         </button>
@@ -542,7 +597,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
         // Retry loading order
         function retryLoadOrder() {
             if (currentOrderId) {
-                openOrderModal(currentOrderId);
+                openOrderModal(currentOrderId, currentInterface);
             }
         }
 
@@ -550,18 +605,20 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
         function closeOrderModal() {
             const modal = document.getElementById('orderModal');
             modal.style.display = 'none';
-            document.body.style.overflow = 'auto';
+            document.body.style.overflow = '';
             currentOrderId = null;
+            currentInterface = null;
         }
 
         // Download order
         function downloadOrder() {
             if (!currentOrderId) {
-                alert('No order selected for download.');
+                toastManager.warning('No order selected for download.');
                 return;
             }
             
-            const downloadUrl = 'download_order.php?id=' + encodeURIComponent(currentOrderId) + '&download=1';
+            const phpFile = 'download_order.php';
+            const downloadUrl = phpFile + '?id=' + encodeURIComponent(currentOrderId) + '&download=1';
             console.log('Downloading from:', downloadUrl);
             window.open(downloadUrl, '_blank');
         }
@@ -603,54 +660,6 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                 console.error('Modal elements not found! Check HTML structure.');
             }
         });
-// Add this debug script to help identify the modal footer issue
-// Place this in your existing JavaScript section or in the console
-
-function debugModalFooter() {
-    console.log('=== Modal Footer Debug ===');
-    
-    const modal = document.getElementById('dispatchOrderModal');
-    const modalFooter = modal?.querySelector('.modal-footer');
-    const cancelBtn = modalFooter?.querySelector('.modal-btn-secondary');
-    const confirmBtn = modalFooter?.querySelector('.modal-btn-primary');
-    
-    console.log('Modal element:', modal);
-    console.log('Modal footer element:', modalFooter);
-    console.log('Cancel button:', cancelBtn);
-    console.log('Confirm button:', confirmBtn);
-    
-    if (modalFooter) {
-        const footerStyles = window.getComputedStyle(modalFooter);
-        console.log('Footer display:', footerStyles.display);
-        console.log('Footer visibility:', footerStyles.visibility);
-        console.log('Footer height:', footerStyles.height);
-        console.log('Footer padding:', footerStyles.padding);
-        console.log('Footer background:', footerStyles.backgroundColor);
-    }
-    
-    if (cancelBtn) {
-        const cancelStyles = window.getComputedStyle(cancelBtn);
-        console.log('Cancel button display:', cancelStyles.display);
-        console.log('Cancel button visibility:', cancelStyles.visibility);
-        console.log('Cancel button background:', cancelStyles.backgroundColor);
-        console.log('Cancel button color:', cancelStyles.color);
-    }
-    
-    if (confirmBtn) {
-        const confirmStyles = window.getComputedStyle(confirmBtn);
-        console.log('Confirm button display:', confirmStyles.display);
-        console.log('Confirm button visibility:', confirmStyles.visibility);
-        console.log('Confirm button background:', confirmStyles.backgroundColor);
-        console.log('Confirm button color:', confirmStyles.color);
-        console.log('Confirm button disabled:', confirmBtn.disabled);
-    }
-}
-
-// Call this function after opening the modal to debug
-// setTimeout(() => debugModalFooter(), 100);
-
-
-
 /**
  * JAVASCRIPT FUNCTIONS - Add these functions to your existing script section
  * Handles the Answer/No Answer modal functionality
@@ -667,7 +676,7 @@ let currentCallLog = null;
  */
 function openAnswerModal(orderId, callLogStatus) {
     if (!orderId || orderId.trim() === '') {
-        alert('Order ID is required to update call status.');
+        toastManager.warning('Order ID is required to update call status.');
         return;
     }
     
@@ -700,7 +709,7 @@ function openAnswerModal(orderId, callLogStatus) {
     // Show the modal
     const modal = document.getElementById('answerStatusModal');
     modal.style.display = 'flex';
-    document.body.style.overflow = 'hidden';
+    document.body.style.overflow = 'clip';
     
     // Focus on textarea
     setTimeout(() => {
@@ -751,7 +760,7 @@ function updateModalContent(currentStatus, newStatus) {
 function closeAnswerModal() {
     const modal = document.getElementById('answerStatusModal');
     modal.style.display = 'none';
-    document.body.style.overflow = 'auto';
+    document.body.style.overflow = '';
     
     // Reset form and variables
     document.getElementById('answer-status-form').reset();
@@ -778,12 +787,12 @@ document.addEventListener('DOMContentLoaded', function() {
             
             // Validation
             if (!orderId || !answerReason) {
-                alert('Please fill in all required fields');
+                toastManager.warning('Please fill in all required fields');
                 return;
             }
             
             if (answerReason.length < 5) {
-                alert('Please provide more detailed notes (minimum 5 characters)');
+                toastManager.warning('Please provide more detailed notes (minimum 5 characters)');
                 return;
             }
             
@@ -819,17 +828,17 @@ document.addEventListener('DOMContentLoaded', function() {
             .then(data => {
                 if (data.success) {
                     const statusText = (newCallLog == 1) ? 'answered' : 'no answer';
-                    alert(`Order marked as ${statusText} successfully!`);
+                    toastManager.success(`Order marked as ${statusText} successfully!`);
                     closeAnswerModal();
                     // Reload the page to reflect changes
                     window.location.reload();
                 } else {
-                    alert('Error: ' + (data.message || 'Failed to update call status'));
+                    toastManager.error(data.message || 'Failed to update call status');
                 }
             })
             .catch(error => {
                 console.error('Error:', error);
-                alert('An error occurred while updating call status. Please try again.');
+                toastManager.error('An error occurred while updating call status. Please try again.');
             })
             .finally(() => {
                 // Reset button state
@@ -860,197 +869,11 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 /**
- * Backward compatibility function
- * Keep this if you have existing calls to markAsAnswered()
- */
-function markAsAnswered(orderId) {
-    // Default to call_log = 0 (no answer) for backward compatibility
-    openAnswerModal(orderId, 0);
-}
-
-/**
  * CANCEL ORDER MODAL FUNCTIONALITY
  * Add these functions to your existing JavaScript code
  */
 
-// Global variable to store current order being cancelled
-let currentCancelOrderId = null;
-
-/**
- * Open Cancel Order Modal
- * @param {string} orderId - The order ID to cancel
- */
-function openCancelModal(orderId) {
-    if (!orderId || orderId.trim() === '') {
-        alert('Order ID is required to cancel order.');
-        return;
     }
-    
-    console.log('Opening cancel modal for Order ID:', orderId);
-    
-    // Store current order ID
-    currentCancelOrderId = orderId.trim();
-    
-    // Reset the cancellation reason textarea
-    document.getElementById('cancellationReason').value = '';
-    
-    // Show the modal
-    const modal = document.getElementById('cancelModal');
-    modal.style.display = 'block';
-    modal.classList.add('show');
-    document.body.style.overflow = 'hidden';
-    
-    // Focus on textarea
-    setTimeout(() => {
-        document.getElementById('cancellationReason').focus();
-    }, 100);
-}
-
-/**
- * Close Cancel Order Modal
- */
-function closeCancelModal() {
-    const modal = document.getElementById('cancelModal');
-    modal.style.display = 'none';
-    modal.classList.remove('show');
-    document.body.style.overflow = 'auto';
-    
-    // Reset form and variables
-    document.getElementById('cancellationReason').value = '';
-    currentCancelOrderId = null;
-}
-
-/**
- * Handle Cancel Order Confirmation
- */
-function confirmCancelOrder() {
-    const cancellationReason = document.getElementById('cancellationReason').value.trim();
-    const confirmBtn = document.getElementById('confirmCancelBtn');
-    
-    // Validation
-    if (!currentCancelOrderId) {
-        alert('No order selected for cancellation.');
-        return;
-    }
-    
-    if (!cancellationReason) {
-        alert('Please provide a reason for cancellation.');
-        document.getElementById('cancellationReason').focus();
-        return;
-    }
-    
-    if (cancellationReason.length < 10) {
-        alert('Please provide a more detailed reason (minimum 10 characters).');
-        document.getElementById('cancellationReason').focus();
-        return;
-    }
-    
-    // Final confirmation
-    if (!confirm(`Are you sure you want to cancel Order ID: ${currentCancelOrderId}? This action cannot be undone.`)) {
-        return;
-    }
-    
-    // Show loading state
-    const originalText = confirmBtn.innerHTML;
-    confirmBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Cancelling...';
-    confirmBtn.disabled = true;
-    
-    // Create FormData object
-    const formData = new FormData();
-    formData.append('order_id', currentCancelOrderId);
-    formData.append('cancellation_reason', cancellationReason);
-    formData.append('action', 'cancel_order');
-    
-    // Send the request
-    fetch('cancel_order.php', {
-        method: 'POST',
-        body: formData
-    })
-    .then(response => {
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        return response.json();
-    })
-    .then(data => {
-        if (data.success) {
-            alert('Order cancelled successfully!');
-            closeCancelModal();
-            // Reload the page to reflect changes
-            window.location.reload();
-        } else {
-            alert('Error: ' + (data.message || 'Failed to cancel order'));
-        }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        alert('An error occurred while cancelling the order. Please try again.');
-    })
-    .finally(() => {
-        // Reset button state
-        confirmBtn.innerHTML = originalText;
-        confirmBtn.disabled = false;
-    });
-}
-
-/**
- * Initialize Cancel Order Functionality
- * Add this to your existing DOMContentLoaded event listener
- */
-// Add this inside your existing DOMContentLoaded function
-document.addEventListener('DOMContentLoaded', function() {
-    const cancelModal = document.getElementById('cancelModal');
-    const confirmCancelBtn = document.getElementById('confirmCancelBtn');
-    const cancellationReason = document.getElementById('cancellationReason');
-    
-    // Handle confirm cancel button click
-    if (confirmCancelBtn) {
-        confirmCancelBtn.addEventListener('click', confirmCancelOrder);
-    }
-    
-    // Handle close button clicks
-    const closeButtons = cancelModal?.querySelectorAll('[data-dismiss="modal"], .close');
-    if (closeButtons) {
-        closeButtons.forEach(btn => {
-            btn.addEventListener('click', closeCancelModal);
-        });
-    }
-    
-    // Close modal when clicking outside
-    if (cancelModal) {
-        cancelModal.addEventListener('click', function(e) {
-            if (e.target === this) {
-                closeCancelModal();
-            }
-        });
-    }
-    
-    // Auto-resize textarea
-    if (cancellationReason) {
-        cancellationReason.addEventListener('input', function() {
-            this.style.height = 'auto';
-            this.style.height = (this.scrollHeight) + 'px';
-        });
-    }
-    
-    // Close modal with Escape key
-    document.addEventListener('keydown', function(e) {
-        if (e.key === 'Escape') {
-            const modal = document.getElementById('cancelModal');
-            if (modal && (modal.style.display === 'block' || modal.classList.contains('show'))) {
-                closeCancelModal();
-            }
-        }
-    });
-});
-
-/**
- * Backward compatibility function
- * Call this function from your cancel button: onclick="cancelOrder('ORDER_ID')"
- */
-function cancelOrder(orderId) {
-    openCancelModal(orderId);
-}
 
     </script>
 

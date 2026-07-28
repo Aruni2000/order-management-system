@@ -23,14 +23,18 @@
     // Check if we have a database connection to fetch custom favicon
     if (isset($conn) && $conn) {
         try {
-            $check_branding_query = "SELECT fav_icon_url FROM branding WHERE active = 1 LIMIT 1";
-            $branding_result = $conn->query($check_branding_query);
+            // Filter by logged-in user's tenant_id so each tenant sees their own favicon
+            $user_tenant_id = $_SESSION['tenant_id'] ?? null;
+            if ($user_tenant_id) {
+                $fav_query = "SELECT fav_icon_url FROM tenants WHERE tenant_id = " . (int)$user_tenant_id . " AND status = 'active' AND fav_icon_url IS NOT NULL AND fav_icon_url != '' LIMIT 1";
+            } else {
+                $fav_query = "SELECT fav_icon_url FROM tenants WHERE status = 'active' AND fav_icon_url IS NOT NULL AND fav_icon_url != '' LIMIT 1";
+            }
+            $fav_result = $conn->query($fav_query);
             
-            if ($branding_result && $branding_result->num_rows > 0) {
-                $branding_data = $branding_result->fetch_assoc();
-                if (!empty($branding_data['fav_icon_url'])) {
-                    $favicon_url = $branding_data['fav_icon_url'];
-                }
+            if ($fav_result && $fav_result->num_rows > 0) {
+                $fav_data = $fav_result->fetch_assoc();
+                $favicon_url = $fav_data['fav_icon_url'];
             }
         } catch (Throwable $e) {
             // Silently fail and use default if DB error
@@ -51,8 +55,12 @@
     <link rel="stylesheet" href="../assets/fonts/fontawesome.css" />
     <!-- [Material Icons] https://fonts.google.com/icons -->
     <link rel="stylesheet" href="../assets/fonts/material.css" />
+    <!-- [SweetAlert2]-->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
     <!-- [Template CSS Files] -->
     <link rel="stylesheet" href="../assets/css/style.css" id="main-style-link" />
+    <link rel="stylesheet" href="../assets/css/message.css" id="main-style-link" />
 
   </head>
   <!-- [Head] end -->

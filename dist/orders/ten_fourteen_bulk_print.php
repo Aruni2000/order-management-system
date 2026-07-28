@@ -186,24 +186,24 @@ if (!empty($order_ids)) {
     }
 }
 
-// Fetch all brandings for multi-tenant support
-$brandings = [];
-$branding_result = $conn->query("SELECT * FROM branding WHERE active = 1");
-if ($branding_result) {
-    while ($b = $branding_result->fetch_assoc()) {
-        $brandings[$b['tenant_id']] = $b;
+// Fetch all tenants for multi-tenant support
+$tenants = [];
+$tenant_result = $conn->query("SELECT tenant_id, company_name, address AS tenant_address, phone, email AS tenant_email, logo_url FROM tenants WHERE status = 'active'");
+if ($tenant_result) {
+    while ($t = $tenant_result->fetch_assoc()) {
+        $tenants[$t['tenant_id']] = $t;
     }
 }
 
-function getBrandingForTenant($tId, $brandings_list) {
-    if (!empty($tId) && isset($brandings_list[$tId])) {
-        return $brandings_list[$tId];
+function getTenantData($tId, $tenants_list) {
+    if (!empty($tId) && isset($tenants_list[$tId])) {
+        return $tenants_list[$tId];
     }
-    if (!empty($brandings_list)) {
-        return reset($brandings_list);
+    if (!empty($tenants_list)) {
+        return reset($tenants_list);
     }
     return [
-        'company_name' => 'Company Name', 'address' => 'Address not set', 'email' => '', 'hotline' => '', 'logo_url' => ''
+        'company_name' => 'Company Name', 'tenant_address' => 'Address not set', 'tenant_email' => '', 'phone' => '', 'logo_url' => ''
     ];
 }
 
@@ -286,15 +286,13 @@ function getTrackingFilterText($tracking_filter, $tracking_number = '') {
             
           <?php foreach ($orders as $index => $order): ?>
                 <?php
-                // Resolve Branding
+                // Resolve tenant/company data
                 $tId = isset($order['tenant_id']) ? $order['tenant_id'] : 0;
-                $bData = getBrandingForTenant($tId, $brandings);
-                $company = [
-                    'name'     => $bData['company_name'] ?? 'Company Name',
-                    'address'  => $bData['address'] ?? 'Address not set',
-                    'email'    => $bData['email'] ?? '',
-                    'phone'    => $bData['hotline'] ?? '',
-                    'logo_url' => $bData['logo_url'] ?? ''
+                $bData = getTenantData($tId, $tenants);
+                $company = [                    'name'     => $bData['company_name'] ?? 'Company Name',
+                    'address'  => $bData['tenant_address'] ?? 'Address not set',
+                    'email'    => $bData['tenant_email'] ?? '',
+                    'phone'    => $bData['phone'] ?? '','logo_url' => $bData['logo_url'] ?? ''
                 ];
                 
                 // Prepare order data 

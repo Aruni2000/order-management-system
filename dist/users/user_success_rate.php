@@ -652,15 +652,15 @@ function getSuccessRateBadgeClass($rate) {
                     <table class="orders-table">
                         <thead>
                             <tr>
-                                <th>User Info</th>
+                                <th>ID</th>
+                                <th>User Name</th>
                                 <?php if ($is_main_admin): ?>
                                 <th>Tenant</th>
                                 <?php endif; ?>
-                                <th>Contact & NIC</th>
+                                <th>Contact Info</th>
                                 <th>Role & Status</th>
                                 <th>Success Rate</th>
                                 <th>Created</th>
-                                <th>Actions</th>
                             </tr>
                         </thead>
                         <tbody id="usersTableBody">
@@ -670,11 +670,16 @@ function getSuccessRateBadgeClass($rate) {
                                     $badgeClass = $successRate['display'] === 'N/A' ? 'success-rate-na' : getSuccessRateBadgeClass($successRate['rate']);
                                 ?>
                                     <tr>
-                                        <!-- User Info -->
+                                        <!-- ID -->
+                                        <td>
+                                            <div class="customer-info">
+                                                <h6><?php echo htmlspecialchars($row['user_id']); ?></h6>
+                                            </div>
+                                        </td>
+                                        <!-- User Name -->
                                         <td class="customer-name">
                                             <div class="customer-info">
-                                                <h6 style="margin: 0; font-size: 14px; font-weight: 600;"><?php echo htmlspecialchars($row['username']); ?></h6>
-                                                <small style="color: #6c757d; font-size: 12px;">ID: <?php echo htmlspecialchars($row['user_id']); ?></small>
+                                                <h6 style="margin: 0; font-size: 14px; font-weight: 600;"><?php echo htmlspecialchars($row['username']); ?>
                                             </div>
                                         </td>
 
@@ -737,27 +742,6 @@ function getSuccessRateBadgeClass($rate) {
                                             </div>
                                         </td>
                                         
-                                        <!-- Action Buttons - ONLY VIEW -->
-                                        <td class="actions">
-                                            <div class="action-buttons-group">
-                                                <button type="button" class="action-btn view-btn view-user-btn"
-                                                        data-user-id="<?= $row['user_id'] ?>"
-                                                        data-username="<?= htmlspecialchars($row['username']) ?>"
-                                                        data-user-email="<?= htmlspecialchars($row['email']) ?>"
-                                                        data-user-phone="<?= htmlspecialchars($row['phone']) ?>"
-                                                        data-user-nic="<?= htmlspecialchars($row['nic']) ?>"
-                                                        data-user-role="<?= htmlspecialchars($row['role']) ?>"
-                                                        data-user-tenant="<?= htmlspecialchars($row['tenant_name']) ?>"
-                                                        data-user-status="<?= htmlspecialchars($row['status']) ?>"
-                                                        data-user-created="<?= htmlspecialchars($row['created_at']) ?>"
-                                                        data-dispatched-orders="<?= $row['dispatched_orders'] ?>"
-                                                        data-delivered-orders="<?= $row['delivered_orders'] ?>"
-                                                        data-success-rate="<?= $successRate['display'] ?>"
-                                                        title="View User Details">
-                                                    <i class="fas fa-eye"></i>
-                                                </button>
-                                            </div>
-                                        </td>
                                     </tr>
                                 <?php endwhile; ?>
                             <?php else: ?>

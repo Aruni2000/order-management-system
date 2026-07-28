@@ -65,8 +65,9 @@ try {
     }
 
     // Check if order is in valid status for unmarking payment
-    if (!in_array($orderData['status'], ['pending', 'dispatch', 'done'])) {
-        throw new Exception('Order is not in a valid status for payment unmarking. Current status: ' . $orderData['status']);
+    // Allow unmarking for any status except cancel and removed (same as mark_paid)
+    if (in_array($orderData['status'], ['cancel', 'removed'])) {
+        throw new Exception('Order cannot be unmarked as paid. Current status: ' . $orderData['status']);
     }
 
     // Start database transaction

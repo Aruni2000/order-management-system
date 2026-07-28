@@ -42,7 +42,41 @@ if ($user_role['role_id'] != 1) {
     exit();
 }
 
+// TENANT CREATION LIMIT INFO
 
+$tenantLimit = 0;
+$currentTenantCount = 0;
+$limitInfo = null;
+
+// Fetch tenant_limit from branding table
+$limitSql = "SELECT tenant_limit FROM branding WHERE active = 1 LIMIT 1";
+$limitResult = $conn->query($limitSql);
+if ($limitResult && $limitResult->num_rows > 0) {
+    $limitRow = $limitResult->fetch_assoc();
+    $tenantLimit = (int)$limitRow['tenant_limit'];
+}
+
+// Count current tenants
+$countSql = "SELECT COUNT(*) as total FROM tenants";
+$countResult = $conn->query($countSql);
+if ($countResult && $countResult->num_rows > 0) {
+    $countRow = $countResult->fetch_assoc();
+    $currentTenantCount = (int)$countRow['total'];
+}
+
+$isFull = false;
+if ($tenantLimit > 0) {
+    $limitInfo = [
+        'limit' => $tenantLimit,
+        'current' => $currentTenantCount,
+        'remaining' => max(0, $tenantLimit - $currentTenantCount),
+        'is_full' => $currentTenantCount >= $tenantLimit
+    ];
+    $isFull = $limitInfo['is_full'];
+}
+
+$disabledAttr = $isFull ? 'disabled="disabled"' : '';
+$disabledClass = $isFull ? 'limit-reached-disabled' : '';
 ?>
 
 <!doctype html>
@@ -62,6 +96,52 @@ if ($user_role['role_id'] != 1) {
     
     <!-- Custom CSS for AJAX notifications -->
    <style>
+/* DISABLED FORM WHEN LIMIT IS REACHED    */
+.limit-reached-disabled .form-control,
+.limit-reached-disabled .form-select {
+    background-color: #e9ecef !important;
+    cursor: not-allowed !important;
+    opacity: 0.65;
+    pointer-events: none;
+}
+
+.limit-reached-disabled .customer-form-group label {
+    color: #6c757d;
+}
+
+.limit-reached-disabled .btn-primary {
+    background-color: #6c757d !important;
+    border-color: #6c757d !important;
+    cursor: not-allowed !important;
+    opacity: 0.5;
+}
+
+.limit-reached-disabled .btn-secondary {
+    cursor: not-allowed !important;
+    opacity: 0.5;
+}
+
+.limit-reached-disabled .file-input-wrapper {
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+.limit-reached-disabled .file-btn {
+    cursor: not-allowed !important;
+}
+
+.limit-reached-disabled input:hover,
+.limit-reached-disabled select:hover,
+.limit-reached-disabled textarea:hover {
+    border-color: #ced4da !important;
+}
+
+.limit-reached-disabled .form-control:focus,
+.limit-reached-disabled .form-select:focus {
+    box-shadow: none !important;
+    border-color: #ced4da !important;
+}
+
 .ajax-notification {
     position: fixed;
     top: 20px;
@@ -200,7 +280,7 @@ if ($user_role['role_id'] != 1) {
             <div class="page-header">
                 <div class="page-block">
                     <div class="page-header-title">
-                        <h5 class="mb-0 font-medium">Add New Tenant</h5>
+                        <h5 class="mb-0 font-medium">Add New Tenant<?php if ($limitInfo !== null && $limitInfo['is_full']): ?> <span style="color:red;font-size:13px;font-weight:400;">— Max <?php echo $limitInfo['limit']; ?> tenant(s). Contact admin.</span><?php endif; ?></h5>
                     </div>
                 </div>
             </div>
@@ -209,7 +289,7 @@ if ($user_role['role_id'] != 1) {
             <!-- [ Main Content ] start -->
             <div class="main-container">
                 <!-- Add Tenant Form -->
-                <form method="POST" id="addTenantForm" class="customer-form" novalidate>
+                <form method="POST" id="addTenantForm" class="customer-form <?php echo $disabledClass; ?>" enctype="multipart/form-data" novalidate>
                     <!-- Tenant Details Section -->
                     <div class="form-section">
                         <div class="section-content">
@@ -217,10 +297,10 @@ if ($user_role['role_id'] != 1) {
                             <div class="form-row">
                                 <div class="customer-form-group">
                                     <label for="company_name" class="form-label">
-                                        <i class="fas fa-building"></i> Company Name<span class="required">*</span>
+                                        <i class="fas fa-building"></i> Company Name<span class="required">*</span><span class="small" style="font-size:10px;font-weight:normal;">(Max 15 characters)</span>
                                     </label>
                                     <input type="text" class="form-control" id="company_name" name="company_name"
-                                        placeholder="Enter company name" required>
+                                        placeholder="Enter company name" maxlength="15" required <?php echo $disabledAttr; ?>>
                                     <div class="error-feedback" id="company_name-error"></div>
                                 </div>
 
@@ -229,7 +309,7 @@ if ($user_role['role_id'] != 1) {
                                         <i class="fas fa-user"></i> Contact Person<span class="required">*</span>
                                     </label>
                                     <input type="text" class="form-control" id="contact_person" name="contact_person"
-                                        placeholder="Enter contact person name" required>
+                                        placeholder="Enter contact person name" required <?php echo $disabledAttr; ?>>
                                     <div class="error-feedback" id="contact_person-error"></div>
                                 </div>
                             </div>
@@ -241,7 +321,7 @@ if ($user_role['role_id'] != 1) {
                                         <i class="fas fa-envelope"></i> Email Address<span class="required">*</span>
                                     </label>
                                     <input type="email" class="form-control" id="email" name="email"
-                                        placeholder="company@example.com" required>
+                                        placeholder="company@example.com" required <?php echo $disabledAttr; ?>>
                                     <div class="error-feedback" id="email-error"></div>
                                     <div class="email-suggestions" id="email-suggestions"></div>
                                 </div>
@@ -251,35 +331,64 @@ if ($user_role['role_id'] != 1) {
                                         <i class="fas fa-phone"></i> Phone Number<span class="required">*</span>
                                     </label>
                                     <input type="tel" class="form-control" id="phone" name="phone"
-                                        placeholder="0771234567" required>
+                                        placeholder="Enter Phone Number" required <?php echo $disabledAttr; ?>>
                                     <div class="error-feedback" id="phone-error"></div>
-                                    <div class="phone-hint">Enter 10-digit Sri Lankan phone number</div>
                                 </div>
                             </div>
 
-                            <!-- Third Row: Status and Main Admin -->
+                            <!-- Address Row -->
+                            <div class="form-row single">
+                                <div class="customer-form-group">
+                                    <label for="address" class="form-label">
+                                        <i class="fas fa-map-marker-alt"></i> Company Address
+                                    </label>
+                                    <textarea class="form-control" id="address" name="address" rows="3"
+                                        placeholder="Enter company physical address" <?php echo $disabledAttr; ?>></textarea>
+                                    <div class="error-feedback" id="address-error"></div>
+                                </div>
+                            </div>
+
+                            <!-- Delivery Fee & Main Admin Row -->
                             <div class="form-row">
                                 <div class="customer-form-group">
-                                    <label for="status" class="form-label">
-                                        <i class="fas fa-toggle-on"></i> Status<span class="required">*</span>
+                                    <label for="delivery_fee" class="form-label">
+                                        <i class="fas fa-truck"></i> Delivery Fee (LKR)
                                     </label>
-                                    <select class="form-select" id="status" name="status" required>
-                                        <option value="active" selected>Active</option>
-                                        <option value="inactive">Inactive</option>
-                                    </select>
-                                    <div class="error-feedback" id="status-error"></div>
+                                    <input type="number" step="0.01" min="0" class="form-control" id="delivery_fee" name="delivery_fee"
+                                        placeholder="0.00" value="0.00" <?php echo $disabledAttr; ?>>
+                                    <div class="error-feedback" id="delivery_fee-error"></div>
                                 </div>
 
                                 <div class="customer-form-group">
                                     <label for="is_main_admin" class="form-label">
                                         <i class="fas fa-user-shield"></i> Main Admin<span class="required">*</span>
                                     </label>
-                                    <select class="form-select" id="is_main_admin" name="is_main_admin" required>
+                                    <select class="form-select" id="is_main_admin" name="is_main_admin" required <?php echo $disabledAttr; ?>>
                                         <option value="0" selected>No</option>
                                         <option value="1">Yes</option>
                                     </select>
                                     <div class="error-feedback" id="is_main_admin-error"></div>
-                                    <div class="phone-hint">Set as main administrator tenant</div>
+                                </div>
+                            </div>
+
+                            <!-- Logo & Favicon Upload Row -->
+                            <div class="form-row">
+                                <div class="customer-form-group">
+                                    <label for="logo" class="form-label">
+                                        <i class="fas fa-image"></i> Company Logo
+                                    </label>
+                                    <input type="file" class="form-control" id="logo" name="logo" accept=".jpg,.jpeg,.png,.gif" <?php echo $disabledAttr; ?>>
+                                    <div class="error-feedback" id="logo-error"></div>
+                                    <div class="phone-hint">Upload logo (JPG, PNG, GIF)</div>
+                                </div>
+
+                                <div class="customer-form-group">
+                                    <label for="fav_icon" class="form-label">
+                                        <i class="fas fa-bolt"></i> Favicon
+                                    </label>
+                                    <input type="file" class="form-control" id="fav_icon" name="fav_icon" accept=".ico,.jpg,.jpeg,.png" <?php echo $disabledAttr; ?>>
+                                    <div class="error-feedback" id="fav_icon-error"></div>
+                                    <div class="phone-hint">Upload favicon (ICO, PNG, JPG)</div>
                                 </div>
                             </div>
                         </div>
@@ -287,10 +396,10 @@ if ($user_role['role_id'] != 1) {
 
                     <!-- Submit Buttons -->
                     <div class="submit-container">
-                        <button type="submit" class="btn btn-primary" id="submitBtn">
+                        <button type="submit" class="btn btn-primary" id="submitBtn" <?php echo $disabledAttr; ?>>
                             <i class="fas fa-plus-circle"></i> Add Tenant
                         </button>
-                        <button type="button" class="btn btn-secondary ms-2" id="resetBtn">
+                        <button type="button" class="btn btn-secondary ms-2" id="resetBtn" <?php echo $disabledAttr; ?>>
                             <i class="fas fa-undo"></i> Reset Form
                         </button>
                     </div>
@@ -375,7 +484,7 @@ if ($user_role['role_id'] != 1) {
                     $submitBtn.prop('disabled', false).html(originalText);
                     
                     if (response.success) {
-                        showSuccessNotification(response.message || 'Tenant added successfully!');
+                        toastManager.success(response.message || 'Tenant added successfully!');
                         
                         // Reset form after success
                         setTimeout(function() {
@@ -387,7 +496,7 @@ if ($user_role['role_id'] != 1) {
                             showFieldErrors(response.errors);
                         }
                         
-                        showErrorNotification(response.message || 'Failed to add tenant. Please try again.');
+                        toastManager.error(response.message || 'Failed to add tenant. Please try again.');
                     }
                 },
                 error: function(xhr, status, error) {
@@ -406,7 +515,7 @@ if ($user_role['role_id'] != 1) {
                         errorMessage = 'No internet connection. Please check your connection.';
                     }
                     
-                    showErrorNotification(errorMessage);
+                    toastManager.error(errorMessage);
                     console.error('AJAX Error:', {
                         status: xhr.status,
                         statusText: xhr.statusText,
@@ -427,7 +536,7 @@ if ($user_role['role_id'] != 1) {
         // Loading functions
         function showLoading() {
             $('#loadingOverlay').css('display', 'flex');
-            $('body').css('overflow', 'hidden');
+            $('body').css('overflow', 'clip');
         }
         
         function hideLoading() {
@@ -435,50 +544,6 @@ if ($user_role['role_id'] != 1) {
             $('body').css('overflow', 'auto');
         }
         
-        // Notification functions
-        function showSuccessNotification(message) {
-            showNotification(message, 'success');
-        }
-        
-        function showErrorNotification(message) {
-            showNotification(message, 'danger');
-        }
-        
-        function showWarningNotification(message) {
-            showNotification(message, 'warning');
-        }
-        
-        function showNotification(message, type) {
-            const notificationId = 'notification_' + Date.now();
-            const iconClass = type === 'success' ? 'fas fa-check-circle' : 
-                            type === 'danger' ? 'fas fa-exclamation-circle' : 
-                            'fas fa-exclamation-triangle';
-            
-            const notification = `
-                <div class="alert alert-${type} alert-dismissible ajax-notification" id="${notificationId}" role="alert">
-                    <i class="${iconClass} me-2"></i>
-                    ${message}
-                    <button type="button" class="btn-close" onclick="hideNotification('${notificationId}')" aria-label="Close"></button>
-                </div>
-            `;
-            
-            $('body').append(notification);
-            
-            // Auto-hide after 5 seconds
-            setTimeout(() => {
-                hideNotification(notificationId);
-            }, 5000);
-        }
-        
-        function hideNotification(notificationId) {
-            const $notification = $('#' + notificationId);
-            if ($notification.length) {
-                $notification.addClass('hide');
-                setTimeout(() => {
-                    $notification.remove();
-                }, 300);
-            }
-        }
         
         // Form reset function
         function resetForm() {
@@ -595,8 +660,8 @@ if ($user_role['role_id'] != 1) {
             if (name.trim().length < 2) {
                 return { valid: false, message: 'Company name must be at least 2 characters long' };
             }
-            if (name.length > 255) {
-                return { valid: false, message: 'Company name is too long (maximum 255 characters)' };
+            if (name.length > 15) {
+                return { valid: false, message: 'Company name is too long (maximum 15 characters)' };
             }
             return { valid: true, message: '' };
         }
@@ -638,7 +703,7 @@ if ($user_role['role_id'] != 1) {
             const cleanPhone = phone.replace(/\s+/g, '');
             const sriLankanPhoneRegex = /^(0|94|\+94)?[1-9][0-9]{8}$/;
             if (!sriLankanPhoneRegex.test(cleanPhone)) {
-                return { valid: false, message: 'Please enter a valid Sri Lankan phone number (e.g., 0771234567)' };
+                return { valid: false, message: 'Please enter a valid Sri Lankan phone number' };
             }
             return { valid: true, message: '' };
         }

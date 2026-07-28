@@ -56,6 +56,8 @@ $company_name_filter = isset($_GET['company_name_filter']) ? trim($_GET['company
 $email_filter = isset($_GET['email_filter']) ? trim($_GET['email_filter']) : '';
 $phone_filter = isset($_GET['phone_filter']) ? trim($_GET['phone_filter']) : '';
 $contact_person_filter = isset($_GET['contact_person_filter']) ? trim($_GET['contact_person_filter']) : '';
+$address_filter = isset($_GET['address_filter']) ? trim($_GET['address_filter']) : '';
+
 $status_filter = isset($_GET['status_filter']) ? trim($_GET['status_filter']) : '';
 $is_main_admin_filter = isset($_GET['is_main_admin_filter']) ? trim($_GET['is_main_admin_filter']) : '';
 $date_from = isset($_GET['date_from']) ? trim($_GET['date_from']) : '';
@@ -70,7 +72,7 @@ $offset = ($page - 1) * $limit;
 $countSql = "SELECT COUNT(*) as total FROM tenants";
 
 // Main query
-$sql = "SELECT tenant_id, company_name, contact_person, email, phone, status, is_main_admin, 
+$sql = "SELECT tenant_id, company_name, contact_person, email, phone, address, status, is_main_admin, 
                created_at, updated_at 
         FROM tenants";
 
@@ -109,6 +111,12 @@ if (!empty($phone_filter)) {
 if (!empty($contact_person_filter)) {
     $contactTerm = $conn->real_escape_string($contact_person_filter);
     $searchConditions[] = "contact_person LIKE '%$contactTerm%'";
+}
+
+// Address filter
+if (!empty($address_filter)) {
+    $addressTerm = $conn->real_escape_string($address_filter);
+    $searchConditions[] = "address LIKE '%$addressTerm%'";
 }
 
 // Status filter
@@ -171,6 +179,18 @@ if (!$result) {
     <link rel="stylesheet" href="../assets/css/style.css" id="main-style-link" />
     <link rel="stylesheet" href="../assets/css/orders.css" id="main-style-link" />
     <link rel="stylesheet" href="../assets/css/customers.css" id="main-style-link" />
+    <style>
+        /* Disabled toggle button for own tenant */
+        .toggle-status-btn.disabled-btn {
+            opacity: 0.4;
+            cursor: not-allowed !important;
+            pointer-events: none;
+        }
+        .toggle-status-btn.disabled-btn:hover {
+            background: inherit;
+            color: inherit;
+        }
+    </style>
 </head>
 
 <body>
@@ -228,6 +248,13 @@ if (!$result) {
                         </div>
                         
                         <div class="form-group">
+                            <label for="address_filter">Address</label>
+                            <input type="text" id="address_filter" name="address_filter" 
+                                   placeholder="Enter company address" 
+                                   value="<?php echo htmlspecialchars($address_filter); ?>">
+                        </div>
+                        
+                        <div class="form-group">
                             <label for="status_filter">Status</label>
                             <select id="status_filter" name="status_filter">
                                 <option value="">All Status</option>
@@ -272,8 +299,10 @@ if (!$result) {
                     <table class="orders-table">
                         <thead>
                             <tr>
-                                <th>Company Info</th>
+                                <th>ID</th>
+                                <th>Company Name</th>
                                 <th>Contact Details</th>
+                                <th>Address</th>
                                 <th>Status & Type</th>
                                 <th>Created</th>
                                 <th>Actions</th>
@@ -283,11 +312,14 @@ if (!$result) {
                             <?php if ($result && $result->num_rows > 0): ?>
                                 <?php while ($row = $result->fetch_assoc()): ?>
                                     <tr>
+                                        <!-- ID -->
+                                        <td>
+                                            <div><?php echo htmlspecialchars($row['tenant_id']); ?></div>
+                                        </td>
                                         <!-- Company Info -->
                                         <td class="customer-name">
                                             <div class="customer-info">
                                                 <h6 style="margin: 0; font-size: 14px; font-weight: 600;"><?php echo htmlspecialchars($row['company_name']); ?></h6>
-                                                <small style="color: #6c757d; font-size: 12px;">ID: <?php echo htmlspecialchars($row['tenant_id']); ?></small>
                                             </div>
                                         </td>
                                         
@@ -298,6 +330,17 @@ if (!$result) {
                                                 <div style="font-size: 12px; color: #6c757d; margin-bottom: 2px;"><?php echo htmlspecialchars($row['email']); ?></div>
                                                 <div style="font-size: 11px; color: #007bff; font-weight: 500;"><?php echo htmlspecialchars($row['phone']); ?></div>
                                             </div>
+                                        </td>
+                                        
+                                        <!-- Address -->
+                                        <td>
+                                            <?php if (!empty($row['address'])): ?>
+                                                <div style="font-weight: 500; margin-bottom: 2px;" title="<?php echo htmlspecialchars($row['address']); ?>">
+                                                    <?php echo htmlspecialchars($row['address']); ?>
+                                                </div>
+                                            <?php else: ?>
+                                                <span style="color: #adb5bd; font-style: italic;">Not set</span>
+                                            <?php endif; ?>
                                         </td>
                                         
                                         <!-- Status & Type -->
@@ -334,6 +377,7 @@ if (!$result) {
                                                         data-contact-person="<?= htmlspecialchars($row['contact_person']) ?>"
                                                         data-email="<?= htmlspecialchars($row['email']) ?>"
                                                         data-phone="<?= htmlspecialchars($row['phone']) ?>"
+                                                        data-address="<?= htmlspecialchars($row['address'] ?? '') ?>"
                                                         data-status="<?= htmlspecialchars($row['status']) ?>"
                                                         data-is-main-admin="<?= $row['is_main_admin'] ?>"
                                                         data-created="<?= htmlspecialchars($row['created_at']) ?>"
@@ -348,12 +392,18 @@ if (!$result) {
                                                 </button>
                                           
                                                 <!-- Status Toggle Button -->
-                                                <button type="button" class="action-btn <?= $row['status'] == 'active' ? 'deactivate-btn' : 'activate-btn' ?> toggle-status-btn"
+                                                <?php 
+                                                $isOwnTenant = (isset($_SESSION['tenant_id']) && (int)$_SESSION['tenant_id'] === (int)$row['tenant_id']);
+                                                $toggleDisabled = $isOwnTenant && $row['status'] == 'active' ? 'disabled' : '';
+                                                $toggleTitle = $isOwnTenant && $row['status'] == 'active' ? 'You cannot disable your own company' : ($row['status'] == 'active' ? 'Deactivate Tenant' : 'Activate Tenant');
+                                                ?>
+                                                <button type="button" class="action-btn <?= $row['status'] == 'active' ? 'deactivate-btn' : 'activate-btn' ?> toggle-status-btn<?= $toggleDisabled ? ' disabled-btn' : '' ?>"
                                                         data-tenant-id="<?= $row['tenant_id'] ?>"
                                                         data-current-status="<?= $row['status'] ?>"
                                                         data-company-name="<?= htmlspecialchars($row['company_name']) ?>"
-                                                        title="<?= $row['status'] == 'active' ? 'Deactivate Tenant' : 'Activate Tenant' ?>"
-                                                        data-action="<?= $row['status'] == 'active' ? 'deactivate' : 'activate' ?>">
+                                                        title="<?= $toggleTitle ?>"
+                                                        data-action="<?= $row['status'] == 'active' ? 'deactivate' : 'activate' ?>"
+                                                        <?= $toggleDisabled ?>>
                                                     <i class="fas <?= $row['status'] == 'active' ? 'fa-ban' : 'fa-check-circle' ?>"></i>
                                                 </button>
                                             </div>
@@ -362,7 +412,7 @@ if (!$result) {
                                 <?php endwhile; ?>
                             <?php else: ?>
                                 <tr>
-                                    <td colspan="5" class="text-center" style="padding: 40px; text-align: center; color: #666;">
+                                    <td colspan="6" class="text-center" style="padding: 40px; text-align: center; color: #666;">
                                         <i class="fas fa-building" style="font-size: 2rem; margin-bottom: 10px; display: block;"></i>
                                         No tenants found
                                     </td>
@@ -379,20 +429,20 @@ if (!$result) {
                     </div>
                     <div class="pagination-controls">
                         <?php if ($page > 1): ?>
-                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page - 1; ?>&limit=<?php echo $limit; ?>&company_name_filter=<?php echo urlencode($company_name_filter); ?>&contact_person_filter=<?php echo urlencode($contact_person_filter); ?>&email_filter=<?php echo urlencode($email_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&status_filter=<?php echo urlencode($status_filter); ?>&is_main_admin_filter=<?php echo urlencode($is_main_admin_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&search=<?php echo urlencode($search); ?>'">
+                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page - 1; ?>&limit=<?php echo $limit; ?>&company_name_filter=<?php echo urlencode($company_name_filter); ?>&contact_person_filter=<?php echo urlencode($contact_person_filter); ?>&email_filter=<?php echo urlencode($email_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&address_filter=<?php echo urlencode($address_filter); ?>&status_filter=<?php echo urlencode($status_filter); ?>&is_main_admin_filter=<?php echo urlencode($is_main_admin_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&search=<?php echo urlencode($search); ?>'">
                                 <i class="fas fa-chevron-left"></i>
                             </button>
                         <?php endif; ?>
                         
                         <?php for ($i = max(1, $page - 2); $i <= min($totalPages, $page + 2); $i++): ?>
                             <button class="page-btn <?php echo ($i == $page) ? 'active' : ''; ?>" 
-                                    onclick="window.location.href='?page=<?php echo $i; ?>&limit=<?php echo $limit; ?>&company_name_filter=<?php echo urlencode($company_name_filter); ?>&contact_person_filter=<?php echo urlencode($contact_person_filter); ?>&email_filter=<?php echo urlencode($email_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&status_filter=<?php echo urlencode($status_filter); ?>&is_main_admin_filter=<?php echo urlencode($is_main_admin_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&search=<?php echo urlencode($search); ?>'">
+                                    onclick="window.location.href='?page=<?php echo $i; ?>&limit=<?php echo $limit; ?>&company_name_filter=<?php echo urlencode($company_name_filter); ?>&contact_person_filter=<?php echo urlencode($contact_person_filter); ?>&email_filter=<?php echo urlencode($email_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&address_filter=<?php echo urlencode($address_filter); ?>&status_filter=<?php echo urlencode($status_filter); ?>&is_main_admin_filter=<?php echo urlencode($is_main_admin_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&search=<?php echo urlencode($search); ?>'">
                                 <?php echo $i; ?>
                             </button>
                         <?php endfor; ?>
                         
                         <?php if ($page < $totalPages): ?>
-                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page + 1; ?>&limit=<?php echo $limit; ?>&company_name_filter=<?php echo urlencode($company_name_filter); ?>&contact_person_filter=<?php echo urlencode($contact_person_filter); ?>&email_filter=<?php echo urlencode($email_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&status_filter=<?php echo urlencode($status_filter); ?>&is_main_admin_filter=<?php echo urlencode($is_main_admin_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&search=<?php echo urlencode($search); ?>'">
+                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page + 1; ?>&limit=<?php echo $limit; ?>&company_name_filter=<?php echo urlencode($company_name_filter); ?>&contact_person_filter=<?php echo urlencode($contact_person_filter); ?>&email_filter=<?php echo urlencode($email_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&address_filter=<?php echo urlencode($address_filter); ?>&status_filter=<?php echo urlencode($status_filter); ?>&is_main_admin_filter=<?php echo urlencode($is_main_admin_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&search=<?php echo urlencode($search); ?>'">
                                 <i class="fas fa-chevron-right"></i>
                             </button>
                         <?php endif; ?>
@@ -431,6 +481,10 @@ if (!$result) {
                     <span class="detail-value" id="modal-phone"></span>
                 </div>
                 <div class="customer-detail-row">
+                    <span class="detail-label">Address:</span>
+                    <span class="detail-value" id="modal-address" style="white-space: pre-line;"></span>
+                </div>
+                <div class="customer-detail-row">
                     <span class="detail-label">Status:</span>
                     <span class="detail-value">
                         <span id="modal-status" class="status-badge"></span>
@@ -452,32 +506,7 @@ if (!$result) {
         </div>
     </div>
 
-    <!-- Status Confirmation Modal -->
-    <div id="statusConfirmationModal" class="modal confirmation-modal">
-        <div class="modal-content confirmation-modal-content">
-            <div class="modal-header">
-                <h4>Are you sure?</h4>
-                <span class="close" onclick="closeConfirmationModal()">&times;</span>
-            </div>
-            <div class="modal-body">
-                <div class="confirmation-icon">
-                    <i class="ti ti-alert-triangle"></i>
-                </div>
-                <div class="confirmation-text">
-                    You are about to <span class="action-highlight" id="action-text"></span> tenant:
-                </div>
-                <div class="confirmation-text">
-                    <span class="user-name-highlight" id="confirm-company-name"></span>
-                </div>
-                <div class="modal-buttons">
-                    <button class="btn-confirm" id="confirmActionBtn">
-                        <span id="confirm-button-text">Yes, deactivate tenant!</span>
-                    </button>
-                    <button class="btn-cancel" onclick="closeConfirmationModal()">Cancel</button>
-                </div>
-            </div>
-        </div>
-    </div>
+
 
     <!-- Footer -->
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php'); ?>
@@ -503,6 +532,7 @@ function openTenantModal(button) {
     document.getElementById('modal-contact-person').textContent = button.dataset.contactPerson;
     document.getElementById('modal-email').textContent = button.dataset.email;
     document.getElementById('modal-phone').textContent = button.dataset.phone;
+    document.getElementById('modal-address').textContent = button.dataset.address || 'Not set';
 
     const statusBadge = document.getElementById('modal-status');
     statusBadge.textContent = button.dataset.status === 'active' ? 'Active' : 'Inactive';
@@ -524,51 +554,62 @@ function closeTenantModal() {
 }
 
 // ---------- STATUS CONFIRMATION ----------
-function openStatusConfirmation(button) {
+function toggleTenantStatus(button) {
     const tenantId = button.dataset.tenantId;
     const companyName = button.dataset.companyName;
     const currentStatus = button.dataset.currentStatus;
-
-    const newStatus = currentStatus === 'active' ? 'inactive' : 'active';
-
-    document.getElementById('action-text').textContent =
-        newStatus === 'inactive' ? 'deactivate' : 'activate';
-
-    document.getElementById('confirm-company-name').textContent = companyName;
-    document.getElementById('confirm-button-text').textContent =
-        newStatus === 'inactive' ? 'Yes, deactivate tenant!' : 'Yes, activate tenant!';
-
-    document.getElementById('confirmActionBtn').onclick = function () {
-        toggleTenantStatus(tenantId, newStatus);
-    };
-
-    document.getElementById('statusConfirmationModal').style.display = 'block';
-}
-
-function closeConfirmationModal() {
-    document.getElementById('statusConfirmationModal').style.display = 'none';
-}
-
-// ---------- STATUS UPDATE ----------
-function toggleTenantStatus(tenantId, newStatus) {
-    fetch('toggle_tenant_status.php', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            tenant_id: tenantId,
-            new_status: newStatus
-        })
-    })
-    .then(res => res.json())
-    .then(data => {
-        if (data.success) {
-            alert('Tenant status updated successfully');
-            location.reload();
-        } else {
-            alert(data.message || 'Status update failed');
+    
+    const isActive = currentStatus === 'active';
+    const newStatus = isActive ? 'inactive' : 'active';
+    
+    Swal.fire({
+        title: 'Are you sure?',
+        text: `You are about to ${isActive ? 'Deactivate' : 'Activate'} Tenant: ${companyName}`,
+        icon: 'warning',
+        showCancelButton: true,
+        customClass: {
+            confirmButton: isActive ? 'swal-danger' : 'swal-success'
+        },
+        confirmButtonText: isActive ? 'Yes, Deactivate it!' : 'Yes, Activate it!',
+        cancelButtonText: 'Cancel',
+        reverseButtons: true
+    }).then((result) => {
+        if (result.isConfirmed) {
+            fetch('toggle_tenant_status.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    tenant_id: tenantId,
+                    new_status: newStatus
+                })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'Updated!',
+                        text: `Tenant has been ${isActive ? 'deactivated' : 'activated'} successfully.`,
+                        showConfirmButton: false,
+                        timer: 1500
+                    }).then(() => location.reload());
+                } else {
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Error!',
+                        text: data.message || 'Failed to update tenant status.'
+                    });
+                }
+            })
+            .catch(() => {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Error!',
+                    text: 'A server error occurred while updating the tenant status.'
+                });
+            });
         }
-    })
-    .catch(() => alert('Server error occurred'));
+    });
 }
 
 // ---------- EDIT ----------
@@ -589,19 +630,17 @@ document.addEventListener('DOMContentLoaded', () => {
         btn.addEventListener('click', () => openTenantModal(btn));
     });
 
-    document.querySelectorAll('.toggle-status-btn').forEach(btn => {
-        btn.addEventListener('click', () => openStatusConfirmation(btn));
+    document.querySelectorAll('.toggle-status-btn:not(.disabled-btn)').forEach(btn => {
+        btn.addEventListener('click', () => toggleTenantStatus(btn));
     });
 
     window.onclick = e => {
         if (e.target.id === 'tenantDetailsModal') closeTenantModal();
-        if (e.target.id === 'statusConfirmationModal') closeConfirmationModal();
     };
 
     document.addEventListener('keydown', e => {
         if (e.key === 'Escape') {
             closeTenantModal();
-            closeConfirmationModal();
         }
     });
 

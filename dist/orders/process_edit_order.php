@@ -181,15 +181,15 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $subtotal_after_discount = $subtotal_before_discounts - $total_discount;
 
         // Delivery Fee logic (same as create) - filtered by order's tenant
-        $deliveryFeeSql = "SELECT delivery_fee FROM branding WHERE tenant_id = ? AND active = 1 LIMIT 1";
+        $deliveryFeeSql = "SELECT delivery_fee FROM tenants WHERE tenant_id = ? AND status = 'active' LIMIT 1";
         $deliveryFeeStmt = $conn->prepare($deliveryFeeSql);
         $deliveryFeeStmt->bind_param("i", $order_tenant_id);
         $deliveryFeeStmt->execute();
         $deliveryFeeResult = $deliveryFeeStmt->get_result();
-        $brandingFee = ($deliveryFeeResult && $row = $deliveryFeeResult->fetch_assoc()) ? floatval($row['delivery_fee']) : 0;
+        $tenantFee = ($deliveryFeeResult && $row = $deliveryFeeResult->fetch_assoc()) ? floatval($row['delivery_fee']) : 0;
         $deliveryFeeStmt->close();
         
-        $delivery_fee = $brandingFee;
+        $delivery_fee = $tenantFee;
         $total_amount = $subtotal_after_discount + $delivery_fee;
 
         // Update order_header (clear upload_error when editing)

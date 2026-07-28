@@ -25,8 +25,8 @@ include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
 // Check if user is main admin
-$is_main_admin = $_SESSION['is_main_admin'];
-$teanent_id = $_SESSION['tenant_id'];
+$is_main_admin = $_SESSION['is_main_admin'] ?? 0;
+$tenant_id = $_SESSION['tenant_id'] ?? 0;
 
 // NEW: Get current user's role information
 $current_user_id = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
@@ -100,7 +100,7 @@ $countSql = "SELECT COUNT(*) as total FROM order_header i
 
 // Add tenant filter for non-main admin users to count query
 if ($is_main_admin != 1) {
-    $countSql .= " AND i.tenant_id = $teanent_id";
+    $countSql .= " AND i.tenant_id = $tenant_id";
 }
 
 
@@ -121,7 +121,8 @@ $sql = "SELECT i.*,
                t.company_name,
                
                -- User who created the order
-               u2.name as user_name
+               u2.name as user_name,
+               (SELECT courier_name FROM couriers WHERE courier_id = i.courier_id LIMIT 1) as courier_name
         FROM order_header i 
         LEFT JOIN customers c ON i.customer_id = c.customer_id
         LEFT JOIN payments p ON i.order_id = p.order_id
@@ -133,7 +134,7 @@ $sql = "SELECT i.*,
 
 // Add tenant filter for non-main admin users
 if ($is_main_admin != 1) {
-    $sql .= " AND i.tenant_id = $teanent_id";
+    $sql .= " AND i.tenant_id = $tenant_id";
 }
 
 
@@ -231,7 +232,7 @@ $result = $conn->query($sql);
 if ($is_main_admin == 1 && $current_user_role == 1) {
     $usersQuery = "SELECT id, name FROM users ORDER BY name ASC";
 } else {
-    $usersQuery = "SELECT id, name FROM users WHERE tenant_id = " . (int)$teanent_id . " ORDER BY name ASC";
+    $usersQuery = "SELECT id, name FROM users WHERE tenant_id = " . (int)$tenant_id . " ORDER BY name ASC";
 }
 $usersResult = $conn->query($usersQuery);
 
@@ -258,6 +259,40 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
     <!-- Stylesheets -->
     <link rel="stylesheet" href="../assets/css/style.css" id="main-style-link" />
     <link rel="stylesheet" href="../assets/css/orders.css" id="main-style-link" />
+    <link rel="stylesheet" href="../assets/css/status-badge-colors.css" id="main-style-link" />
+
+    <style>
+        .issued-time {
+    font-size: 0.9em;
+    color: #333;
+    line-height: 1.2;
+}
+
+.issued-date {
+    display: block;
+    font-weight: 600;
+}
+
+.issued-time-only {
+    display: block;
+    color: #666;
+    font-size: 0.85em;
+}
+.updated-time {
+        font-size: 0.9em;
+        color: #333;
+        line-height: 1.2;
+    }
+    .updated-date {
+        display: block;
+        font-weight: 600;
+    }
+    .updated-time-only {
+        display: block;
+        color: #666;
+        font-size: 0.85em;
+    }
+    </style>
 
 </head>
 
@@ -351,7 +386,6 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                             </select>
                         </div>
                         <?php } else { ?>
-                        <!--<input type="hidden" name="teanetID" value="0">-->
                         <?php } ?>
 
                         <div class="form-group">
@@ -383,19 +417,18 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                         <thead>
                             <tr>
                                 <th>Order ID</th>
+                                <th>Issue Date</th>
+                                <th>Updated Time</th>
                                 <th>Customer Name</th>
                                 <th>Total Amount</th>
-                                <th>Pay Status</th>
+                                <th>Status</th>
                                 <th>Tracking Number</th>
                                 <th>Processed By</th>
                                 <?php if ($is_main_admin == 1 && $current_user_role == 1) { ?>
                                 <th>Tenant Company</th>
                                 <?php } else { ?>
-                                <!--<input type="hidden" name="teanetID" value="0">-->
-                                <?php } ?>
-                                <?php if ($current_user_role == 1): ?>
-                                <th>User</th>
-                                <?php endif; ?>
+                                        <?php } ?>
+
                                 <th>Actions</th>
                             </tr>
                         </thead>
@@ -406,43 +439,90 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                 <!-- Order ID -->
                                 <td class="order-id">
                                     <?php echo isset($row['order_id']) ? htmlspecialchars($row['order_id']) : ''; ?>
+                                    <?php if ($row['interface'] === 'leads'): ?>
+                                        <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/leads_badge.php'); ?>
+                                    <?php endif; ?>
                                 </td>
+
+                                <!-- NEW: Issue Date Column -->
+                                        <td class="issued-time">
+                                            <?php
+                                            if (isset($row['created_at']) && !empty($row['created_at'])) {
+                                                $createdAt = new DateTime($row['created_at']);
+                                                echo '<span class="issued-date">' . $createdAt->format('Y-m-d') . '</span>';
+                                                echo '<span class="issued-time-only">' . $createdAt->format('H:i:s') . '</span>';
+                                            } else {
+                                                echo '<span style="color: #999; font-style: italic;">-</span>';
+                                            }
+                                            ?>
+                                        </td>
+
+                                        <!-- Update Time -->
+                                        <td class="updated-time">
+                                            <?php
+                                            if (isset($row['updated_at']) && !empty($row['updated_at'])) {
+                                                $updatedAt = new DateTime($row['updated_at']);
+                                                echo '<span class="updated-date">' . $updatedAt->format('Y-m-d') . '</span>';
+                                                echo '<span class="updated-time-only">' . $updatedAt->format('H:i:s') . '</span>';
+                                            } else {
+                                                echo '<span style="color: #999; font-style: italic;">-</span>';
+                                            }
+                                            ?>
+                                        </td>
 
                                 <!-- Customer Name with ID -->
                                 <td class="customer-name">
                                     <?php
-                                                $customerName = isset($row['customer_name']) ? htmlspecialchars($row['customer_name']) : 'N/A';
+                                                $customerName = isset($row['customer_name']) ? htmlspecialchars($row['customer_name']) : '-';
                                                 $customerId = isset($row['customer_id']) ? htmlspecialchars($row['customer_id']) : '';
                                                 echo $customerName . ($customerId ? " ($customerId)" : "");
                                                 ?>
                                 </td>
 
-                                <!-- Total Amount with Currency -->
-                                <td class="amount">
-                                    <?php
-                                                $amount = isset($row['total_amount']) ? (float)$row['total_amount'] : 0;
-                                                $currency = isset($row['currency']) ? $row['currency'] : 'lkr';
-                                                $currencySymbol = ($currency == 'usd') ? '$' : 'Rs';
-                                                echo $currencySymbol . number_format($amount, 2);
-                                                ?>
-                                </td>
+                                <!-- Total Amount with Pay Status -->
+                                        <td class="amount">
+                                            <?php
+                                            $amount = isset($row['total_amount']) ? (float)$row['total_amount'] : 0;
+                                            $currency = isset($row['currency']) ? $row['currency'] : 'lkr';
+                                            $currencySymbol = ($currency == 'usd') ? '$' : 'Rs';
+                                            echo $currencySymbol . number_format($amount, 2);
 
-                                <!-- Payment Status Badge -->
+                                            $payStatus = isset($row['pay_status']) ? $row['pay_status'] : 'unpaid';
+                                            if ($payStatus == 'paid'): ?>
+                                                <br><span class="status-badge pay-status-paid">Paid</span>
+                                            <?php elseif ($payStatus == 'partial'): ?>
+                                                <br><span class="status-badge pay-status-partial">Partial</span>
+                                            <?php else: ?>
+                                                <br><span class="status-badge pay-status-unpaid">Unpaid</span>
+                                            <?php endif; ?>
+                                        </td>
+
+                                <!-- Status Badge -->
                                 <td>
                                     <?php
-                                                $payStatus = isset($row['pay_status']) ? $row['pay_status'] : 'unpaid';
-                                                if ($payStatus == 'paid'): ?>
-                                    <span class="status-badge pay-status-paid">Paid</span>
-                                    <?php else: ?>
-                                    <span class="status-badge pay-status-unpaid">Unpaid</span>
-                                    <?php endif; ?>
+                                        $status = isset($row['status']) ? strtolower(trim($row['status'])) : 'return_handover';
+                                        switch ($status) {
+                                            case 'return_handover':
+                                                $statusText = 'Return Handover';
+                                                $badgeClass = 'status-return-handover';
+                                                break;
+                                            default:
+                                                $statusText = ucfirst(str_replace('_', ' ', $status));
+                                                $badgeClass = 'status-default';
+                                        }
+                                        ?>
+                                    <span class="status-badge <?php echo $badgeClass; ?>"><?php echo $statusText; ?></span>
                                 </td>
 
-                                <!-- Tracking Number -->
+                                <!-- Tracking Number + Courier -->
                                 <td class="tracking-number">
                                     <?php
                                                 if (isset($row['tracking_number']) && !empty($row['tracking_number'])) {
                                                     echo '<span style="cursor: pointer; color: #007bff; text-decoration: underline;" onclick="copyTrackingNumber(\'' . htmlspecialchars($row['tracking_number']) . '\')" title="Click to copy tracking number">' . htmlspecialchars($row['tracking_number']) . '</span>';
+                                                    $courierName = isset($row['courier_name']) ? $row['courier_name'] : '';
+                                                    if (!empty($courierName)) {
+                                                        echo '<br><span style="font-size: 11px; color: #6c757d;">' . htmlspecialchars($courierName) . '</span>';
+                                                    }
                                                 } else {
                                                     echo '<span style="color: #999; font-style: italic;">Not assigned</span>';
                                                 }
@@ -452,11 +532,11 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                 <!-- Processed By User -->
                                 <td>
                                     <?php
-                                                echo isset($row['paid_by_name']) ? htmlspecialchars($row['paid_by_name']) : 'N/A';
+                                                echo isset($row['paid_by_name']) ? htmlspecialchars($row['paid_by_name']) : '-';
                                                 ?>
                                 </td>
 
-                                <!-- Teanaent Company Name -->
+                                <!-- Tenant Company Name -->
                                 <?php if ($is_main_admin == 1  &&$current_user_role == 1) { ?>
                                 <td class="customer-name">
                                     <div class="customer-info">
@@ -465,32 +545,10 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                     </div>
                                 </td>
                                 <?php } else { ?>
-                                <!--<input type="hidden" name="teanetID" value="0">-->
-                                <?php } ?>
+                                        <?php } ?>
 
 
-                                <!-- User Column - CONDITIONAL: Only show for admin users -->
-                                <?php if ($current_user_role == 1 ): ?>
-                                <td>
-                                    <?php
-                                                $userName = isset($row['user_name']) ? htmlspecialchars($row['user_name']) : 'N/A';
-                                                $interface = isset($row['interface']) ? $row['interface'] : '';
-                                                $userId = isset($row['user_id']) ? htmlspecialchars($row['user_id']) : '';
-                                                
-                                                echo $userName;
-                                                
-                                                // Display user ID in small text
-                                                if ($userId) {
-                                                    echo "<br><span style='color: #666; font-size: 0.8em;'>ID: $userId</span>";
-                                                }
-                                                
-                                                // Display (leads) if interface is 'leads'
-                                                if ($interface == 'leads') {
-                                                    echo "<br><span style='color: #666; font-size: 0.9em;'>(leads)</span>";
-                                                }
-                                                ?>
-                                </td>
-                                <?php endif; ?>
+
 
                                 <!-- Action Buttons -->
                                 <td class="actions">
@@ -508,7 +566,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                             <?php endwhile; ?>
                             <?php else: ?>
                             <tr>
-                                <td colspan="8" class="text-center"
+                                <td colspan="9" class="text-center"
                                     style="padding: 40px; text-align: center; color: #666;">
                                     No return handover orders found
                                 </td>
@@ -612,7 +670,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
 
         // Show modal
         modal.style.display = 'flex';
-        document.body.style.overflow = 'hidden';
+        document.body.style.overflow = 'clip';
 
         // Show loading state
         modalContent.innerHTML = `
@@ -625,7 +683,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
         viewPaymentSlipBtn.style.display = 'none';
 
         // Determine which PHP file to use based on interface
-        const phpFile = (interface === 'leads') ? '../leads/leads_download.php' : 'download_order_page.php';
+        const phpFile = 'download_order_page.php';
         const fetchUrl = phpFile + '?id=' + encodeURIComponent(currentOrderId);
 
         console.log('Fetching from:', fetchUrl);
@@ -693,9 +751,19 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
 
                     // MODIFIED: Show button for all paid orders, regardless of slip availability
                     if (currentPayStatus === 'paid') {
-                        viewPaymentSlipBtn.style.display = 'inline-flex';
+                        if (currentPaymentSlip && currentPaymentSlip.trim() !== '') {
+                            viewPaymentSlipBtn.style.display = 'inline-flex';
+                            const noSlipMsg = document.getElementById('noPaymentSlipMsg');
+                            if (noSlipMsg) noSlipMsg.style.display = 'none';
+                        } else {
+                            viewPaymentSlipBtn.style.display = 'none';
+                            const noSlipMsg = document.getElementById('noPaymentSlipMsg');
+                            if (noSlipMsg) noSlipMsg.style.display = 'inline-flex';
+                        }
                     } else {
                         viewPaymentSlipBtn.style.display = 'none';
+                        const noSlipMsg = document.getElementById('noPaymentSlipMsg');
+                        if (noSlipMsg) noSlipMsg.style.display = 'none';
                     }
                 } else {
                     console.log('No payment slip information available');
@@ -710,7 +778,10 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
     function viewPaymentSlip() {
         // Check if payment slip exists
         if (!currentPaymentSlip || currentPaymentSlip.trim() === '') {
-            alert('This order has no payment slip.');
+            const slipBtn = document.getElementById('viewPaymentSlipBtn');
+            const noSlipMsg = document.getElementById('noPaymentSlipMsg');
+            if (slipBtn) slipBtn.style.display = 'none';
+            if (noSlipMsg) noSlipMsg.style.display = 'inline-flex';
             return;
         }
 
@@ -732,7 +803,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
     function closeOrderModal() {
         const modal = document.getElementById('orderModal');
         modal.style.display = 'none';
-        document.body.style.overflow = 'auto';
+        document.body.style.overflow = '';
         currentOrderId = null;
         currentInterface = null;
         currentPaymentSlip = null;
@@ -746,7 +817,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
             return;
         }
 
-        const phpFile = (currentInterface === 'leads') ? '../leads/leads_download.php' : 'download_order.php';
+        const phpFile = 'download_order.php';
         const downloadUrl = phpFile + '?id=' + encodeURIComponent(currentOrderId) + '&download=1';
 
         console.log('Downloading from:', downloadUrl);

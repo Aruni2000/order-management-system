@@ -60,6 +60,13 @@ if (!in_array($new_status, ['active', 'inactive'])) {
     exit();
 }
 
+// Prevent user from disabling their own company
+$sessionTenantId = $_SESSION['tenant_id'] ?? null;
+if ($sessionTenantId && (int)$sessionTenantId === $tenant_id && $new_status === 'inactive') {
+    echo json_encode(['success' => false, 'message' => 'You cannot disable your own company']);
+    exit();
+}
+
 // Update tenant status
 $update_sql = "UPDATE tenants SET status = ?, updated_at = NOW() WHERE tenant_id = ?";
 $update_stmt = $conn->prepare($update_sql);
@@ -73,6 +80,17 @@ $update_stmt->bind_param("si", $new_status, $tenant_id);
 
 if ($update_stmt->execute()) {
     if ($update_stmt->affected_rows > 0) {
+        // Log tenant status change in user_logs
+        $actionType = $new_status === 'active' ? 'tenant_activated' : 'tenant_deactivated';
+        $logDetails = "Tenant ID {$tenant_id} status changed to '{$new_status}'";
+        $logSql = "INSERT INTO user_logs (user_id, action_type, inquiry_id, details) VALUES (?, ?, ?, ?)";
+        $logStmt = $conn->prepare($logSql);
+        if ($logStmt) {
+            $logStmt->bind_param("isis", $user_id, $actionType, $tenant_id, $logDetails);
+            $logStmt->execute();
+            $logStmt->close();
+        }
+
         echo json_encode([
             'success' => true, 
             'message' => 'Tenant status updated successfully',

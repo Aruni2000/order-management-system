@@ -13,11 +13,15 @@
                 </div>
             </div>
             <div class="modal-footer">
-                <!-- Payment Slip View Button  -->
+                <!-- Payment Slip View Button / No Slip Message -->
                 <button class="modal-btn modal-btn-info" onclick="viewPaymentSlip()" id="viewPaymentSlipBtn" style="display:none;">
                     <i class="fas fa-file-image"></i>
                     View Payment Slip
                 </button>
+                <span id="noPaymentSlipMsg" class="modal-btn modal-btn-secondary" style="display:none;cursor:default;opacity:0.7;">
+                    <i class="fas fa-times-circle"></i>
+                    No Payment Slip
+                </span>
                 
                 <button class="modal-btn modal-btn-secondary" onclick="closeOrderModal()">Close</button>
                 <button class="modal-btn modal-btn-primary" onclick="downloadOrder()" id="downloadBtn" style="display:none;">

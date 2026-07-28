@@ -30,7 +30,7 @@ if ($tenantId <= 0) {
 }
 
 // Prepare SQL to fetch couriers for the selected tenant
-$sql = "SELECT courier_id, courier_name 
+$sql = "SELECT co_id, courier_id, courier_name 
         FROM couriers 
         WHERE tenant_id = ? AND status = 'active' 
         ORDER BY courier_name ASC";
@@ -51,9 +51,10 @@ $couriers = [];
 if ($result && $result->num_rows > 0) {
     while ($row = $result->fetch_assoc()) {
         $couriers[] = [
+            'co_id' => $row['co_id'],
             'courier_id' => $row['courier_id'],
             'courier_name' => $row['courier_name'],
-            'display_name' => $row['courier_name'] . ' (ID: ' . $row['courier_id'] . ')'
+            'display_name' => $row['courier_name'] . ' (ID: ' . $row['co_id'] . ')'
         ];
     }
 }

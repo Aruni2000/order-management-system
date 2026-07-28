@@ -324,7 +324,7 @@ input[type="password"] {
                                         <i class="fas fa-user"></i> Full Name<span class="required">*</span>
                                     </label>
                                     <input type="text" class="form-control" id="full_name" name="full_name"
-                                        placeholder="Enter user's full name" 
+                                        placeholder="Enter Full Name" 
                                         value="<?php echo htmlspecialchars($user_data['full_name'] ?? $user_data['name'] ?? ''); ?>" required>
                                     <div class="error-feedback" id="full_name-error"></div>
                                 </div>
@@ -334,7 +334,7 @@ input[type="password"] {
                                         <i class="fas fa-envelope"></i> Email Address<span class="required">*</span>
                                     </label>
                                     <input type="email" class="form-control" id="email" name="email"
-                                        placeholder="user@example.com" 
+                                        placeholder="Enter Email Address" 
                                         value="<?php echo htmlspecialchars($user_data['email'] ?? ''); ?>" required>
                                     <div class="error-feedback" id="email-error"></div>
                                     <div class="email-suggestions" id="email-suggestions"></div>
@@ -363,10 +363,10 @@ input[type="password"] {
                                         <i class="fas fa-mobile-alt"></i> Mobile Number<span class="required">*</span>
                                     </label>
                                     <input type="tel" class="form-control" id="mobile" name="mobile"
-                                        placeholder="0771234567" 
+                                        placeholder="Enter mobile number" 
                                         value="<?php echo htmlspecialchars($user_data['mobile'] ?? ''); ?>" required>
                                     <div class="error-feedback" id="mobile-error"></div>
-                                    <div class="phone-hint">Enter 10-digit Sri Lankan mobile number</div>
+                                    
                                 </div>
                             </div>
 
@@ -380,7 +380,7 @@ input[type="password"] {
                                         placeholder="123456789V or 123456789012" 
                                         value="<?php echo htmlspecialchars($user_data['nic'] ?? ''); ?>" required>
                                     <div class="error-feedback" id="nic-error"></div>
-                                    <div class="nic-hint">Enter Sri Lankan NIC (9 digits + V or 12 digits)</div>
+                                    <div class="nic-hint"></div>
                                 </div>
 
                                 <div class="customer-form-group">
@@ -505,6 +505,17 @@ input[type="password"] {
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
 
     <script>
+        // Store original values for change detection
+        const originalValues = {
+            full_name: '<?php echo addslashes($user_data['full_name'] ?? $user_data['name'] ?? ''); ?>',
+            email: '<?php echo addslashes($user_data['email'] ?? ''); ?>',
+            mobile: '<?php echo addslashes($user_data['mobile'] ?? ''); ?>',
+            nic: '<?php echo addslashes($user_data['nic'] ?? ''); ?>',
+            address: '<?php echo addslashes($user_data['address'] ?? ''); ?>',
+            status: '<?php echo ($user_data['status'] ?? 'active'); ?>',
+            role: '<?php echo addslashes($user_data['role'] ?? $user_data['role_name'] ?? ''); ?>'
+        };
+
         $(document).ready(function() {
             // Initialize form
             initializeForm();
@@ -515,6 +526,12 @@ input[type="password"] {
                 
                 // Clear previous validations
                 clearAllValidations();
+                
+                // Check for changes first
+                if (!hasFormChanged()) {
+                    toastManager.warning('No changes were made to the user.');
+                    return;
+                }
                 
                 // Validate form
                 if (validateForm()) {
@@ -559,14 +576,14 @@ input[type="password"] {
                     $submitBtn.prop('disabled', false).html(originalText);
                     
                 if (response.success) {
-    showSuccessNotification(response.message || 'User updated successfully!');
-    
-} else {
-    if (response.errors) {
-        showFieldErrors(response.errors);
-    }
-    showErrorNotification(response.message || 'Failed to update user. Please try again.');
-}
+                    toastManager.success(response.message || 'User updated successfully!');
+                    updateOriginalValues();
+                } else {
+                    if (response.errors) {
+                        showFieldErrors(response.errors);
+                    }
+                    toastManager.error(response.message || 'Failed to update user. Please try again.');
+                }
                 },
                 error: function(xhr, status, error) {
                     hideLoading();
@@ -584,7 +601,7 @@ input[type="password"] {
                         errorMessage = 'No internet connection. Please check your connection.';
                     }
                     
-                    showErrorNotification(errorMessage);
+                    toastManager.error(errorMessage);
                     console.error('AJAX Error:', {
                         status: xhr.status,
                         statusText: xhr.statusText,
@@ -602,10 +619,34 @@ input[type="password"] {
             });
         }
         
+        // Change detection functions
+        function hasFormChanged() {
+            return (
+                $('#full_name').val() !== originalValues.full_name ||
+                $('#email').val() !== originalValues.email ||
+                $('#mobile').val() !== originalValues.mobile ||
+                $('#nic').val() !== originalValues.nic ||
+                $('#address').val() !== originalValues.address ||
+                $('#status').val() !== originalValues.status ||
+                $('#role').val() !== originalValues.role ||
+                $('#password').val().length > 0
+            );
+        }
+        
+        function updateOriginalValues() {
+            originalValues.full_name = $('#full_name').val();
+            originalValues.email = $('#email').val();
+            originalValues.mobile = $('#mobile').val();
+            originalValues.nic = $('#nic').val();
+            originalValues.address = $('#address').val();
+            originalValues.status = $('#status').val();
+            originalValues.role = $('#role').val();
+        }
+        
         // Loading functions
         function showLoading() {
             $('#loadingOverlay').css('display', 'flex');
-            $('body').css('overflow', 'hidden');
+            $('body').css('overflow', 'clip');
         }
         
         function hideLoading() {
@@ -613,58 +654,6 @@ input[type="password"] {
             $('body').css('overflow', 'auto');
         }
         
-        // Notification functions
-        function showSuccessNotification(message) {
-            showNotification(message, 'success');
-        }
-        
-        function showErrorNotification(message) {
-            showNotification(message, 'danger');
-        }
-        
-        function showWarningNotification(message) {
-            showNotification(message, 'warning');
-        }
-        
-        function showNotification(message, type) {
-            const notificationId = 'notification_' + Date.now();
-            const alertClasses = {
-                'success': 'alert-success',
-                'danger': 'alert-danger',
-                'warning': 'alert-warning'
-            };
-            
-            const iconClass = type === 'success' ? 'fas fa-check-circle' : 
-                            type === 'danger' ? 'fas fa-exclamation-circle' : 
-                            'fas fa-exclamation-triangle';
-            
-            const notification = `
-                <div class="alert ${alertClasses[type]} alert-dismissible fade show ajax-notification" id="${notificationId}" role="alert">
-                    <div class="d-flex align-items-center">
-                        <i class="${iconClass} me-2"></i>
-                        <div>${message}</div>
-                    </div>
-                    <button type="button" class="btn-close" onclick="hideNotification('${notificationId}')" aria-label="Close"></button>
-                </div>
-            `;
-            
-            $('body').append(notification);
-            
-            // Auto-hide after 5 seconds
-            setTimeout(() => {
-                hideNotification(notificationId);
-            }, 5000);
-        }
-        
-        function hideNotification(notificationId) {
-            const $notification = $('#' + notificationId);
-            if ($notification.length) {
-                $notification.removeClass('show').addClass('hide');
-                setTimeout(() => {
-                    $notification.remove();
-                }, 300);
-            }
-        }
         
         // Clear all validations
         function clearAllValidations() {
@@ -883,7 +872,7 @@ input[type="password"] {
             const cleanMobile = mobile.replace(/\s+/g, '');
             const sriLankanMobileRegex = /^(0|94|\+94)?[1-9][0-9]{8}$/;
             if (!sriLankanMobileRegex.test(cleanMobile)) {
-                return { valid: false, message: 'Please enter a valid Sri Lankan mobile number (e.g., 0771234567)' };
+                return { valid: false, message: 'Please enter a valid Sri Lankan mobile number' };
             }
             return { valid: true, message: '' };
         }
@@ -1016,19 +1005,6 @@ input[type="password"] {
                 { field: 'role', validator: validateRole, value: role }
             ];
 
-            //Removed tenant validation as it's now disabled/read-only
-
-            //  if ($('#tenant_id').length) {
-            //     validations.push({
-            //         field: 'tenant_id',
-            //         validator: function(val) {
-            //             if (val === '') return { valid: false, message: 'Please select a tenant' };
-            //             return { valid: true, message: '' };
-            //         },
-            //         value: tenantId
-            //     });
-            // }
-            
             validations.forEach(function(validation) {
                 const result = validation.validator(validation.value);
                 if (!result.valid) {

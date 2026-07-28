@@ -17,7 +17,7 @@ include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
 // Check if user is main admin
 $is_main_admin = $_SESSION['is_main_admin'];
-$tenent_id = $_SESSION['tenant_id'];
+$tenant_id = $_SESSION['tenant_id'];
 $is_admin = $_SESSION['role_id'];
 
 // Handle search and filter parameters
@@ -38,9 +38,6 @@ $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 10;
 $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
 $offset = ($page - 1) * $limit;
 
-//if 
-    // if ($is_main_admin == 1){
-        //A user main id =1 
         // Base SQL for counting total records with city join
         $countSql = "SELECT COUNT(*) as total FROM customers c LEFT JOIN city_table ct ON c.city_id = ct.city_id";
 
@@ -50,18 +47,6 @@ $offset = ($page - 1) * $limit;
                 FROM customers c
                 LEFT JOIN city_table ct ON c.city_id = ct.city_id
                 LEFT JOIN tenants t ON c.tenant_id = t.tenant_id";
-    // } else {
-    //     //B user main id  =0
-    //     // Base SQL for counting total records with city join
-    //     $countSql = "SELECT COUNT(*) as total FROM customers c WHERE c.tenant_id = $teanent_id LEFT JOIN city_table ct ON c.city_id = ct.city_id";
-
-    //     // Main query with city join - ADDED phone_2
-    //     $sql = "SELECT c.customer_id, c.name, c.email, c.phone, c.phone_2, c.address_line1, c.address_line2, 
-    //             c.city_id, ct.city_name, c.status, c.created_at, c.updated_at, t.company_name
-    //             FROM customers c WHERE c.tenant_id = $teanent_id
-    //             LEFT JOIN city_table ct ON c.city_id = ct.city_id
-    //             LEFT JOIN tenants t ON c.tenant_id = t.tenant_id";
-    // }
 
 // Build search conditions
 $searchConditions = [];
@@ -137,7 +122,7 @@ if (!empty($tenant_id_filter)) {
 // Apply tenant restrictions for non-main admins or main admins who are not super admins (role_id 1)
 if (!($is_main_admin == 1 && $is_admin == 1)) {
     // Ensure we filter by tenant ID
-    $searchConditions[] = "c.tenant_id = '$tenent_id'";
+    $searchConditions[] = "c.tenant_id = '$tenant_id'";
 }
 
 // Apply all search conditions
@@ -270,7 +255,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
 
                         <?php if ($is_main_admin == 1 && $is_admin == 1) { ?>
                         <div class="form-group">
-                            <label for="tenant_id_filter">TENENT</label>
+                            <label for="tenant_id_filter">Tenant</label>
                             <select id="tenant_id_filter" name="tenant_id_filter">
                                 <option value="">All Companies</option>
                                 <?php foreach ($tenants as $tenant): ?>
@@ -282,7 +267,6 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                             </select>
                         </div>
                         <?php } else { ?>
-                                <!--<input type="hidden" name="teanetID" value="0">-->
                                 <?php } ?>
 
                         <div class="form-group">
@@ -320,7 +304,6 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                 <?php if ($is_main_admin == 1 && $is_admin == 1) { ?>
                                 <th>Tenant Company</th>
                                 <?php } else { ?>
-                                <!--<input type="hidden" name="teanetID" value="0">-->
                                 <?php } ?>
                                 <th>Status</th>
                                 <th>Actions</th>
@@ -379,7 +362,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                     </div>
                                 </td>
 
-                                <!-- Teanaent Company Name -->
+                                <!-- Tenant Company Name -->
                                 <?php if ($is_main_admin == 1 && $is_admin == 1) { ?>
                                 <td class="customer-name">
                                     <div class="customer-info">
@@ -388,7 +371,6 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                     </div>
                                 </td>
                                 <?php } else { ?>
-                                <!--<input type="hidden" name="teanetID" value="0">-->
                                 <?php } ?>
 
                                 <!-- Status Badge -->
@@ -542,32 +524,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
         </div>
     </div>
 
-    <!-- Status Confirmation Modal -->
-    <div id="statusConfirmationModal" class="modal confirmation-modal">
-        <div class="modal-content confirmation-modal-content">
-            <div class="modal-header">
-                <h4>Are you sure?</h4>
-                <span class="close" onclick="closeConfirmationModal()">&times;</span>
-            </div>
-            <div class="modal-body">
-                <div class="confirmation-icon">
-                    <i class="ti ti-alert-triangle"></i>
-                </div>
-                <div class="confirmation-text">
-                    You are about to <span class="action-highlight" id="action-text"></span> user:
-                </div>
-                <div class="confirmation-text">
-                    <span class="user-name-highlight" id="confirm-user-name"></span>
-                </div>
-                <div class="modal-buttons">
-                    <button class="btn-confirm" id="confirmActionBtn">
-                        <span id="confirm-button-text">Yes, deactivate user!</span>
-                    </button>
-                    <button class="btn-cancel" onclick="closeConfirmationModal()">Cancel</button>
-                </div>
-            </div>
-        </div>
-    </div>
+
 
     <!-- Footer -->
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php'); ?>
@@ -672,93 +629,73 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
         window.location.href = 'edit_customer.php?id=' + customerId;
     }
 
-    function closeConfirmationModal() {
-        document.getElementById('statusConfirmationModal').style.display = 'none';
-    }
-
     // Toggle Customer Status Functionality
     document.addEventListener('DOMContentLoaded', function() {
-        // Add event listeners for toggle status buttons
         const toggleButtons = document.querySelectorAll('.toggle-status-btn');
         toggleButtons.forEach(button => {
             button.addEventListener('click', function() {
-                openStatusConfirmationModal(this);
+                toggleCustomerStatus(this);
             });
         });
-
-        // Close modal when clicking outside
-        window.onclick = function(event) {
-            const customerModal = document.getElementById('customerDetailsModal');
-            const statusModal = document.getElementById('statusConfirmationModal');
-
-            if (event.target === customerModal) {
-                closeCustomerModal();
-            }
-            if (event.target === statusModal) {
-                closeConfirmationModal();
-            }
-        }
     });
 
-    function openStatusConfirmationModal(button) {
+    function toggleCustomerStatus(button) {
         const customerId = button.getAttribute('data-customer-id');
         const customerName = button.getAttribute('data-customer-name');
         const currentStatus = button.getAttribute('data-current-status');
-
-        // Determine action based on current status
+        
         const isActive = currentStatus.toLowerCase() === 'active';
-        const actionText = isActive ? 'deactivate' : 'activate';
-        const buttonText = isActive ? 'Yes, deactivate user!' : 'Yes, activate user!';
-
-        // Update modal content
-        document.getElementById('action-text').textContent = actionText;
-        document.getElementById('confirm-user-name').textContent = customerName;
-        document.getElementById('confirm-button-text').textContent = buttonText;
-
-        // Store data for confirmation
-        const confirmBtn = document.getElementById('confirmActionBtn');
-        confirmBtn.setAttribute('data-customer-id', customerId);
-        confirmBtn.setAttribute('data-new-status', isActive ? 'Inactive' : 'Active');
-
-        // Add click handler to confirm button
-        confirmBtn.onclick = function() {
-            toggleCustomerStatus(customerId, isActive ? 'Inactive' : 'Active');
-        };
-
-        // Show modal
-        document.getElementById('statusConfirmationModal').style.display = 'block';
-    }
-
-    function toggleCustomerStatus(customerId, newStatus) {
-        fetch('toggle_customer_status.php', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    customer_id: customerId,
-                    new_status: newStatus
+        const newStatus = isActive ? 'Inactive' : 'Active';
+        
+        Swal.fire({
+            title: 'Are you sure?',
+            text: `You are about to ${isActive ? 'Deactivate' : 'Activate'} Customer: ${customerName}`,
+            icon: 'warning',
+            showCancelButton: true,
+            customClass: {
+                confirmButton: isActive ? 'swal-danger' : 'swal-success'
+            },
+            confirmButtonText: isActive ? 'Yes, Deactivate it!' : 'Yes, Activate it!',
+            cancelButtonText: 'Cancel',
+            reverseButtons: true
+        }).then((result) => {
+            if (result.isConfirmed) {
+                fetch('toggle_customer_status.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        customer_id: customerId,
+                        new_status: newStatus
+                    })
                 })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    // Close confirmation modal
-                    closeConfirmationModal();
-
-                    // Show success message
-                    alert('Customer status updated successfully!');
-
-                    // Reload page to reflect changes
-                    location.reload();
-                } else {
-                    alert('Error updating customer status: ' + data.message);
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                alert('An error occurred while updating the customer status.');
-            });
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        Swal.fire({
+                            icon: 'success',
+                            title: 'Updated!',
+                            text: `Customer has been ${isActive ? 'deactivated' : 'activated'} successfully.`,
+                            showConfirmButton: false,
+                            timer: 1500
+                        }).then(() => location.reload());
+                    } else {
+                        Swal.fire({
+                            icon: 'error',
+                            title: 'Error!',
+                            text: data.message || 'Failed to update customer status.'
+                        });
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Error!',
+                        text: 'An error occurred while updating the customer status.'
+                    });
+                });
+            }
+        });
     }
 
     // Date range filter validation
@@ -797,27 +734,6 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
         };
     }
 
-    // Enhanced search with debouncing
-    // let searchTimeout;
-
-    // function debounceSearch(func, delay) {
-    //     return function(...args) {
-    //         clearTimeout(searchTimeout);
-    //         searchTimeout = setTimeout(() => func.apply(this, args), delay);
-    //     };
-    // }
-
-    // // Auto-submit search form with debouncing
-    // document.addEventListener('DOMContentLoaded', function() {
-    //     const searchInputs = document.querySelectorAll('#customer_name_filter, #email_filter, #phone_filter');
-    //     const debouncedSubmit = debounceSearch(function() {
-    //         document.querySelector('.tracking-form').submit();
-    //     }, 500);
-
-    //     searchInputs.forEach(input => {
-    //         input.addEventListener('input', debouncedSubmit);
-    //     });
-    // });
     </script>
 
 

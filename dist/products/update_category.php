@@ -54,6 +54,16 @@ try {
     }
     $dup->close();
 
+    // Check for actual changes before updating
+    $hasChanges = false;
+    if ($originalData['name'] !== $name) $hasChanges = true;
+    if ($originalData['parent_id'] != $parent_id_val) $hasChanges = true;
+
+    if (!$hasChanges) {
+        echo json_encode(['success' => true, 'message' => 'No changes were made to the category.']);
+        exit();
+    }
+
     // Update
     $stmt = $conn->prepare("UPDATE categories SET name = ?, parent_id = ? WHERE id = ?");
     $stmt->bind_param("sii", $name, $parent_id_val, $category_id);
@@ -67,8 +77,8 @@ try {
             if ($originalData['parent_id'] != $parent_id_val) $changes[] = "Parent ID: " . ($originalData['parent_id'] ?? 'NULL') . " to " . ($parent_id_val ?? 'NULL');
             
             $details = "Updated category ID $category_id: " . implode(', ', $changes);
-            $log = $conn->prepare("INSERT INTO user_logs (user_id, action_type, details) VALUES (?, 'category_update', ?)");
-            $log->bind_param("is", $user_id, $details);
+            $log = $conn->prepare("INSERT INTO user_logs (user_id, action_type, inquiry_id, details) VALUES (?, 'category_update', ?, ?)");
+            $log->bind_param("iis", $user_id, $category_id, $details);
             $log->execute();
             $log->close();
         }

@@ -36,53 +36,10 @@ class RoleBasedAccessControl {
     }
     
     /**
-     * Get role-based user filter condition for search
-     */
-    public function getUserFilterCondition($user_id_filter, $table_alias = 'i') {
-        if (empty($user_id_filter)) {
-            return "";
-        }
-        
-        $userIdTerm = $this->conn->real_escape_string($user_id_filter);
-        
-        if ($this->isAdmin()) {
-            // Admin can filter by any user
-            return "{$table_alias}.user_id = '$userIdTerm'";
-        } else {
-            // Non-admin can only filter by their own user ID
-            if ($userIdTerm == $this->current_user_id) {
-                return "{$table_alias}.user_id = '$userIdTerm'";
-            }
-        }
-        return "";
-    }
-    
-    /**
-     * Get users query based on role
-     */
-    /**
-     * Get users query based on role
-     */
-    public function getUsersQuery() {
-        if ($this->isAdmin()) {
-            if ($this->is_main_admin == 1) {
-                 // Main Admin sees ALL users
-                 return "SELECT id, name FROM users ORDER BY name ASC";
-            } else {
-                 // Regular Admin sees users in their TENANT
-                 return "SELECT id, name FROM users WHERE tenant_id = {$this->tenant_id} ORDER BY name ASC";
-            }
-        } else {
-            // Regular user sees ONLY THEMSELVES
-            return "SELECT id, name FROM users WHERE id = {$this->current_user_id} ORDER BY name ASC";
-        }
-    }
-    
-    /**
      * Get table colspan based on role (for empty state)
      */
     public function getTableColspan() {
-        return $this->isAdmin() ? '7' : '6';
+        return '6';
     }
     
     /**
@@ -101,13 +58,6 @@ class RoleBasedAccessControl {
      */
     public function getOrderCountSubtitle() {
         return $this->isAdmin() ? 'Total Cancel Orders' : ' Total Orders';
-    }
-    
-    /**
-     * Check if user column should be displayed
-     */
-    public function shouldShowUserColumn() {
-        return $this->isAdmin();
     }
 }
 
@@ -136,8 +86,8 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
 include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
 // Check if user is main admin
-$is_main_admin = $_SESSION['is_main_admin'];
-$teanent_id = $_SESSION['tenant_id'];
+$is_main_admin = $_SESSION['is_main_admin'] ?? 0;
+$tenant_id = $_SESSION['tenant_id'] ?? 0;
 
 // Get current user's role information
 $current_user_id = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
@@ -176,7 +126,7 @@ if ($current_user_id == 0) {
 }
 
 // Initialize RBAC helper - CENTRALIZED CONTROL
-$rbac = new RoleBasedAccessControl($conn, $current_user_id, $current_user_role, $is_main_admin, $teanent_id);
+$rbac = new RoleBasedAccessControl($conn, $current_user_id, $current_user_role, $is_main_admin, $tenant_id);
 
 /**
  * SEARCH AND PAGINATION PARAMETERS
@@ -184,7 +134,6 @@ $rbac = new RoleBasedAccessControl($conn, $current_user_id, $current_user_role, 
 $search = isset($_GET['search']) ? trim($_GET['search']) : '';
 $order_id_filter = isset($_GET['order_id_filter']) ? trim($_GET['order_id_filter']) : '';
 $customer_name_filter = isset($_GET['customer_name_filter']) ? trim($_GET['customer_name_filter']) : '';
-$user_id_filter = isset($_GET['user_id_filter']) ? trim($_GET['user_id_filter']) : '';
 $date_from = isset($_GET['date_from']) ? trim($_GET['date_from']) : '';
 $date_to = isset($_GET['date_to']) ? trim($_GET['date_to']) : '';
 $pay_status_filter = isset($_GET['pay_status_filter']) ? trim($_GET['pay_status_filter']) : '';
@@ -241,7 +190,7 @@ if ($is_main_admin == 1){
 } else {
 
     // Add ordering and pagination
-    $sql .= "  AND i.tenant_id = $teanent_id";
+    $sql .= "  AND i.tenant_id = $tenant_id";
 }
 
 // Build search conditions
@@ -271,12 +220,6 @@ if (!empty($order_id_filter)) {
 if (!empty($customer_name_filter)) {
     $customerNameTerm = $conn->real_escape_string($customer_name_filter);
     $searchConditions[] = "i.full_name LIKE '%$customerNameTerm%'";
-}
-
-// Specific User ID filter - SIMPLIFIED WITH RBAC
-$userFilterCondition = $rbac->getUserFilterCondition($user_id_filter);
-if (!empty($userFilterCondition)) {
-    $searchConditions[] = $userFilterCondition;
 }
 
 // Date range filter
@@ -324,10 +267,6 @@ if ($countResult && $countResult->num_rows > 0) {
 $totalPages = ceil($totalRows / $limit);
 $result = $conn->query($sql);
 
-// Fetch users for the User ID dropdown - SIMPLIFIED WITH RBAC
-$usersQuery = $rbac->getUsersQuery();
-$usersResult = $conn->query($usersQuery);
-
 // Include navigation components
 
 
@@ -351,6 +290,22 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
     <link rel="stylesheet" href="../assets/css/style.css" id="main-style-link" />
     <link rel="stylesheet" href="../assets/css/orders.css" id="main-style-link" />
     <style>
+    .issued-time {
+    font-size: 0.9em;
+    color: #333;
+    line-height: 1.2;
+}
+
+.issued-date {
+    display: block;
+    font-weight: 600;
+}
+
+.issued-time-only {
+    display: block;
+    color: #666;
+    font-size: 0.85em;
+}
     .print-btn {
         background-color: #28a745;
         color: white;
@@ -438,6 +393,37 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                 </div>
             </div>
 
+            <!-- Session Alerts Container (toasts shown via JS after toastManager initializes) -->
+            <?php
+            $sessionAlerts = [];
+            if (isset($_SESSION['order_success'])) {
+                $sessionAlerts[] = ['type' => 'success', 'message' => $_SESSION['order_success']];
+                unset($_SESSION['order_success']);
+            }
+            if (isset($_SESSION['order_error'])) {
+                $sessionAlerts[] = ['type' => 'error', 'message' => $_SESSION['order_error']];
+                unset($_SESSION['order_error']);
+            }
+            if (isset($_SESSION['order_warning'])) {
+                $sessionAlerts[] = ['type' => 'warning', 'message' => $_SESSION['order_warning']];
+                unset($_SESSION['order_warning']);
+            }
+            if (isset($_SESSION['order_info'])) {
+                $sessionAlerts[] = ['type' => 'info', 'message' => $_SESSION['order_info']];
+                unset($_SESSION['order_info']);
+            }
+            ?>
+            <script>
+                document.addEventListener('DOMContentLoaded', function() {
+                    var sessionAlerts = <?php echo json_encode($sessionAlerts); ?>;
+                    sessionAlerts.forEach(function(alert) {
+                        if (typeof toastManager !== 'undefined') {
+                            toastManager[alert.type](alert.message);
+                        }
+                    });
+                });
+            </script>
+
             <div class="main-content-wrapper">
 
                 <!-- Order Tracking and Filter Section -->
@@ -455,24 +441,6 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                 placeholder="Enter customer name"
                                 value="<?php echo htmlspecialchars($customer_name_filter); ?>">
                         </div>
-
-                        <!-- User ID Filter - SIMPLIFIED CONDITION -->
-                        <?php if ($rbac->shouldShowUserColumn()): ?>
-                        <div class="form-group">
-                            <label for="user_id_filter">User</label>
-                            <select id="user_id_filter" name="user_id_filter">
-                                <option value="">All Users</option>
-                                <?php if ($usersResult && $usersResult->num_rows > 0): ?>
-                                <?php while ($userRow = $usersResult->fetch_assoc()): ?>
-                                <option value="<?php echo htmlspecialchars($userRow['id']); ?>"
-                                    <?php echo ($user_id_filter == $userRow['id']) ? 'selected' : ''; ?>>
-                                    <?php echo htmlspecialchars($userRow['name']) . ' (ID: ' . $userRow['id'] . ')'; ?>
-                                </option>
-                                <?php endwhile; ?>
-                                <?php endif; ?>
-                            </select>
-                        </div>
-                        <?php endif; ?>
 
                         <div class="form-group">
                             <label for="date_from">Date From</label>
@@ -511,7 +479,6 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                             </select>
                         </div>
                         <?php } else { ?>
-                        <!--<input type="hidden" name="teanetID" value="0">-->
                         <?php } ?>
 
                         <div class="form-group">
@@ -545,18 +512,14 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                         <thead>
                             <tr>
                                 <th>Order ID</th>
+                                <th>Issue Date</th>
                                 <th>Customer Name</th>
                                 <?php if ($is_main_admin == 1) { ?>
                                 <th>Tenant Company</th>
                                 <?php } else { ?>
-                                <!--<input type="hidden" name="teanetID" value="0">-->
-                                <?php } ?>
-                                <th>Issue Date - Due Date</th>
+                                        <?php } ?>
                                 <th>Total Amount</th>
-                                <th>Pay Status</th>
-                                <?php if ($rbac->shouldShowUserColumn()): ?>
-                                <th>User</th>
-                                <?php endif; ?>
+                                <th>Cancellation Reason</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
@@ -567,7 +530,21 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                 <!-- Order ID -->
                                 <td class="order-id">
                                     <?php echo isset($row['order_id']) ? htmlspecialchars($row['order_id']) : ''; ?>
+                                    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/leads_badge.php'); ?>
                                 </td>
+
+                                <!-- NEW: Issue Date Column -->
+                                        <td class="issued-time">
+                                            <?php
+                                            if (isset($row['created_at']) && !empty($row['created_at'])) {
+                                                $createdAt = new DateTime($row['created_at']);
+                                                echo '<span class="issued-date">' . $createdAt->format('Y-m-d') . '</span>';
+                                                echo '<span class="issued-time-only">' . $createdAt->format('H:i:s') . '</span>';
+                                            } else {
+                                                echo '<span style="color: #999; font-style: italic;">N/A</span>';
+                                            }
+                                            ?>
+                                        </td>
 
                                 <!-- FIXED: Customer Name with ID - now using full_name from order_header -->
                                 <td class="customer-name">
@@ -578,7 +555,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                             ?>
                                 </td>
 
-                                <!-- Teanaent Company Name -->
+                                <!-- Tenant Company Name -->
                                 <?php if ($is_main_admin == 1) { ?>
                                 <td class="customer-name">
                                     <div class="customer-info">
@@ -587,21 +564,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                     </div>
                                 </td>
                                 <?php } else { ?>
-                                <!--<input type="hidden" name="teanetID" value="0">-->
-                                <?php } ?>
-
-                                <!-- Issue Date - Due Date -->
-                                <td class="date-range">
-                                    <?php
-                                            $issueDate = isset($row['issue_date']) ? date('Y-m-d', strtotime($row['issue_date'])) : 'N/A';
-                                            $dueDate = isset($row['due_date']) ? date('Y-m-d', strtotime($row['due_date'])) : 'N/A';
-                                            echo "<div class='date-container'>";
-                                            echo "<span class='issue-date'>" . $issueDate . "</span>";
-                                            echo "<span class='date-separator'> - </span>";
-                                            echo "<span class='due-date'>" . $dueDate . "</span>";
-                                            echo "</div>";
-                                            ?>
-                                </td>
+                                        <?php } ?>
 
                                 <!-- Total Amount with Currency -->
                                 <td class="amount">
@@ -610,44 +573,28 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                             $currency = isset($row['currency']) ? $row['currency'] : 'lkr';
                                             $currencySymbol = ($currency == 'usd') ? '$' : 'Rs';
                                             echo $currencySymbol . number_format($amount, 2);
-                                            ?>
-                                </td>
 
-                                <!-- Payment Status Badge -->
-                                <td>
-                                    <?php
                                             $payStatus = isset($row['pay_status']) ? $row['pay_status'] : 'unpaid';
                                             if ($payStatus == 'paid'): ?>
-                                    <span class="status-badge pay-status-paid">Paid</span>
-                                    <?php elseif ($payStatus == 'partial'): ?>
-                                    <span class="status-badge pay-status-partial">Partial</span>
-                                    <?php else: ?>
-                                    <span class="status-badge pay-status-unpaid">Unpaid</span>
-                                    <?php endif; ?>
+                                                <br><span class="status-badge pay-status-paid">Paid</span>
+                                            <?php elseif ($payStatus == 'partial'): ?>
+                                                <br><span class="status-badge pay-status-partial">Partial</span>
+                                            <?php else: ?>
+                                                <br><span class="status-badge pay-status-unpaid">Unpaid</span>
+                                            <?php endif; ?>
                                 </td>
 
-                                <!-- User Column - SIMPLIFIED CONDITION -->
-                                <?php if ($rbac->shouldShowUserColumn()): ?>
+                                <!-- Cancellation Reason -->
                                 <td>
                                     <?php
-                                                $userName = isset($row['user_name']) ? htmlspecialchars($row['user_name']) : 'N/A';
-                                                $interface = isset($row['interface']) ? $row['interface'] : '';
-                                                $userId = isset($row['user_id']) ? htmlspecialchars($row['user_id']) : '';
-                                                
-                                                echo $userName;
-                                                
-                                                // Display user ID in small text
-                                                if ($userId) {
-                                                    echo "<br><span style='color: #666; font-size: 0.8em;'>ID: $userId</span>";
-                                                }
-                                                
-                                                // Display (leads) if interface is 'leads'
-                                                if ($interface == 'leads') {
-                                                    echo "<br><span style='color: #666; font-size: 0.9em;'>(leads)</span>";
-                                                }
-                                                ?>
+                                    $reason = isset($row['cancellation_reason']) ? htmlspecialchars($row['cancellation_reason']) : '-';
+                                    if ($reason === '-') {
+                                        echo '<span style="color: #999; font-style: italic;">-</span>';
+                                    } else {
+                                        echo $reason;
+                                    }
+                                    ?>
                                 </td>
-                                <?php endif; ?>
 
                                 <!-- Action Buttons -->
                                 <td class="actions">
@@ -694,21 +641,21 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                     <div class="pagination-controls">
                         <?php if ($page > 1): ?>
                         <button class="page-btn"
-                            onclick="window.location.href='?page=<?php echo $page - 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&user_id_filter=<?php echo urlencode($user_id_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&search=<?php echo urlencode($search); ?>'">
+                            onclick="window.location.href='?page=<?php echo $page - 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&search=<?php echo urlencode($search); ?>'">
                             <i class="fas fa-chevron-left"></i>
                         </button>
                         <?php endif; ?>
 
                         <?php for ($i = max(1, $page - 2); $i <= min($totalPages, $page + 2); $i++): ?>
                         <button class="page-btn <?php echo ($i == $page) ? 'active' : ''; ?>"
-                            onclick="window.location.href='?page=<?php echo $i; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&user_id_filter=<?php echo urlencode($user_id_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&search=<?php echo urlencode($search); ?>'">
+                            onclick="window.location.href='?page=<?php echo $i; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&search=<?php echo urlencode($search); ?>'">
                             <?php echo $i; ?>
                         </button>
                         <?php endfor; ?>
 
                         <?php if ($page < $totalPages): ?>
                         <button class="page-btn"
-                            onclick="window.location.href='?page=<?php echo $page + 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&user_id_filter=<?php echo urlencode($user_id_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&search=<?php echo urlencode($search); ?>'">
+                            onclick="window.location.href='?page=<?php echo $page + 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&search=<?php echo urlencode($search); ?>'">
                             <i class="fas fa-chevron-right"></i>
                         </button>
                         <?php endif; ?>
@@ -721,6 +668,10 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
     <!-- Include MODAL for View Order -->
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/order_view_modal.php'); ?>
 
+    <!-- Include Footer and Scripts (toast.js loads here) -->
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php'); ?>
+
     <script>
     /**
      * JavaScript functionality for cancel order management
@@ -731,6 +682,10 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
     let currentInterface = null;
     let currentPaymentSlip = null;
     let currentPayStatus = null;
+
+    function showAlert(type, message) {
+        toastManager[type](message);
+    }
 
     // Simplified role variables from PHP
     const currentUserRole = <?php echo $current_user_role; ?>;
@@ -745,22 +700,13 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
         document.getElementById('date_to').value = '';
         document.getElementById('pay_status_filter').value = '';
 
-        // Only clear user_id_filter for admin users (if it exists) - SIMPLIFIED
-        if (isAdmin) {
-            const userIdFilter = document.getElementById('user_id_filter');
-            if (userIdFilter) {
-                userIdFilter.value = '';
-            }
-        }
-
-        // Submit the form to clear filters
         window.location.href = window.location.pathname;
     }
 
     // Enhanced openOrderModal function
     function openOrderModal(orderId, interface = null) {
         if (!orderId || orderId.trim() === '') {
-            alert('Order ID is required to view order details.');
+            toastManager.warning('Order ID is required to view order details.');
             return;
         }
 
@@ -776,7 +722,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
 
         // Show modal
         modal.style.display = 'flex';
-        document.body.style.overflow = 'hidden';
+        document.body.style.overflow = 'clip';
 
         // Show loading state
         modalContent.innerHTML = `
@@ -789,7 +735,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
         viewPaymentSlipBtn.style.display = 'none';
 
         // Determine which PHP file to use based on interface
-        const phpFile = (interface === 'leads') ? '../leads/leads_download.php' : 'download_order_page.php';
+        const phpFile = 'download_order_page.php';
         const fetchUrl = phpFile + '?id=' + encodeURIComponent(currentOrderId);
 
         console.log('Fetching from:', fetchUrl);
@@ -857,9 +803,19 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
 
                     // Show button for all paid orders, regardless of slip availability
                     if (currentPayStatus === 'paid') {
-                        viewPaymentSlipBtn.style.display = 'inline-flex';
+                        if (currentPaymentSlip && currentPaymentSlip.trim() !== '') {
+                            viewPaymentSlipBtn.style.display = 'inline-flex';
+                            const noSlipMsg = document.getElementById('noPaymentSlipMsg');
+                            if (noSlipMsg) noSlipMsg.style.display = 'none';
+                        } else {
+                            viewPaymentSlipBtn.style.display = 'none';
+                            const noSlipMsg = document.getElementById('noPaymentSlipMsg');
+                            if (noSlipMsg) noSlipMsg.style.display = 'inline-flex';
+                        }
                     } else {
                         viewPaymentSlipBtn.style.display = 'none';
+                        const noSlipMsg = document.getElementById('noPaymentSlipMsg');
+                        if (noSlipMsg) noSlipMsg.style.display = 'none';
                     }
                 } else {
                     console.log('No payment slip information available');
@@ -872,16 +828,15 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
 
     // Function to view payment slip with no-slip message
     function viewPaymentSlip() {
-        // Check if payment slip exists
         if (!currentPaymentSlip || currentPaymentSlip.trim() === '') {
-            alert('This order has no payment slip.');
+            const slipBtn = document.getElementById('viewPaymentSlipBtn');
+            const noSlipMsg = document.getElementById('noPaymentSlipMsg');
+            if (slipBtn) slipBtn.style.display = 'none';
+            if (noSlipMsg) noSlipMsg.style.display = 'inline-flex';
             return;
         }
 
-        // Construct the payment slip URL
         const slipUrl = '/OMS/dist/uploads/payment_slips/' + encodeURIComponent(currentPaymentSlip);
-
-        // Open payment slip in new tab
         window.open(slipUrl, '_blank');
     }
 
@@ -896,7 +851,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
     function closeOrderModal() {
         const modal = document.getElementById('orderModal');
         modal.style.display = 'none';
-        document.body.style.overflow = 'auto';
+        document.body.style.overflow = '';
         currentOrderId = null;
         currentInterface = null;
         currentPaymentSlip = null;
@@ -906,11 +861,11 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
     // Download order 
     function downloadOrder() {
         if (!currentOrderId) {
-            alert('No order selected for download.');
+            toastManager.warning('No order selected for download.');
             return;
         }
 
-        const phpFile = (currentInterface === 'leads') ? '../leads/leads_download.php' : 'download_order.php';
+        const phpFile = 'download_order.php';
         const downloadUrl = phpFile + '?id=' + encodeURIComponent(currentOrderId) + '&download=1';
 
         console.log('Downloading from:', downloadUrl);
@@ -953,7 +908,6 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
             console.error('Modal elements not found! Check HTML structure.');
         }
 
-        // Simplified role-based access info
         if (!isAdmin) {
             console.log('Non-admin user: Can only view own orders');
         } else {
@@ -964,67 +918,16 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
     // Print order function
     function printOrder(orderId) {
         if (!orderId || orderId.trim() === '') {
-            alert('Order ID is required to print order.');
+            toastManager.warning('Order ID is required to print order.');
             return;
         }
 
         console.log('Printing Order ID:', orderId);
-
-        // Construct the print URL
         const printUrl = 'download_order_print.php?id=' + encodeURIComponent(orderId.trim());
-
-        // Open print page in new window
         const printWindow = window.open(printUrl, '_blank');
-
-        // Optional: Auto-print when page loads (uncomment if needed)
-        // printWindow.onload = function() {
-        //     printWindow.print();
-        // };
     }
 
-    // Restore order function
-    function restoreOrder(orderId) {
-        if (!orderId || orderId.trim() === '') {
-            alert('Order ID is required to restore order.');
-            return;
-        }
-
-        // Confirm before restoring
-        if (!confirm('Are you sure you want to restore this order?\nOrder ID: ' + orderId)) {
-            return;
-        }
-
-        console.log('Restoring Order ID:', orderId);
-
-        // Create form data
-        const formData = new FormData();
-        formData.append('order_id', orderId.trim());
-
-        // Send restore request
-        fetch('restore_order.php', {
-            method: 'POST',
-            body: formData
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                alert('Order restored successfully!\nOrder ID: ' + data.order_id);
-                // Reload the page to show updated list
-                window.location.reload();
-            } else {
-                alert('Error restoring order: ' + data.message);
-            }
-        })
-        .catch(error => {
-            console.error('Error restoring order:', error);
-            alert('Error restoring order. Please try again.');
-        });
-    }
     </script>
-
-    <!-- Include Footer and Scripts -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php'); ?>
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php'); ?>
 
 </body>
 

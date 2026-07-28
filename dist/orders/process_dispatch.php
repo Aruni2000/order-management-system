@@ -100,7 +100,7 @@ try {
                         FROM tracking
                         WHERE tenant_id = ?
                         AND status = 'unused' 
-                        ORDER BY created_at ASC 
+                        ORDER BY id ASC 
                         LIMIT 1 FOR UPDATE";
         $tracking_stmt = $conn->prepare($tracking_sql);
         $tracking_stmt->bind_param("i", $order_tenant_id);

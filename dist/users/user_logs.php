@@ -351,7 +351,6 @@ function formatLogDetails($details) {
                                 <th>Inquiry ID</th>
                                 <th>Details</th>
                                 <th>Date & Time</th>
-                                <th>Actions</th>
                             </tr>
                         </thead>
                         <tbody id="userLogsTableBody">
@@ -360,8 +359,8 @@ function formatLogDetails($details) {
                                     <tr>
                                         <!-- Log ID -->
                                         <td>
-                                            <div style="font-weight: 600; color: #007bff;">
-                                                #<?php echo htmlspecialchars($row['log_id']); ?>
+                                            <div>
+                                                <?php echo htmlspecialchars($row['log_id']); ?>
                                             </div>
                                         </td>
                                         
@@ -438,26 +437,6 @@ function formatLogDetails($details) {
                                             <div style="font-size: 12px; line-height: 1.4;">
                                                 <div style="font-weight: 500;"><?php echo date('M d, Y', strtotime($row['created_at'])); ?></div>
                                                 <div style="color: #6c757d;"><?php echo date('h:i:s A', strtotime($row['created_at'])); ?></div>
-                                            </div>
-                                        </td>
-                                        
-                                        <!-- Action Buttons -->
-                                        <td class="actions">
-                                            <div class="action-buttons-group">
-                                                <button type="button" class="action-btn view-btn view-log-btn"
-                                                        data-log-id="<?= $row['log_id'] ?>"
-                                                        data-user-id="<?= $row['user_id'] ?>"
-                                                        data-username="<?= htmlspecialchars($row['username'] ?: 'Unknown User') ?>"
-                                                        data-user-email="<?= htmlspecialchars($row['user_email'] ?: '') ?>"
-                                                        data-action-type="<?= htmlspecialchars($row['action_type']) ?>"
-                                                        data-inquiry-id="<?= htmlspecialchars($row['inquiry_id'] ?: '') ?>"
-                                                        data-details="<?= htmlspecialchars($row['details'] ?: '') ?>"
-                                                        data-created-at="<?= htmlspecialchars($row['created_at']) ?>"
-                                                        title="View Log Details">
-                                                    <i class="fas fa-eye"></i>
-                                                </button>
-                                                
-                                             
                                             </div>
                                         </td>
                                     </tr>
@@ -558,10 +537,6 @@ function formatLogDetails($details) {
 
     <script>
 // Complete JavaScript code for user logs page
-
-function clearFilters() {
-    window.location.href = 'user_logs.php';
-}
 
 // Log Details Modal Functions
 function openLogModal(button) {

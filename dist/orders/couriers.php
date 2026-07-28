@@ -36,6 +36,13 @@ $is_main_admin = isset($_SESSION['is_main_admin']) ? (int)$_SESSION['is_main_adm
 $role_id = isset($_SESSION['role_id']) ? (int)$_SESSION['role_id'] : 0;
 $tenant_id = isset($_SESSION['tenant_id']) ? intval($_SESSION['tenant_id']) : 0;
 
+// Page-level access: Allow Main Admin, Company Admin (role_id=1), and Moderators (role_id=3)
+if ($role_id !== 1 && $role_id !== 3) {
+    if (ob_get_level()) ob_end_clean();
+    header("Location: /OMS/dist/dashboard/index.php");
+    exit();
+}
+
 // Determine access filter based on user permissions
 $accessFilter = "";
 
@@ -142,7 +149,7 @@ function getStatusInfo($is_default) {
         case 0:
             return ['label' => 'None', 'class' => 'status-none', 'icon' => 'fas fa-circle'];
         case 1:
-            return ['label' => 'Default Courier', 'class' => 'status-default', 'icon' => 'fas fa-star'];
+            return ['label' => 'Default Courier', 'class' => 'status-default-courier', 'icon' => 'fas fa-star'];
         case 2:
             return ['label' => 'API Parcel Courier', 'class' => 'status-api', 'icon' => 'fas fa-code'];
         case 3:
@@ -165,7 +172,7 @@ function getStatusInfo($is_default) {
     <link rel="stylesheet" href="../assets/css/style.css" id="main-style-link" />
     <link rel="stylesheet" href="../assets/css/orders.css" id="main-style-link" />
     <link rel="stylesheet" href="../assets/css/customers.css" id="main-style-link" />
-    <link rel="stylesheet" href="../assets/css/message.css" id="main-style-link" />
+    <link rel="stylesheet" href="../assets/css/status-badge-colors.css" />
     <style>
         .tenant-info {
             font-weight: 600;
@@ -177,6 +184,24 @@ function getStatusInfo($is_default) {
             color: #495057;
             font-size: 14px;
             text-align: center;
+        }
+
+        /* Waybills modal error alert */
+        .waybills-error-alert {
+            display: none;
+            width: 100%;
+            padding: 12px 16px;
+            margin-bottom: 16px;
+            border-radius: 6px;
+            background: #fef2f2;
+            border: 1px solid #fecaca;
+            color: #991b1b;
+            font-size: 13px;
+            line-height: 1.5;
+            box-sizing: border-box;
+        }
+        .waybills-error-alert strong {
+            font-weight: 600;
         }
     </style>
 </head>
@@ -263,7 +288,7 @@ function getStatusInfo($is_default) {
                         <thead>
                             <tr>
                                 <th>ID</th>
-                                <th>User Info</th>
+                                <th>Courier Name</th>
                                 <?php if ($is_main_admin === 1 && $role_id === 1): ?>
                                     <th>Tenant</th>
                                 <?php endif; ?>
@@ -700,36 +725,7 @@ function getStatusInfo($is_default) {
         </div>
     </div>
 
-    <!-- Status Change Confirmation Modal -->
-    <div id="statusChangeModal" class="modal confirmation-modal">
-        <div class="modal-content confirmation-modal-content">
-            <div class="modal-header">
-                <h4>Change Courier Status</h4>
-                <span class="close" onclick="closeModal('statusChangeModal')">&times;</span>
-            </div>
-            <div class="modal-body">
-                <div class="confirmation-icon">
-                    <i class="fas fa-exchange-alt" style="color: #007bff;"></i>
-                </div>
-                <div class="confirmation-text">
-                    Are you sure you want to change the status for:
-                </div>
-                <div class="confirmation-text">
-                    <span class="user-name-highlight" id="change-status-courier-name"></span>
-                </div>
-                <div class="confirmation-text">
-                    From: <span id="current-status-text" class="status-highlight"></span><br>
-                    To: <span id="new-status-text" class="status-highlight"></span>
-                </div>
-                <div class="modal-buttons">
-                    <button class="btn-confirm" id="confirmStatusChangeBtn">
-                        <span>Yes, change status!</span>
-                    </button>
-                    <button class="btn-cancel" onclick="closeModal('statusChangeModal')">Cancel</button>
-                </div>
-            </div>
-        </div>
-    </div>
+
 
     <!-- Footer -->
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php'); ?>
@@ -738,142 +734,6 @@ function getStatusInfo($is_default) {
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php'); ?>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
     <script>
-        // Toast Message System
-        class ToastManager {
-            constructor() {
-                this.createContainer();
-            }
-
-            createContainer() {
-                if (!document.getElementById('toast-container')) {
-                    const container = document.createElement('div');
-                    container.id = 'toast-container';
-                    container.className = 'toast-container';
-                    document.body.appendChild(container);
-                }
-            }
-
-            show(message, type = 'info', duration = 5000) {
-                const container = document.getElementById('toast-container');
-                const toast = this.createToast(message, type);
-                
-                container.appendChild(toast);
-                
-                // Trigger animation
-                setTimeout(() => {
-                    toast.classList.add('show');
-                }, 100);
-                
-                // Auto remove
-                if (duration > 0) {
-                    setTimeout(() => {
-                        this.remove(toast);
-                    }, duration);
-                }
-                
-                return toast;
-            }
-
-            createToast(message, type) {
-                const toast = document.createElement('div');
-                toast.className = `toast ${type}`;
-                
-                const icons = {
-                    success: 'fas fa-check-circle',
-                    error: 'fas fa-exclamation-circle',
-                    warning: 'fas fa-exclamation-triangle',
-                    info: 'fas fa-info-circle'
-                };
-                
-                const titles = {
-                    success: 'Success',
-                    error: 'Error',
-                    warning: 'Warning',
-                    info: 'Information'
-                };
-                
-                toast.innerHTML = `
-                    <div class="toast-header">
-                        <i class="toast-icon ${icons[type] || icons.info}"></i>
-                        <span>${titles[type] || titles.info}</span>
-                        <button class="toast-close" onclick="toastManager.remove(this.closest('.toast'))">&times;</button>
-                    </div>
-                    <div class="toast-body">${message}</div>
-                `;
-                
-                return toast;
-            }
-
-            remove(toast) {
-                if (toast && toast.parentNode) {
-                    toast.classList.remove('show');
-                    setTimeout(() => {
-                        if (toast.parentNode) {
-                            toast.parentNode.removeChild(toast);
-                        }
-                    }, 300);
-                }
-            }
-
-            success(message, duration = 5000) {
-                return this.show(message, 'success', duration);
-            }
-
-            error(message, duration = 8000) {
-                return this.show(message, 'error', duration);
-            }
-
-            warning(message, duration = 6000) {
-                return this.show(message, 'warning', duration);
-            }
-
-            info(message, duration = 5000) {
-                return this.show(message, 'info', duration);
-            }
-        }
-
-        // Initialize toast manager
-        const toastManager = new ToastManager();
-
-        // Loading overlay functions
-        function showLoading(message = 'Processing...') {
-            let overlay = document.getElementById('loading-overlay');
-            if (!overlay) {
-                overlay = document.createElement('div');
-                overlay.id = 'loading-overlay';
-                overlay.className = 'loading-overlay';
-                overlay.innerHTML = `
-                    <div class="loading-spinner">
-                        <div class="spinner"></div>
-                        <span id="loading-message">${message}</span>
-                    </div>
-                `;
-                document.body.appendChild(overlay);
-            }
-            
-            document.getElementById('loading-message').textContent = message;
-            overlay.style.display = 'flex';
-            
-            // Disable all dropdowns
-            const dropdowns = document.querySelectorAll('.courier-status-dropdown');
-            dropdowns.forEach(dropdown => {
-                dropdown.disabled = true;
-            });
-        }
-
-        function hideLoading() {
-            const overlay = document.getElementById('loading-overlay');
-            if (overlay) {
-                overlay.style.display = 'none';
-            }
-            
-            // Re-enable all dropdowns
-            const dropdowns = document.querySelectorAll('.courier-status-dropdown');
-            dropdowns.forEach(dropdown => {
-                dropdown.disabled = false;
-            });
-        }
-
         // Clear filters function
         function clearFilters() {
             window.location.href = 'couriers.php';
@@ -882,96 +742,40 @@ function getStatusInfo($is_default) {
         // Modal Functions
         function closeModal(modalId) {
             document.getElementById(modalId).style.display = 'none';
+            document.body.style.overflow = '';
         }
 
         // Get status text and class
         function getStatusInfo(statusValue) {
             const statusMap = {
                 '0': { label: 'None', class: 'status-none' },
-                '1': { label: 'Default Courier', class: 'status-default' },
+                '1': { label: 'Default Courier', class: 'status-default-courier' },
                 '2': { label: 'API Parcel Courier', class: 'status-api' },
                 '3': { label: 'Existing API Parcel', class: 'status-existing-api' }
             };
             return statusMap[statusValue] || { label: 'Unknown', class: 'status-unknown' };
         }
 
-        // Open status change confirmation modal
-        function openStatusChangeModal(courierId, courierName, currentStatus, newStatus) {
+        // Open status change confirmation modal (API modal design pattern)
+        function openStatusChangeModal(coId, courierName, currentStatus, newStatus) {
             const currentStatusInfo = getStatusInfo(currentStatus);
             const newStatusInfo = getStatusInfo(newStatus);
+            const statusColors = { '0': '#6c757d', '1': '#198754', '2': '#0d6efd', '3': '#fd7e14' };
             
-            // Update modal content
-            document.getElementById('change-status-courier-name').textContent = courierName;
-            document.getElementById('current-status-text').textContent = currentStatusInfo.label;
-            document.getElementById('new-status-text').textContent = newStatusInfo.label;
+            document.getElementById('sc-courier-hdr').textContent = courierName;
+            var curEl = document.getElementById('sc-current-status');
+            var newEl = document.getElementById('sc-new-status');
+            curEl.textContent = currentStatusInfo.label;
+            curEl.style.background = statusColors[currentStatus] || '#6c757d';
+            newEl.textContent = newStatusInfo.label;
+            newEl.style.background = statusColors[newStatus] || '#6c757d';
             
-            // Store data for confirmation
-            const confirmBtn = document.getElementById('confirmStatusChangeBtn');
-            confirmBtn.setAttribute('data-courier-id', courierId);
-            confirmBtn.setAttribute('data-new-status', newStatus);
+            // Store coId and newStatus for form submission
+            document.getElementById('statusChangeForm').setAttribute('data-co-id', coId);
+            document.getElementById('statusChangeForm').setAttribute('data-new-status', newStatus);
             
-            // Add click handler to confirm button
-            confirmBtn.onclick = function() {
-                changeCourierStatus(courierId, newStatus);
-            };
-            
-            // Show modal
-            document.getElementById('statusChangeModal').style.display = 'block';
+            showModal('statusChangeModal');
         }
-
-        //  UPDATE: changeCourierStatus function
-// 1.  FIXED: changeCourierStatus function
-function changeCourierStatus(coId, newStatus) {
-    showLoading('Updating courier status...');
-    
-    fetch('toggle_courier_default.php', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            co_id: coId,  //  Changed from courier_id to co_id
-            is_default: parseInt(newStatus)
-        })
-    })
-    .then(response => response.json())
-    .then(data => {
-        hideLoading();
-        closeModal('statusChangeModal');
-        
-        if (data.success) {
-            toastManager.success(data.message);
-            
-            const dropdown = document.querySelector(`[data-co-id="${coId}"]`);
-            if (dropdown) {
-                dropdown.setAttribute('data-current-status', newStatus);
-                dropdown.value = newStatus;
-            }
-            
-            setTimeout(() => location.reload(), 2000);
-        } else {
-            toastManager.error(data.message || 'Failed to update courier status');
-            
-            const dropdown = document.querySelector(`[data-co-id="${coId}"]`);
-            if (dropdown) {
-                const originalStatus = dropdown.getAttribute('data-current-status');
-                dropdown.value = originalStatus;
-            }
-        }
-    })
-   .catch(error => {
-        hideLoading();
-        closeModal('statusChangeModal');
-        console.error('Error:', error);
-        toastManager.error('An unexpected error occurred');
-        
-        const dropdown = document.querySelector(`[data-co-id="${coId}"]`);
-        if (dropdown) {
-            const originalStatus = dropdown.getAttribute('data-current-status');
-            dropdown.value = originalStatus;
-        }
-    });
-}
 
         // Handle API button click - Check has_api_new OR has_api_existing status first
     // Handle API button click - Check has_api_new OR has_api_existing status first
@@ -1007,12 +811,7 @@ document.addEventListener('DOMContentLoaded', function() {
             
             // Close modals when clicking outside
             window.onclick = function(event) {
-                const statusModal = document.getElementById('statusChangeModal');
                 const accessDeniedModal = document.getElementById('apiAccessDeniedModal');
-                
-                if (event.target === statusModal) {
-                    closeModal('statusChangeModal');
-                }
                 if (event.target === accessDeniedModal) {
                     closeModal('apiAccessDeniedModal');
                 }
@@ -1021,7 +820,6 @@ document.addEventListener('DOMContentLoaded', function() {
             // Escape key to close modals
             document.addEventListener('keydown', function(event) {
                 if (event.key === 'Escape') {
-                    closeModal('statusChangeModal');
                     closeModal('apiAccessDeniedModal');
                 }
             });
@@ -1068,8 +866,7 @@ function openApiModal(coId, courierId, courierName) {
     modalTitle.textContent = `Configure API Settings - ${courierName}`;
 
     modal.classList.add('show');
-    document.body.style.overflow = 'hidden';
-
+    document.body.style.overflow = 'clip';
     form.reset();
     courierIdInput.value = coId;  // Reset clears it, so set again
 
@@ -1111,7 +908,7 @@ function openApiModal(coId, courierId, courierName) {
         function closeApiModal() {
             const modal = document.getElementById('apiModal');
             modal.classList.remove('show');
-            document.body.style.overflow = 'auto';
+            document.body.style.overflow = '';
         }
 
         // API Key toggle visibility
@@ -1205,12 +1002,12 @@ function openApiModal(coId, courierId, courierName) {
         function openWaybillsModal(courierId) {
             document.getElementById('waybills_courier_id').value = courierId;
             document.getElementById('waybillsModal').style.display = 'flex';
-            document.body.style.overflow = 'hidden';
+            document.body.style.overflow = 'clip';
         }
 
         function closeWaybillsModal() {
             document.getElementById('waybillsModal').style.display = 'none';
-            document.body.style.overflow = 'auto';
+            document.body.style.overflow = '';
             document.getElementById('waybillsDownloadForm').reset();
             hideError();
         }
@@ -1221,17 +1018,19 @@ function openApiModal(coId, courierId, courierName) {
             if (!alert) {
                 alert = document.createElement('div');
                 alert.id = 'waybills-error-alert';
-                alert.className = 'alert alert-danger';
-                alert.style.marginBottom = '20px';
+                alert.className = 'waybills-error-alert';
                 document.querySelector('#waybillsModal .api-modal-body').prepend(alert);
             }
-            alert.innerHTML = `<i class="fas fa-exclamation-triangle"></i> <strong>Error:</strong> ${message}`;
+            alert.innerHTML = `<i class="fas fa-exclamation-circle" style="margin-right:6px;"></i> <strong>Error:</strong> ${message}`;
             alert.style.display = 'block';
         }
 
         function hideError() {
             const alert = document.getElementById('waybills-error-alert');
-            if (alert) alert.style.display = 'none';
+            if (alert) {
+                alert.style.display = 'none';
+                alert.innerHTML = '';
+            }
         }
 
         // Form submission
@@ -1299,13 +1098,14 @@ function openReturnFeeModal(coId, courierName, currentValue) {
     document.getElementById("returnFeeValue").value = currentValue ?? 0;
     document.getElementById("returnFeeModalTitle").innerText = "Set Return Fee - " + courierName;
     document.getElementById("returnFeeModal").style.display = "flex";
-    
+    document.body.style.overflow = 'clip';
     clearValidationError();
 }
 
         // Close the modal
         function closeReturnFeeModal() {
             document.getElementById("returnFeeModal").style.display = "none";
+            document.body.style.overflow = '';
             clearValidationError();
         }
 

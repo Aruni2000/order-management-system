@@ -28,12 +28,12 @@ if ($fe_conn->connect_error) {
 $error_message = "";
 $logo_url = "../assets/images/placeholder.png"; // fallback logo
 
-//  Fetch branding logo from database
-$sql_branding = "SELECT logo_url FROM branding WHERE active = 1 LIMIT 1";
-$result_branding = $conn->query($sql_branding);
-if ($result_branding && $result_branding->num_rows > 0) {
-    $branding = $result_branding->fetch_assoc();
-    $logo_url = $branding['logo_url'];
+//  Fetch logo from tenants table
+$sql_logo = "SELECT logo_url FROM tenants WHERE status = 'active' AND logo_url IS NOT NULL AND logo_url != '' LIMIT 1";
+$result_logo = $conn->query($sql_logo);
+if ($result_logo && $result_logo->num_rows > 0) {
+    $logo_data = $result_logo->fetch_assoc();
+    $logo_url = $logo_data['logo_url'];
 }
 
 //  Handle form submit
@@ -297,20 +297,7 @@ $fe_conn->close();
             </div>
         </div>
     </div>
-
-    <!-- FOOTER -->
-    <div class="footer-wrapper container-fluid mx-10">
-        <div class="grid grid-cols-12 gap-1.5">
-            <div class="col-span-12 sm:col-span-6 my-1">
-                <p class="m-0">
-                    <a href="https://www.feitsolutions.com/" class="text-theme-bodycolor dark:text-themedark-bodycolor hover:text-primary-500 dark:hover:text-primary-500" target="_blank">
-                        Copyright © 2025 FEITSolutions</a>, Designed by FEIT All rights reserved
-                </p>
-            </div>
-        </div>
-    </div>
-    <!-- END FOOTER -->
-
+    
     <!-- SCRIPTS -->
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php'); ?>
     <!-- END SCRIPTS -->

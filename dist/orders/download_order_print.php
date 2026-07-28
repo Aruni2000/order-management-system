@@ -21,10 +21,6 @@ $role_id = isset($_SESSION['role_id']) ? (int)$_SESSION['role_id'] : 0;
 $session_tenant_id = isset($_SESSION['tenant_id']) ? (int)$_SESSION['tenant_id'] : 0;
 $logged_user_id = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
 
-// =============================================================
-//  BRANDING DATA - MOVED BELOW TO USE ORDER TENANT ID
-// =============================================================
-// Placeholder: Branding logic is now executed after fetching the order to support multi-tenancy.
 $company_name = "";
 $company_address = "";
 $company_email = "";
@@ -120,43 +116,32 @@ if ($result->num_rows === 0) {
 
 $order = $result->fetch_assoc();
 
-// =============================================================
-//  BRANDING DATA - FETCH BASED ON TENANT ID
-// =============================================================
 $order_tenant_id = isset($order['tenant_id']) ? (int)$order['tenant_id'] : 0;
-$branding_sql = "SELECT * FROM branding WHERE tenant_id = $order_tenant_id AND active = 1 LIMIT 1";
-$branding_result = $conn->query($branding_sql);
 
-// Fallback to global active branding if tenant specific not found
-if (!$branding_result || $branding_result->num_rows === 0) {
-    $branding_sql = "SELECT * FROM branding WHERE active = 1 LIMIT 1";
-    $branding_result = $conn->query($branding_sql);
-}
+// Get tenant info (company_name, address, phone, email, logo_url)
+$tenant_sql = "SELECT company_name, address, phone, email, logo_url FROM tenants WHERE tenant_id = ? AND status = 'active' LIMIT 1";
+$stmt_tenant = $conn->prepare($tenant_sql);
+$stmt_tenant->bind_param("i", $order_tenant_id);
+$stmt_tenant->execute();
+$tenant_result = $stmt_tenant->get_result();
+$tenant_data = ($tenant_result && $tenant_result->num_rows > 0) ? $tenant_result->fetch_assoc() : [];
 
-$branding = $branding_result->fetch_assoc();
+// Map tenant fields to display variables
+$company_name = $tenant_data['company_name'];
+$company_address = $tenant_data['address'];
+$company_email = $tenant_data['email'];
+$company_hotline = $tenant_data['phone'];
 
-// Branding variables with safe fallbacks
-$company_name = !empty($branding['company_name']) ? $branding['company_name'] : "";
-$company_address = !empty($branding['address']) ? $branding['address'] : "";
-$company_email = !empty($branding['email']) ? $branding['email'] : "";
-$company_hotline = !empty($branding['hotline']) ? $branding['hotline'] : "";
-
-//  GET LOGO FROM DATABASE (NOT HARDCODED)
-if (!empty($branding['logo_url'])) {
-    // Check if it's a full URL (starts with http/https)
-    if (strpos($branding['logo_url'], 'http') === 0) {
-        $company_logo = $branding['logo_url'];
-    } 
-    // Check if it already has the full path
-    else if (strpos($branding['logo_url'], '/OMS/') === 0) {
-        $company_logo = $branding['logo_url'];
-    }
-    // Otherwise, it's a relative path from dist folder
-    else {
-        $company_logo = '/OMS/dist/' . ltrim($branding['logo_url'], '/');
+// GET LOGO FROM DATABASE (NOT HARDCODED)
+if (!empty($tenant_data['logo_url'])) {
+    if (strpos($tenant_data['logo_url'], 'http') === 0) {
+        $company_logo = $tenant_data['logo_url'];
+    } else if (strpos($tenant_data['logo_url'], '/OMS/') === 0) {
+        $company_logo = $tenant_data['logo_url'];
+    } else {
+        $company_logo = '/OMS/dist/' . ltrim($tenant_data['logo_url'], '/');
     }
 } else {
-    // Fallback if no logo in database
     $company_logo = '';
 }
 

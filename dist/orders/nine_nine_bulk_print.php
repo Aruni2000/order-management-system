@@ -171,28 +171,26 @@ if (!empty($order_ids)) {
 }
 
 // -------------------------
-// Fetch All Brandings (Multi-Tenant Support)
+// Fetch All Tenants (Multi-Tenant Support)
 // -------------------------
-$brandings = [];
-$brandingQuery = $conn->query("SELECT * FROM branding WHERE active = 1");
-if ($brandingQuery) {
-    while ($b = $brandingQuery->fetch_assoc()) {
-        $brandings[$b['tenant_id']] = $b;
+$tenants = [];
+$tenant_result = $conn->query("SELECT tenant_id, company_name, address AS tenant_address, phone, email AS tenant_email, logo_url FROM tenants WHERE status = 'active'");
+if ($tenant_result) {
+    while ($t = $tenant_result->fetch_assoc()) {
+        $tenants[$t['tenant_id']] = $t;
     }
 }
 
-// Function to get branding for a specific tenant
-function getBrandingForTenant($tId, $brandings_list) {
-    // If tenant specific branding exists
-    if (!empty($tId) && isset($brandings_list[$tId])) {
-        return $brandings_list[$tId];
+// Function to get tenant data for a specific tenant
+function getTenantData($tId, $tenants_list) {
+    if (!empty($tId) && isset($tenants_list[$tId])) {
+        return $tenants_list[$tId];
     }
-    // Fallback: Return first available branding or empty structure
-    if (!empty($brandings_list)) {
-        return reset($brandings_list);
+    if (!empty($tenants_list)) {
+        return reset($tenants_list);
     }
     return [
-        'company_name' => '', 'address' => '', 'hotline' => '', 'email' => '', 'logo_url' => '', 'web_name' => ''
+        'company_name' => '', 'tenant_address' => '', 'phone' => '', 'tenant_email' => '', 'logo_url' => ''
     ];
 }
 
@@ -308,9 +306,9 @@ window.onload = function() {
 <?php else: ?>
 
     <?php foreach ($orders as $o): 
-        // Resolve branding for this order
+        // Resolve tenant/company data for this order
         $tId = isset($o['tenant_id']) ? $o['tenant_id'] : 0;
-        $bData = getBrandingForTenant($tId, $brandings);
+        $bData = getTenantData($tId, $tenants);
     ?>
 
     <div class="label-box">
@@ -339,9 +337,9 @@ window.onload = function() {
         <!-- Billing From Details -->
         <div style="font-size:10px; margin-top:5px;">
             <?php echo htmlspecialchars($bData['company_name']); ?><br>
-            <?php echo nl2br(htmlspecialchars($bData['address'])); ?><br>
-            Hotline: <?php echo htmlspecialchars($bData['hotline']); ?><br>
-            Email: <?php echo htmlspecialchars($bData['email']); ?>
+            <?php echo nl2br(htmlspecialchars($bData['tenant_address'] ?? '')); ?><br>
+            Phone: <?php echo htmlspecialchars($bData['phone'] ?? ''); ?><br>
+            Email: <?php echo htmlspecialchars($bData['tenant_email'] ?? ''); ?>
         </div>
 
         <hr>

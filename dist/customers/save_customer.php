@@ -97,7 +97,7 @@ try {
     }
 
     $is_main_admin = $_SESSION['is_main_admin'];
-    $teanent_id = $_SESSION['tenant_id'];
+    $tenant_id = $_SESSION['tenant_id'] ?? 0;
 
     // Get and sanitize form data
     $name = trim($_POST['name'] ?? '');
@@ -112,10 +112,10 @@ try {
     //if 
     if ($is_main_admin == 1){
         //A user main id =1 
-        $teanentID= intval($_POST['teanetID'] ?? 0);
+        $tenantID= intval($_POST['tenantID'] ?? 0);
     } else {
         //B user main id  =0
-        $teanentID= $teanent_id;
+        $tenantID= $tenant_id;
     }
 
     // Clean phone numbers (remove non-digits)
@@ -194,15 +194,15 @@ try {
     }
 
     // 8. TENANT VALIDATION
-    if (empty($teanentID) || $teanentID <= 0) {
-        $errors['teanetID'] = 'Please select a Tenant User';
+    if (empty($tenantID) || $tenantID <= 0) {
+        $errors['tenantID'] = 'Please select a Tenant Company';
     } else {
         $tenantCheckStmt = $conn->prepare("SELECT tenant_id FROM tenants WHERE tenant_id = ? AND status = 'Active'");
-        $tenantCheckStmt->bind_param("i", $teanentID);
+        $tenantCheckStmt->bind_param("i", $tenantID);
         $tenantCheckStmt->execute();
         $tenantCheckResult = $tenantCheckStmt->get_result();
         if ($tenantCheckResult->num_rows === 0) {
-            $errors['teanetID'] = 'Selected Tenant User is not valid or inactive';
+            $errors['tenantID'] = 'Selected Tenant Company is not valid or inactive';
         }
         $tenantCheckStmt->close();
     }
@@ -321,7 +321,7 @@ try {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
     ");
 
-    $insertStmt->bind_param("sssssssii", $name, $email, $phone, $phone_2, $status, $address_line1, $address_line2, $city_id, $teanentID);
+    $insertStmt->bind_param("sssssssii", $name, $email, $phone, $phone_2, $status, $address_line1, $address_line2, $city_id, $tenantID);
 
     if ($insertStmt->execute()) {
         $customer_id = $conn->insert_id;

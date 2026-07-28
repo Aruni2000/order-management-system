@@ -53,7 +53,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_couriers' && isset($_GET[
 // Check if user is main admin
 $is_main_admin = $_SESSION['is_main_admin'];
 $role_id = $_SESSION['role_id'];
-$teanent_id = $_SESSION['tenant_id'];
+$tenant_id = $_SESSION['tenant_id'] ?? 0;
 
 // FIXED: Only get co_id when form is submitted
 $co_id = null;
@@ -65,12 +65,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['co_id'])) {
 $tenants = [];
 if ($is_main_admin === 1 && $role_id === 1) {
     // Main Admin gets all active tenants
-    $tenantSql = "SELECT tenant_id, company_name FROM tenants WHERE status = 'active' ORDER BY company_name";
+    $tenantResult = $conn->query("SELECT tenant_id, company_name FROM tenants WHERE status = 'active' ORDER BY company_name");
 } else {
     // Others get only their assigned tenant
-    $tenantSql = "SELECT tenant_id, company_name FROM tenants WHERE tenant_id = $teanent_id AND status = 'active' LIMIT 1";
+    $tenantStmt = $conn->prepare("SELECT tenant_id, company_name FROM tenants WHERE tenant_id = ? AND status = 'active' LIMIT 1");
+    $tenantStmt->bind_param("i", $tenant_id);
+    $tenantStmt->execute();
+    $tenantResult = $tenantStmt->get_result();
 }
-$tenantResult = $conn->query($tenantSql);
 if ($tenantResult && $tenantResult->num_rows > 0) {
     while ($row = $tenantResult->fetch_assoc()) {
         $tenants[] = $row;
@@ -156,7 +158,7 @@ function validateTrackingNumberInDB($trackingNumber, $conn, $co_id) {
         $findTrackingSql = "SELECT order_id, status FROM order_header WHERE tracking_number = ? AND co_id = ? AND tenant_id = ? LIMIT 1";
         $findTrackingStmt = $conn->prepare($findTrackingSql);
         if (!$findTrackingStmt) return ['valid' => false, 'message' => 'Database error'];
-        $findTrackingStmt->bind_param("sii", $cleanTracking, $co_id, $GLOBALS['teanent_id']);
+        $findTrackingStmt->bind_param("sii", $cleanTracking, $co_id, $GLOBALS['tenant_id']);
     }
     
     $findTrackingStmt->execute();
@@ -427,7 +429,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                     if ($is_main_admin === 1 && $role_id === 1) {
                         $updateOrderStmt->bind_param("i", $trackingData['order_id']);
                     } else {
-                        $updateOrderStmt->bind_param("ii", $trackingData['order_id'], $teanent_id);
+                        $updateOrderStmt->bind_param("ii", $trackingData['order_id'], $tenant_id);
                     }
                     
                     if ($updateOrderStmt->execute()) {
@@ -522,6 +524,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
 
     <!-- Stylesheets -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css">
     <link rel="stylesheet" href="../assets/css/style.css" id="main-style-link" />
     <link rel="stylesheet" href="../assets/css/leads.css" id="main-style-link" />
 </head>
@@ -541,7 +544,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
             <div class="page-header">
                 <div class="page-block">
                     <div class="page-header-title">
-                        <h5 class="mb-0 font-medium">Return Handover Management</h5>
+                        <h5 class="mb-0 font-medium">
+                            Return Handover Management
+                            <i class="fas fa-info-circle text-primary" style="cursor: pointer; font-size: 16px; margin-left: 8px;" onclick="openInfoModal()" title="How to use this page"></i>
+                        </h5>
                     </div>
                 </div>
             </div>
@@ -550,50 +556,68 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
 
                 <!-- Display import results/errors -->
                 <?php if (isset($_SESSION['import_result'])): ?>
-                <div
-                    class="alert alert-<?php echo $_SESSION['import_result']['errors'] > 0 ? 'warning' : 'success'; ?>">
-                    <h4>Processing Results</h4>
-                    <p><strong>Successfully updated to 'return_handover':</strong>
-                        <?php echo $_SESSION['import_result']['success']; ?> tracking numbers</p>
-                    <?php if ($_SESSION['import_result']['skipped'] > 0): ?>
-                    <p><strong>Skipped:</strong> <?php echo $_SESSION['import_result']['skipped']; ?> tracking numbers
-                    </p>
+                    <?php 
+                        $impSuccess = $_SESSION['import_result']['success'];
+                        $impErrors = $_SESSION['import_result']['errors'];
+                        $impSkipped = $_SESSION['import_result']['skipped'] ?? 0;
+                        $impMessages = $_SESSION['import_result']['messages'] ?? [];
+                        $impWarnings = $_SESSION['import_result']['warnings'] ?? [];
+                    ?>
+                    <script>
+                        document.addEventListener('DOMContentLoaded', function() {
+                            <?php if ($impErrors > 0): ?>
+                                toastManager.warning('Import completed: <?php echo $impSuccess; ?> updated, <?php echo $impErrors; ?> failed', 8000);
+                            <?php else: ?>
+                                toastManager.success('Successfully updated <?php echo $impSuccess; ?> orders to return_handover', 5000);
+                            <?php endif; ?>
+                        });
+                    </script>
+
+                    <?php if ($impErrors > 0 || !empty($impWarnings)): ?>
+                    <div style="background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 20px; margin-bottom: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.06);">
+                        <?php if ($impErrors > 0): ?>
+                            <div style="margin-bottom: 16px;">
+                                <?php if (!empty($impMessages)): ?>
+                                    <details>
+                                        <summary style="cursor: pointer; font-weight: 600; color: #92400e; font-size: 0.85rem;">
+                                            <i class="fas fa-exclamation-triangle"></i> View Error Details (<?php echo count($impMessages); ?>)
+                                        </summary>
+                                        <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 12px 16px; margin-top: 8px;">
+                                            <ul style="margin-bottom: 0; padding-left: 20px; color: #991b1b; font-size: 0.82rem;">
+                                                <?php foreach ($impMessages as $message): ?>
+                                                    <li style="margin-bottom: 4px;"><?php echo htmlspecialchars($message); ?></li>
+                                                <?php endforeach; ?>
+                                            </ul>
+                                        </div>
+                                    </details>
+                                <?php endif; ?>
+                            </div>
+                        <?php endif; ?>
+                        <?php if (!empty($impWarnings)): ?>
+                            <div>
+                                <details>
+                                    <summary style="cursor: pointer; font-weight: 600; color: #92400e; font-size: 0.85rem;">
+                                        <i class="fas fa-exclamation-circle"></i> View Warnings (<?php echo count($impWarnings); ?>)
+                                    </summary>
+                                    <div style="background: #fef3c7; border: 1px solid #fde68a; border-radius: 8px; padding: 12px 16px; margin-top: 8px;">
+                                        <ul style="margin-bottom: 0; padding-left: 20px; color: #92400e; font-size: 0.82rem;">
+                                            <?php foreach ($impWarnings as $warning): ?>
+                                                <li style="margin-bottom: 4px;"><?php echo htmlspecialchars($warning); ?></li>
+                                            <?php endforeach; ?>
+                                        </ul>
+                                    </div>
+                                </details>
+                            </div>
+                        <?php endif; ?>
+                    </div>
                     <?php endif; ?>
-                    <?php if ($_SESSION['import_result']['errors'] > 0): ?>
-                    <p><strong>Failed:</strong> <?php echo $_SESSION['import_result']['errors']; ?> tracking numbers</p>
-                    <?php if (!empty($_SESSION['import_result']['messages'])): ?>
-                    <details>
-                        <summary>View Error Details</summary>
-                        <ul class="mt-2">
-                            <?php foreach ($_SESSION['import_result']['messages'] as $message): ?>
-                            <li><?php echo htmlspecialchars($message); ?></li>
-                            <?php endforeach; ?>
-                        </ul>
-                    </details>
-                    <?php endif; ?>
-                    <?php endif; ?>
-                    <?php if (!empty($_SESSION['import_result']['warnings'])): ?>
-                    <details>
-                        <summary>View Warnings</summary>
-                        <ul class="mt-2">
-                            <?php foreach ($_SESSION['import_result']['warnings'] as $warning): ?>
-                            <li><?php echo htmlspecialchars($warning); ?></li>
-                            <?php endforeach; ?>
-                        </ul>
-                    </details>
-                    <?php endif; ?>
-                </div>
-                <script>
-                    setTimeout(function() {
-                        window.location.reload();
-                    }, 5000);
-                </script>
-                <?php unset($_SESSION['import_result']); ?>
+
+                    <?php unset($_SESSION['import_result']); ?>
                 <?php endif; ?>
 
                 <?php if (isset($_SESSION['import_error'])): ?>
-                    <div class="alert alert-danger">
-                        <strong>Error:</strong> <?php echo $_SESSION['import_error']; ?>
+                    <div style="background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; padding: 1rem; margin-bottom: 1.5rem; border-radius: 5px;">
+                        <strong>Error:</strong> <?php echo htmlspecialchars($_SESSION['import_error']); ?>
                     </div>
                     <?php unset($_SESSION['import_error']); ?>
                 <?php endif; ?>
@@ -633,7 +657,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                             <div class="file-section">
                                 <label class="form-label">CSV File <span class="required">*</span></label>
                                 <div class="file-input-wrapper">
-                                    <input type="file" id="csv_file" name="csv_file" accept=".csv" class="file-input" required>
+                                    <input type="file" id="csv_file" name="csv_file" accept=".csv" class="file-input">
                                     <div class="file-display">
                                         <span id="file-name">No file selected</span>
                                         <button type="button" class="file-btn" onclick="document.getElementById('csv_file').click()">
@@ -651,40 +675,58 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                             </button>
                         </div>
                     </form>
-                    <!-- Instruction Box -->
-                    <div class="instruction-box">
-                        <h4>📋 How to Use Return Handover CSV Upload</h4>
-
-                        <div class="important-notes">
-                            <h5>⚠️ Important Requirements:</h5>
-                            <ul>
-                                <li><strong>Only orders with "return complete" status</strong> will be updated</li>
-                                <li>Tracking numbers must exist in the database</li>
-                                <li>Maximum file size: <strong>5MB</strong></li>
-                                <li>File format: <strong>CSV only</strong></li>
-                                <li>Status will change from: <code>return complete</code> → <code>return_handover</code></li>
-                            </ul>
-                        </div>
-                        
-                        <div class="quick-tips">
-                            <h5>💡 Quick Tips:</h5>
-                            <ul>
-                                <li>Check tracking numbers are correct before uploading</li>
-                                <li>Remove any extra spaces or special characters</li>
-                                <li>Orders with other statuses will be skipped</li>
-                                <li>You'll see a detailed report after processing</li>
-                            </ul>
-                        </div>
-                    </div>
                 </div>
             </div>
         </div>
     </div>
+    <?php
+    include_once($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/info_modal.php');
+    renderInfoModal(
+        'How Return Handover CSV Upload Works',
+        'fas fa-upload',
+        '<div style="font-family: system-ui, -apple-system, sans-serif;">
+
+        <div style="margin-bottom: 16px;">
+            <h6 style="margin: 0 0 10px; font-size: 14px;">📌 3 Simple Steps</h6>
+            <ol style="margin: 0; padding-left: 20px; color: #374151; font-size: 13.5px; line-height: 1.8;">
+                <li><strong>Download the template</strong></li>
+                <li><strong>Pick a tenant & courier</strong>, then upload your CSV</li>
+                <li>System reads tracking numbers <strong>automatically</strong></li>
+            </ol>
+        </div>
+
+        <div style="margin-bottom: 16px;">
+            <h6 style="margin: 0 0 10px; font-size: 14px;">✅ Requirements</h6>
+            <ul style="margin: 0; padding-left: 20px; color: #374151; font-size: 13px; line-height: 1.7;">
+                <li>Only <strong>return complete</strong> orders get updated</li>
+                <li>Status changes: <strong>return complete</strong> → <strong>return_handover</strong></li>
+                <li>Tracking numbers must already exist in the database</li>
+                <li>Max 5MB · .csv only</li>
+            </ul>
+        </div>
+
+        <div style="margin-bottom: 16px;">
+            <h6 style="margin: 0 0 10px; font-size: 14px;">📊 After Upload</h6>
+            <ul style="margin: 0; padding-left: 20px; color: #374151; font-size: 13px; line-height: 1.7;">
+                <li>See summary: updated <strong>✓</strong> vs skipped <strong>✗</strong></li>
+                <li>Missing or wrong-status tracking numbers show error details</li>
+            </ul>
+        </div>
+
+        <div style="background: #fef3c7; border-radius: 6px; padding: 10px 12px; font-size: 13px; color: #92400e;">
+            💡 Use the template. Only one column needed — just tracking numbers.
+        </div>
+
+        </div>'
+    );
+    ?>
     <!-- Footer -->
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php'); ?>
 
     <!-- Scripts -->
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php'); ?>
+
+
 
     <script>
         // Load couriers when tenant is selected
@@ -783,23 +825,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
         
         // Reset button functionality
         document.getElementById('resetBtn').addEventListener('click', function() {
-            if (confirm('Are you sure you want to reset the form?')) {
-                document.getElementById('uploadForm').reset();
-                document.getElementById('file-name').textContent = 'No file selected';
-                
-                const courierSelect = document.getElementById('co_id');
-                courierSelect.innerHTML = '<option value="">Select Tenant First </option>';
-                courierSelect.disabled = true;
-                
-                const importBtn = document.getElementById('importBtn');
-                importBtn.disabled = false;
-                importBtn.innerHTML = ' Update to Return Handover';
-
-                const tenantSelect = document.getElementById('tenant_id');
-                if (tenantSelect && tenantSelect.value) {
-                    tenantSelect.dispatchEvent(new Event('change'));
-                }
-            }
+            document.getElementById('uploadForm').reset();
+            document.getElementById('file-name').textContent = 'No file selected';
+            
+            const courierSelect = document.getElementById('co_id');
+            courierSelect.innerHTML = '<option value="">Select Tenant First</option>';
+            courierSelect.disabled = true;
+            
+            const importBtn = document.getElementById('importBtn');
+            importBtn.disabled = false;
+            importBtn.innerHTML = ' Update to Return Handover';
         });
         
         // Show selected file name and validate file type
@@ -835,52 +870,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
     </script>
 
     <style>
-        .instruction-box {
-            background-color: #e8f4fd;
-            border: 1px solid #bee5eb;
-            border-radius: 0.375rem;
-            padding: 1rem;
-            margin-bottom: 1.5rem;
-        }
-
-        .instruction-box h4 {
-            color: #0c5460;
-            margin-bottom: 0.75rem;
-            font-size: 1.25rem;
-            font-weight: bold;
-        }
-
-        .instruction-box h5 {
-            color: #0c5460;
-            margin-top: 1rem;
-            margin-bottom: 0.5rem;
-            font-size: 1rem;
-            font-weight: bold;
-        }
-
-        .instruction-box p,
-        .instruction-box ul {
-            color: #0c5460;
-            margin-bottom: 0.5rem;
-        }
-
-        .instruction-box ul {
-            list-style-type: disc;
-            margin-left: 1.5rem;
-            padding-left: 0;
-        }
-
-        .instruction-box li {
-            margin-bottom: 0.25rem;
-        }
-
-        .instruction-box .important-notes,
-        .instruction-box .quick-tips {
-            margin-top: 1.5rem;
-            padding-top: 1rem;
-            border-top: 1px solid #bee5eb;
-        }
-        
         .file-upload-section .customer-form-group {
             margin-bottom: 1.5rem;
         }
@@ -944,6 +933,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
             margin: 5px 0;
             line-height: 1.5;
         }
+
     </style>
 </body>
 

@@ -1,6 +1,6 @@
 <?php
 
-function addKoombiyoOrder($orderData, $apiKey = 'muABqMKZgkaZDAnbBWev') {
+function addKoombiyoOrder($orderData, $apiKey) {
     $url = 'https://application.koombiyodelivery.lk/api/Addorders/users';
     
     // Required fields validation
@@ -20,8 +20,8 @@ function addKoombiyoOrder($orderData, $apiKey = 'muABqMKZgkaZDAnbBWev') {
         'receiverDistrict' => $orderData['receiverDistrict'],
         'receiverCity' => $orderData['receiverCity'],
         'receiverPhone' => $orderData['receiverPhone'],
-        'description' => $orderData['description'] ?? '',
-        'spclNote' => $orderData['spclNote'] ?? '',
+        'description' => str_replace('#', 'No.', $orderData['description'] ?? ''),
+        'spclNote' => str_replace('#', 'No.', $orderData['spclNote'] ?? ''),
         'getCod' => $orderData['getCod'] ?? '0'
     ];
     
@@ -54,6 +54,7 @@ function addKoombiyoOrder($orderData, $apiKey = 'muABqMKZgkaZDAnbBWev') {
         return [
             'success' => false, 
             'error' => $data['message'] ?? 'Unknown API error',
+            'message' => $data['message'] ?? 'Unknown API error',
             'http_code' => $httpCode,
             'full_response' => $data
         ];

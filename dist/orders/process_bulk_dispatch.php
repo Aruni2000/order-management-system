@@ -120,20 +120,18 @@ try {
         $courier_name = $courier_data['courier_name'];
         $courier_stmt->close();
         
-        // STEP 3: Get required number of tracking numbers from ANY courier in tenant
+        // STEP 3: Get tracking numbers from the SELECTED courier only
         $required_count = count($order_ids);
-        
-    // FIXED: Get tracking numbers from the SELECTED courier only
-      // STEP 3: Get tracking numbers from ANY courier in the tenant
                 $tracking_sql = "SELECT t.tracking_id, t.courier_id
                                 FROM tracking t
                                 WHERE t.tenant_id = ?
+                                AND t.courier_id = ?
                                 AND t.status = 'unused' 
-                                ORDER BY t.created_at ASC 
+                                ORDER BY t.id ASC
                                 LIMIT ? FOR UPDATE";
 
                 $tracking_stmt = $conn->prepare($tracking_sql);
-                $tracking_stmt->bind_param("ii", $tenant_id, $required_count);
+                $tracking_stmt->bind_param("iii", $tenant_id, $carrier_id, $required_count);
                 $tracking_stmt->execute();
                 $tracking_result = $tracking_stmt->get_result();
         
@@ -183,15 +181,15 @@ try {
                 $order_data = $order_result->fetch_assoc();
                 $order_stmt->close();
                 
-               //  CORRECT: Verify tracking belongs to the selected courier
-                   // Update tracking - verify by tenant_id only
+               // Update tracking - verify by selected courier and tenant
                         $update_tracking_sql = "UPDATE tracking 
                                             SET status = 'used', updated_at = CURRENT_TIMESTAMP 
                                             WHERE tracking_id = ? 
+                                            AND courier_id = ?
                                             AND tenant_id = ?
                                             AND status = 'unused'";
                         $update_tracking_stmt = $conn->prepare($update_tracking_sql);
-                        $update_tracking_stmt->bind_param("si", $tracking_number, $tenant_id);
+                        $update_tracking_stmt->bind_param("sii", $tracking_number, $carrier_id, $tenant_id);
 
                 if (!$update_tracking_stmt->execute() || $update_tracking_stmt->affected_rows === 0) {
                     $failed_orders[] = [

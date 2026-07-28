@@ -21,8 +21,9 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
 include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
 // Check if user is main admin
-$is_main_admin = $_SESSION['is_main_admin'];
-$teanent_id = $_SESSION['tenant_id'];
+$is_main_admin = $_SESSION['is_main_admin'] ?? 0;
+$tenant_id = $_SESSION['tenant_id'] ?? 0;
+$is_admin = $_SESSION['role_id'] ?? 0;
 
 // NEW: Get current user's role information
 $current_user_id = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
@@ -115,6 +116,7 @@ $sql = "SELECT i.*,
                -- User information
                u2.name as user_name,
                t.company_name,
+               cr.courier_name,
                
                -- Order details
                i.slip as payment_slip, 
@@ -126,6 +128,7 @@ $sql = "SELECT i.*,
         LEFT JOIN users u2 ON i.created_by = u2.id
         LEFT JOIN customers c ON i.customer_id = c.customer_id
         LEFT JOIN tenants t ON i.tenant_id = t.tenant_id
+        LEFT JOIN couriers cr ON i.co_id = cr.co_id
         WHERE i.interface IN ('individual', 'leads') $roleBasedCondition AND i.status NOT IN ('pending', 'cancel')";
 
 // Add tenant filter for non-main admin users
@@ -133,7 +136,7 @@ if ($is_main_admin == 1){
 // Add ordering and pagination
 
 } else {
-    $sql .= " AND i.tenant_id = $teanent_id ";
+    $sql .= " AND i.tenant_id = $tenant_id ";
 }
 
 // Build search conditions
@@ -244,7 +247,7 @@ if ($is_main_admin == 1 && $current_user_role == 1) {
     $usersQuery = "SELECT id, name FROM users ORDER BY name ASC";
 } else {
     // Regular Admins (or others) can only see users in their tenant
-    $usersQuery = "SELECT id, name FROM users WHERE tenant_id = " . (int)$teanent_id . " ORDER BY name ASC";
+    $usersQuery = "SELECT id, name FROM users WHERE tenant_id = " . (int)$tenant_id . " ORDER BY name ASC";
 }
 $usersResult = $conn->query($usersQuery);
 
@@ -300,15 +303,18 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
 
     /* Style for Created Time column */
     .updated-time {
-        white-space: nowrap;
         font-size: 0.9em;
-        color: #666;
+        color: #333;
+        line-height: 1.2;
     }
-
     .updated-date {
         display: block;
-        font-weight: 500;
-        color: #333;
+        font-weight: 600;
+    }
+    .updated-time-only {
+        display: block;
+        color: #666;
+        font-size: 0.85em;
     }
 
     .created-time-only {
@@ -382,6 +388,37 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                     </div>
                 </div>
             </div>
+
+            <!-- Session Alerts Container -->
+            <?php
+            $sessionAlerts = [];
+            if (isset($_SESSION['order_success'])) {
+                $sessionAlerts[] = ['type' => 'success', 'message' => $_SESSION['order_success']];
+                unset($_SESSION['order_success']);
+            }
+            if (isset($_SESSION['order_error'])) {
+                $sessionAlerts[] = ['type' => 'error', 'message' => $_SESSION['order_error']];
+                unset($_SESSION['order_error']);
+            }
+            if (isset($_SESSION['order_warning'])) {
+                $sessionAlerts[] = ['type' => 'warning', 'message' => $_SESSION['order_warning']];
+                unset($_SESSION['order_warning']);
+            }
+            if (isset($_SESSION['order_info'])) {
+                $sessionAlerts[] = ['type' => 'info', 'message' => $_SESSION['order_info']];
+                unset($_SESSION['order_info']);
+            }
+            ?>
+            <script>
+                document.addEventListener('DOMContentLoaded', function() {
+                    var sessionAlerts = <?php echo json_encode($sessionAlerts); ?>;
+                    sessionAlerts.forEach(function(alert) {
+                        if (typeof toastManager !== 'undefined') {
+                            toastManager[alert.type](alert.message);
+                        }
+                    });
+                });
+            </script>
 
             <div class="main-content-wrapper">
 
@@ -490,7 +527,6 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                             </select>
                         </div>
                         <?php } else { ?>
-                        <!--<input type="hidden" name="teanetID" value="0">-->
                         <?php } ?>
 
                         <div class="form-group">
@@ -546,19 +582,14 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                 <th>Order ID</th>
                                 <th>Updated Time</th>
                                 <th>Customer Name</th>
-                                <th>Total Amount</th>
+                                <th>Amount</th>
                                 <th>Status</th>
-                                <th>Pay Status</th>
                                 <th>Tracking Number</th>
                                 <?php if ($is_main_admin == 1) { ?>
                                 <th>Tenant Company</th>
                                 <?php } else { ?>
-                                <!--<input type="hidden" name="teanetID" value="0">-->
-                                <?php } ?>
-                                <th>Paid By</th>
-                                <?php if ($current_user_role == 1): ?>
+                                        <?php } ?>
                                 <th>Processed By</th>
-                                <?php endif; ?>
                                 <th>Actions</th>
                             </tr>
                         </thead>
@@ -569,6 +600,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                 <!-- Order ID -->
                                 <td class="order-id">
                                     <?php echo isset($row['order_id']) ? htmlspecialchars($row['order_id']) : ''; ?>
+                                    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/leads_badge.php'); ?>
                                 </td>
 
                                 <!-- NEW: Updated Time Column -->
@@ -594,14 +626,20 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                             ?>
                                 </td>
 
-                                <!-- Total Amount with Currency -->
+                                <!-- Total Amount with Currency + Pay Status -->
                                 <td class="amount">
                                     <?php
                                             $amount = isset($row['total_amount']) ? (float)$row['total_amount'] : 0;
                                             $currency = isset($row['currency']) ? $row['currency'] : 'lkr';
                                             $currencySymbol = ($currency == 'usd') ? '$' : 'Rs';
                                             echo $currencySymbol . number_format($amount, 2);
-                                            ?>
+                                            
+                                            $payStatus = isset($row['pay_status']) ? $row['pay_status'] : 'unpaid';
+                                            if ($payStatus == 'paid'): ?>
+                                    <br><span class="status-badge pay-status-paid">Paid</span>
+                                    <?php else: ?>
+                                    <br><span class="status-badge pay-status-unpaid">Unpaid</span>
+                                    <?php endif; ?>
                                 </td>
 
                                 <!-- Order Status Badge -->
@@ -707,29 +745,24 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                         class="status-badge <?php echo $badgeClass; ?>"><?php echo $statusText; ?></span>
                                 </td>
 
-                                <!-- Payment Status Badge -->
-                                <td>
-                                    <?php
-                                            $payStatus = isset($row['pay_status']) ? $row['pay_status'] : 'unpaid';
-                                            if ($payStatus == 'paid'): ?>
-                                    <span class="status-badge pay-status-paid">Paid</span>
-                                    <?php else: ?>
-                                    <span class="status-badge pay-status-unpaid">Unpaid</span>
-                                    <?php endif; ?>
-                                </td>
-
-                                <!-- Tracking Number -->
+                                <!-- Tracking Number + Courier -->
                                 <td class="tracking-number">
                                     <?php
-                                            if (isset($row['tracking_number']) && !empty($row['tracking_number'])) {
-                                                echo htmlspecialchars($row['tracking_number']);
+                                            $trackingNumber = isset($row['tracking_number']) ? $row['tracking_number'] : '';
+                                            $courierName = isset($row['courier_name']) ? $row['courier_name'] : '';
+                                            
+                                            if (!empty($trackingNumber)) {
+                                                echo htmlspecialchars($trackingNumber);
+                                                if (!empty($courierName)) {
+                                                    echo '<br><span style="font-size: 11px; color: #6c757d;">' . htmlspecialchars($courierName) . '</span>';
+                                                }
                                             } else {
                                                 echo '<span style="color: #999; font-style: italic;">Not assigned</span>';
                                             }
                                             ?>
                                 </td>
 
-                                <!-- Teanaent Company Name -->
+                                <!-- Tenant Company Name -->
                                 <?php if ($is_main_admin == 1) { ?>
                                 <td class="customer-name">
                                     <div class="customer-info">
@@ -738,38 +771,26 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                     </div>
                                 </td>
                                 <?php } else { ?>
-                                <!--<input type="hidden" name="teanetID" value="0">-->
-                                <?php } ?>
+                                        <?php } ?>
 
-                                <!-- Processed By User -->
+                                <!-- Processed By (who marked paid + payment method) -->
                                 <td>
                                     <?php
-                                            echo isset($row['paid_by_name']) ? htmlspecialchars($row['paid_by_name']) : 'N/A';
-                                            ?>
+                                    $paidByName = isset($row['paid_by_name']) ? htmlspecialchars($row['paid_by_name']) : '';
+                                    $paymentMethod = isset($row['payment_method']) ? htmlspecialchars($row['payment_method']) : '';
+                                    
+                                    if ($payStatus == 'paid' && !empty($paidByName)) {
+                                        echo '<span style="font-weight: 600; color: #28a745;">' . $paidByName . '</span>';
+                                        if (!empty($paymentMethod)) {
+                                            $methodDisplay = ucwords(str_replace('_', ' ', $paymentMethod));
+                                            echo '<br><span style="font-size: 11px; color: #6c757d;">' . $methodDisplay . '</span>';
+                                        }
+                                    } else {
+                                        echo '<span style="color: #adb5bd;">-</span>';
+                                    }
+                                    ?>
                                 </td>
 
-                                <!-- User Column - CONDITIONAL: Only show for admin users -->
-                                <?php if ($current_user_role == 1): ?>
-                                <td>
-                                    <?php
-                                                $userName = isset($row['user_name']) ? htmlspecialchars($row['user_name']) : 'N/A';
-                                                $interface = isset($row['interface']) ? $row['interface'] : '';
-                                                $userId = isset($row['user_id']) ? htmlspecialchars($row['user_id']) : '';
-                                                
-                                                echo $userName;
-                                                
-                                                // Display user ID in small text
-                                                if ($userId) {
-                                                    echo "<br><span style='color: #666; font-size: 0.8em;'>ID: $userId</span>";
-                                                }
-                                                
-                                                // Display (leads) if interface is 'leads'
-                                                if ($interface == 'leads') {
-                                                    echo "<br><span style='color: #666; font-size: 0.9em;'>(leads)</span>";
-                                                }
-                                                ?>
-                                </td>
-                                <?php endif; ?>
 
 
                                 <!-- Action Buttons -->
@@ -802,7 +823,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                             <?php endwhile; ?>
                             <?php else: ?>
                             <tr>
-                                <td colspan="10" class="text-center"
+                                <td colspan="9" class="text-center"
                                     style="padding: 40px; text-align: center; color: #666;">
                                     No orders found (excluding pending and canceled orders)
                                 </td>
@@ -848,167 +869,34 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
 
     <!-- Order View Modal -->
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/order_view_modal.php'); ?>
-    <!-- Paid Mark Modal -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/paid_mark_modal.php'); ?>
+
+
+    <!-- Include Footer and Scripts (toast.js loads here) -->
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php'); ?>
 
     <script>
-    // MODIFIED: Enhanced JavaScript functionality with always-show payment slip button for paid orders
-
     let currentOrderId = null;
     let currentInterface = null;
-    let currentPaymentSlip = null; // Store payment slip filename
-    let currentPayStatus = null; // Store payment status
+    let currentPaymentSlip = null;
+    let currentPayStatus = null;
 
-    // NEW: Current user role from PHP
     const currentUserRole = <?php echo $current_user_role; ?>;
     const currentUserId = <?php echo $current_user_id; ?>;
 
-
-    // Clear all filter inputs - Updated to include user_id_filter
-    function clearFilters() {
-        // ... (existing clearFilters code)
+    function showAlert(type, message) {
+        toastManager[type](message);
     }
 
-    // Mark as Paid Modal Functionality
-    function markAsPaid(orderId) {
-        if (!orderId || orderId.trim() === '') {
-            alert('Order ID is required to mark as paid.');
-            return;
-        }
-        document.getElementById('modal_order_id').value = orderId.trim();
-        document.getElementById('markPaidForm').reset();
-        document.getElementById('fileInfo').style.display = 'none';
-        const modal = document.getElementById('markPaidModal');
-        modal.classList.add('show');
-        modal.style.display = 'flex';
-        document.body.style.overflow = 'hidden';
-    }
-
-    function closePaidModal() {
-        const modal = document.getElementById('markPaidModal');
-        modal.classList.remove('show');
-        modal.style.display = 'none';
-        document.body.style.overflow = 'auto';
-        document.getElementById('markPaidForm').reset();
-        document.getElementById('fileInfo').style.display = 'none';
-    }
-
-    function unmarkPaid(orderId) {
-        if (!orderId || orderId.trim() === '') {
-            alert('Order ID is required to unmark as paid.');
-            return;
-        }
-        if (confirm('Are you sure you want to unmark this order as paid? This will delete the payment record and set the order back to unpaid.')) {
-            const formData = new FormData();
-            formData.append('order_id', orderId);
-            formData.append('action', 'unmark_paid');
-            fetch('unmark_paid.php', {
-                    method: 'POST',
-                    body: formData
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        alert('Order unmarked as paid successfully!');
-                        window.location.reload();
-                    } else {
-                        alert('Error: ' + (data.message || 'Failed to unmark order as paid'));
-                    }
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    alert('An error occurred while unmarking the payment. Please try again.');
-                });
-        }
-    }
-
-    document.addEventListener('DOMContentLoaded', function() {
-        const markPaidForm = document.getElementById('markPaidForm');
-        if (markPaidForm) {
-            markPaidForm.addEventListener('submit', function(e) {
-                e.preventDefault();
-                const orderId = document.getElementById('modal_order_id').value;
-                const fileInput = document.getElementById('payment_slip');
-                const submitBtn = document.getElementById('submitPaidBtn');
-                submitBtn.innerHTML = '<span class="loading-spinner"></span> Processing...';
-                submitBtn.disabled = true;
-                const formData = new FormData();
-                formData.append('order_id', orderId);
-                formData.append('payment_slip', fileInput.files[0]);
-                formData.append('action', 'mark_paid');
-                fetch('mark_paid.php', {
-                        method: 'POST',
-                        body: formData
-                    })
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.success) {
-                            alert('Order marked as paid successfully!');
-                            closePaidModal();
-                            window.location.reload();
-                        } else {
-                            alert('Error: ' + (data.message || 'Failed to mark order as paid'));
-                        }
-                    })
-                    .catch(error => {
-                        console.error('Error:', error);
-                        alert('An error occurred while processing the payment.');
-                    })
-                    .finally(() => {
-                        submitBtn.innerHTML = '<i class="fas fa-check me-1"></i>Mark as Paid';
-                        submitBtn.disabled = false;
-                    });
-            });
-        }
-
-        const fileInput = document.getElementById('payment_slip');
-        const fileInfo = document.getElementById('fileInfo');
-        const fileName = document.getElementById('fileName');
-        if (fileInput) {
-            fileInput.addEventListener('change', function(e) {
-                const file = e.target.files[0];
-                if (file) {
-                    if (file.size > 2 * 1024 * 1024) {
-                        alert('File size must be less than 2MB');
-                        fileInput.value = '';
-                        fileInfo.style.display = 'none';
-                        return;
-                    }
-                    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'application/pdf'];
-                    if (!allowedTypes.includes(file.type)) {
-                        alert('Please select a valid file format (JPG, JPEG, PNG, PDF)');
-                        fileInput.value = '';
-                        fileInfo.style.display = 'none';
-                        return;
-                    }
-                    fileName.textContent = file.name;
-                    fileInfo.style.display = 'block';
-                } else {
-                    fileInfo.style.display = 'none';
-                }
-            });
-        }
-    });
-
-    // Close modal when clicking outside
-    document.addEventListener('click', function(e) {
-        const paidModal = document.getElementById('markPaidModal');
-        if (paidModal && e.target === paidModal) {
-            closePaidModal();
-        }
-    });
-    // Clear all filter inputs - Updated to include user_id_filter
     function clearFilters() {
         document.getElementById('order_id_filter').value = '';
         document.getElementById('customer_name_filter').value = '';
-        document.getElementById('user_id_filter').value = '';
         document.getElementById('tracking_id').value = '';
         document.getElementById('date_from').value = '';
         document.getElementById('date_to').value = '';
         document.getElementById('status_filter').value = '';
         document.getElementById('pay_status_filter').value = '';
 
-        // Only clear user_id_filter for admin users (if it exists)
         const userIdFilter = document.getElementById('user_id_filter');
         if (userIdFilter && currentUserRole == 1) {
             userIdFilter.value = '';
@@ -1017,14 +905,13 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
         window.location.href = window.location.pathname;
     }
 
-    // MODIFIED: Enhanced openOrderModal function
+
+
     function openOrderModal(orderId, interface = null) {
         if (!orderId || orderId.trim() === '') {
-            alert('Order ID is required to view order details.');
+            toastManager.warning('Order ID is required to view order details.');
             return;
         }
-
-        console.log('Opening modal for Order ID:', orderId, 'Interface:', interface);
 
         currentOrderId = orderId.trim();
         currentInterface = interface;
@@ -1034,48 +921,32 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
         const downloadBtn = document.getElementById('downloadBtn');
         const viewPaymentSlipBtn = document.getElementById('viewPaymentSlipBtn');
 
-        // Show modal
         modal.style.display = 'flex';
-        document.body.style.overflow = 'hidden';
+        document.body.style.overflow = 'clip';
 
-        // Show loading state
         modalContent.innerHTML = `
         <div class="modal-loading">
             <i class="fas fa-spinner fa-spin"></i>
             Loading ${interface === 'leads' ? 'lead' : 'order'} details for Order ID: ${currentOrderId}...
-        </div>
-    `;
+        </div>`;
         downloadBtn.style.display = 'none';
         viewPaymentSlipBtn.style.display = 'none';
 
-        // Determine which PHP file to use based on interface
-        const phpFile = (interface === 'leads') ? '../leads/leads_download.php' : 'download_order_page.php';
+        const phpFile = 'download_order_page.php';
         const fetchUrl = phpFile + '?id=' + encodeURIComponent(currentOrderId);
-
-        console.log('Fetching from:', fetchUrl);
 
         fetch(fetchUrl, {
                 method: 'GET',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                }
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
             })
             .then(response => {
-                console.log('Response status:', response.status);
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                 return response.text();
             })
             .then(data => {
-                console.log('Data received:', data.length, 'characters');
-                if (data.trim() === '') {
-                    throw new Error('No data received from server');
-                }
+                if (data.trim() === '') throw new Error('No data received from server');
                 modalContent.innerHTML = data;
                 downloadBtn.style.display = 'inline-flex';
-
-                // MODIFIED: Check for payment slip and update button visibility
                 checkPaymentSlipAvailability();
             })
             .catch(error => {
@@ -1087,42 +958,40 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                 <h4>Error Loading ${itemType.charAt(0).toUpperCase() + itemType.slice(1)} Details</h4>
                 <p>Order ID: ${currentOrderId}</p>
                 <p>Error: ${error.message}</p>
-                <p>Please check if the ${phpFile} file exists and is accessible.</p>
                 <button onclick="retryLoadOrder()" class="btn btn-primary" style="margin-top: 10px;">
                     <i class="fas fa-redo"></i> Retry
                 </button>
-            </div>
-        `;
+            </div>`;
             });
     }
 
-    // MODIFIED: Function to check payment slip availability - always show button for paid orders
     function checkPaymentSlipAvailability() {
         if (!currentOrderId) return;
-
-        // Fetch payment slip information from server
         fetch('get_payment_slip_info.php?order_id=' + encodeURIComponent(currentOrderId), {
                 method: 'GET',
-                headers: {
-                    'Content-Type': 'application/json',
-                }
+                headers: { 'Content-Type': 'application/json' }
             })
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
                     currentPaymentSlip = data.payment_slip;
                     currentPayStatus = data.pay_status;
-
                     const viewPaymentSlipBtn = document.getElementById('viewPaymentSlipBtn');
-
-                    // MODIFIED: Show button for all paid orders, regardless of slip availability
                     if (currentPayStatus === 'paid') {
-                        viewPaymentSlipBtn.style.display = 'inline-flex';
+                        if (currentPaymentSlip && currentPaymentSlip.trim() !== '') {
+                            viewPaymentSlipBtn.style.display = 'inline-flex';
+                            const noSlipMsg = document.getElementById('noPaymentSlipMsg');
+                            if (noSlipMsg) noSlipMsg.style.display = 'none';
+                        } else {
+                            viewPaymentSlipBtn.style.display = 'none';
+                            const noSlipMsg = document.getElementById('noPaymentSlipMsg');
+                            if (noSlipMsg) noSlipMsg.style.display = 'inline-flex';
+                        }
                     } else {
                         viewPaymentSlipBtn.style.display = 'none';
+                        const noSlipMsg = document.getElementById('noPaymentSlipMsg');
+                        if (noSlipMsg) noSlipMsg.style.display = 'none';
                     }
-                } else {
-                    console.log('No payment slip information available');
                 }
             })
             .catch(error => {
@@ -1130,116 +999,73 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
             });
     }
 
-    // MODIFIED: Function to view payment slip with no-slip message
     function viewPaymentSlip() {
-        // Check if payment slip exists
         if (!currentPaymentSlip || currentPaymentSlip.trim() === '') {
-            alert('This order has no payment slip.');
+            const slipBtn = document.getElementById('viewPaymentSlipBtn');
+            const noSlipMsg = document.getElementById('noPaymentSlipMsg');
+            if (slipBtn) slipBtn.style.display = 'none';
+            if (noSlipMsg) noSlipMsg.style.display = 'inline-flex';
             return;
         }
-
-        // Construct the payment slip URL
         const slipUrl = '/OMS/dist/uploads/payment_slips/' + encodeURIComponent(currentPaymentSlip);
-
-        // Open payment slip in new tab
         window.open(slipUrl, '_blank');
     }
 
-    // Retry loading order 
     function retryLoadOrder() {
         if (currentOrderId) {
             openOrderModal(currentOrderId, currentInterface);
         }
     }
 
-    // Close order modal 
     function closeOrderModal() {
         const modal = document.getElementById('orderModal');
         modal.style.display = 'none';
-        document.body.style.overflow = 'auto';
+        document.body.style.overflow = '';
         currentOrderId = null;
         currentInterface = null;
         currentPaymentSlip = null;
         currentPayStatus = null;
     }
 
-    // Download order 
     function downloadOrder() {
         if (!currentOrderId) {
-            alert('No order selected for download.');
+            toastManager.warning('No order selected for download.');
             return;
         }
-
-        const phpFile = (currentInterface === 'leads') ? '../leads/leads_download.php' : 'download_order.php';
+        const phpFile = 'download_order.php';
         const downloadUrl = phpFile + '?id=' + encodeURIComponent(currentOrderId) + '&download=1';
-
-        console.log('Downloading from:', downloadUrl);
         window.open(downloadUrl, '_blank');
     }
 
-    // Close modal when clicking outside 
     document.getElementById('orderModal').addEventListener('click', function(e) {
-        if (e.target === this) {
-            closeOrderModal();
-        }
+        if (e.target === this) closeOrderModal();
     });
 
-    // Close modal with Escape key
     document.addEventListener('keydown', function(e) {
-        if (e.key === 'Escape') {
-            closeOrderModal();
-        }
+        if (e.key === 'Escape') closeOrderModal();
     });
 
-    // Initialize page functionality when DOM is loaded 
     document.addEventListener('DOMContentLoaded', function() {
-        console.log('Orders page loaded, initializing...');
-
         const tableRows = document.querySelectorAll('.orders-table tbody tr');
         tableRows.forEach(row => {
-            row.addEventListener('mouseenter', function() {
-                this.style.transform = 'translateX(2px)';
-            });
-
-            row.addEventListener('mouseleave', function() {
-                this.style.transform = 'translateX(0)';
-            });
+            row.addEventListener('mouseenter', function() { this.style.transform = 'translateX(2px)'; });
+            row.addEventListener('mouseleave', function() { this.style.transform = 'translateX(0)'; });
         });
-
-        const modal = document.getElementById('orderModal');
-        const modalContent = document.getElementById('modalContent');
-        if (!modal || !modalContent) {
-            console.error('Modal elements not found! Check HTML structure.');
-        }
     });
 
-
-    // Print order function
     function printOrder(orderId) {
         if (!orderId || orderId.trim() === '') {
-            alert('Order ID is required to print order.');
+            toastManager.warning('Order ID is required to print order.');
             return;
         }
-
-        console.log('Printing Order ID:', orderId);
-
-        // Construct the print URL
         const printUrl = 'download_order_print.php?id=' + encodeURIComponent(orderId.trim());
-
-        // Open print page in new window
-        const printWindow = window.open(printUrl, '_blank');
-
-        // Optional: Auto-print when page loads (uncomment if needed)
-        // printWindow.onload = function() {
-        //     printWindow.print();
-        // };
+        window.open(printUrl, '_blank');
     }
 
-
-    //SYNC BUTTON FUNCTION START HERE
+    // SYNC BUTTON - Royal Express
     document.getElementById("syncRoyalBtn").addEventListener("click", function() {
         let btn = this;
-        btn.disabled = true; // Disable to prevent multiple clicks
+        btn.disabled = true;
         btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Syncing...';
 
         fetch('/OMS/dist/api/royalexpress_webhook.php')
@@ -1248,171 +1074,88 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                 btn.disabled = false;
                 btn.innerHTML = '<i class="fas fa-sync-alt"></i> Sync Royal Status';
 
-                let message = '';
-
-                // Success message
                 if (data.success) {
-                    message +=
-                        `<div class="alert alert-success mb-2"><strong>${data.updated_orders}</strong> orders updated successfully.</div>`;
+                    showAlert('success', data.updated_orders + ' orders updated successfully.');
                 }
-
-                // Error messages
                 if (data.errors && data.errors.length > 0) {
-                    message +=
-                        `<div class="alert alert-danger"><strong>${data.errors.length}</strong> errors occurred:<br>`;
-                    message += data.errors.join('<br>');
-                    message += `</div>`;
+                    showAlert('error', data.errors.length + ' errors occurred: ' + data.errors.join(', '));
                 }
 
-                // Show popup message
-                const tempDiv = document.createElement('div');
-                tempDiv.innerHTML = message;
-                document.body.appendChild(tempDiv);
-                setTimeout(() => tempDiv.remove(), 5000); // Remove after 5s
-
-                // Auto-refresh table or page after sync
                 if (data.success) {
-                    setTimeout(() => {
-                        // Option 1: Reload the page
-                        window.location.reload();
-
-                        // Option 2: Or fetch and reload only the table via AJAX
-                        // fetchOrdersTable(); // You can implement a JS function to reload table only
-                    }, 1500);
+                    setTimeout(() => { window.location.reload(); }, 1500);
                 }
             })
             .catch(error => {
                 btn.disabled = false;
                 btn.innerHTML = '<i class="fas fa-sync-alt"></i> Sync Royal Status';
-                alert("Error syncing Royal Express: " + error.message);
+                showAlert('error', 'Error syncing Royal Express: ' + error.message);
             });
     });
 
-    // SYNC BUTTON FUNCTION START HERE (Transexpress)
+    // SYNC BUTTON - Transexpress
     document.getElementById("syncTransexpBtn").addEventListener("click", function() {
         let btn = this;
-        btn.disabled = true; // Disable to prevent multiple clicks
+        btn.disabled = true;
         btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Syncing...';
 
-        fetch('/OMS/dist/api/transexp_webhook.php') // adjust path if needed
+        fetch('/OMS/dist/api/transexp_webhook.php')
             .then(response => response.json())
             .then(data => {
                 btn.disabled = false;
                 btn.innerHTML = '<i class="fas fa-sync-alt"></i> Sync Transexpress Status';
 
-                let message = '';
-
-                // Success message
                 if (data.success) {
-                    message +=
-                        `<div class="alert alert-success mb-2"><strong>${data.updated_orders}</strong> orders updated successfully.</div>`;
+                    showAlert('success', data.updated_orders + ' orders updated successfully.');
                 }
-
-                // Error messages
                 if (data.errors && data.errors.length > 0) {
-                    message +=
-                        `<div class="alert alert-danger"><strong>${data.errors.length}</strong> errors occurred:<br>`;
-
-                    // Format errors nicely
-                    data.errors.forEach(err => {
-                        message +=
-                            `OrderID: ${err.order_id}, Waybill: ${err.waybill}, Error: ${err.error}<br>`;
-                    });
-
-                    message += `</div>`;
+                    showAlert('error', data.errors.length + ' errors occurred.');
                 }
 
-                // Show popup message
-                const tempDiv = document.createElement('div');
-                tempDiv.innerHTML = message;
-                document.body.appendChild(tempDiv);
-                setTimeout(() => tempDiv.remove(), 5000); // Remove after 5s
-
-                // Auto-refresh table or page after sync
                 if (data.success) {
-                    setTimeout(() => {
-                        window.location.reload(); // Reload the page
-                        // Or implement AJAX table reload if needed
-                    }, 1500);
+                    setTimeout(() => { window.location.reload(); }, 1500);
                 }
             })
             .catch(error => {
                 btn.disabled = false;
                 btn.innerHTML = '<i class="fas fa-sync-alt"></i> Sync Transexpress Status';
-                alert("Error syncing Transexpress: " + error.message);
+                showAlert('error', 'Error syncing Transexpress: ' + error.message);
             });
     });
-    // SYNC BUTTON FUNCTION START HERE (Koombiyo)
+
+    // SYNC BUTTON - Koombiyo
     document.getElementById("syncKoombiyoBtn").addEventListener("click", function() {
         let btn = this;
-        btn.disabled = true; // Disable to prevent multiple clicks
+        btn.disabled = true;
         btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Syncing...';
 
-        fetch('/OMS/dist/api/koombiyo_webhook.php') // adjust path if needed
+        fetch('/OMS/dist/api/koombiyo_webhook.php')
             .then(response => response.json())
             .then(data => {
                 btn.disabled = false;
                 btn.innerHTML = '<i class="fas fa-sync-alt"></i> Sync Koombiyo Status';
 
-                let message = '';
-
-                // // Success message
-                // if (data.success && data.updated_orders > 0) {
-                //     message += `<div class="alert alert-success alert-dismissible fade show" role="alert">
-                //                     <strong>${data.updated_orders}</strong> orders updated successfully.
-                //                     <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                //                 </div>`;
-                // }
-
-                // Error messages section commented out
-                /*
-                if (data.errors && data.errors.length > 0) {
-                    message += `<div class="alert alert-danger alert-dismissible fade show" role="alert">
-                                    <strong>${data.errors.length}</strong> errors occurred:<br>`;
-                    
-                    data.errors.forEach(err => {
-                        message += `OrderID: ${err.order_id}, Waybill: ${err.waybill ?? 'N/A'}, Error: ${err.error}<br>`;
-                    });
-
-                    message += `<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button></div>`;
-                }
-                */
-
-                // Show popup message
-                const tempDiv = document.createElement('div');
-                tempDiv.style.position = 'fixed';
-                tempDiv.style.top = '20px';
-                tempDiv.style.right = '20px';
-                tempDiv.style.zIndex = '9999';
-                tempDiv.style.maxWidth = '400px';
-                tempDiv.innerHTML = message;
-                document.body.appendChild(tempDiv);
-
-                // Auto-remove popup after 7 seconds
-                setTimeout(() => tempDiv.remove(), 7000);
-
-                // Auto-refresh page after sync
                 if (data.success) {
-                    setTimeout(() => {
-                        window.location.reload();
-                    }, 1500);
+                    showAlert('success', data.updated_orders + ' orders updated successfully.');
+                }
+                if (data.errors && data.errors.length > 0) {
+                    showAlert('error', data.errors.length + ' errors occurred.');
+                }
+
+                if (data.success) {
+                    setTimeout(() => { window.location.reload(); }, 1500);
                 }
             })
             .catch(error => {
                 btn.disabled = false;
                 btn.innerHTML = '<i class="fas fa-sync-alt"></i> Sync Koombiyo Status';
-                alert("Error syncing Koombiyo: " + error.message);
+                showAlert('error', 'Error syncing Koombiyo: ' + error.message);
             });
     });
-    // Updated exportToCSV function that reads current filter values directly
-    function exportToCSV() {
-        // Create URLSearchParams object
-        const params = new URLSearchParams();
 
-        // Add export flag
+    function exportToCSV() {
+        const params = new URLSearchParams();
         params.set('export', '1');
 
-        // Get all filter values directly from form inputs
         const orderId = document.getElementById('order_id_filter')?.value.trim();
         const customerName = document.getElementById('customer_name_filter')?.value.trim();
         const userId = document.getElementById('user_id_filter')?.value.trim();
@@ -1422,7 +1165,6 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
         const status = document.getElementById('status_filter')?.value.trim();
         const payStatus = document.getElementById('pay_status_filter')?.value.trim();
 
-        // Add parameters only if they have values
         if (orderId) params.set('order_id_filter', orderId);
         if (customerName) params.set('customer_name_filter', customerName);
         if (userId) params.set('user_id_filter', userId);
@@ -1432,30 +1174,11 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
         if (status) params.set('status_filter', status);
         if (payStatus) params.set('pay_status_filter', payStatus);
 
-        // Create export URL with all filter parameters
-        const exportUrl = 'export_orders.php?' + params.toString();
-
-        console.log('Exporting to:', exportUrl);
-        console.log('Filters:', {
-            orderId,
-            customerName,
-            userId,
-            trackingId,
-            dateFrom,
-            dateTo,
-            status,
-            payStatus
-        });
-
-        // Trigger download
-        window.location.href = exportUrl;
+        window.location.href = 'export_orders.php?' + params.toString();
     }
 
-    // Alternative: If you want to show a confirmation message before export
     function exportToCSVWithConfirm() {
-        // Get filter values
         const filters = [];
-
         const orderId = document.getElementById('order_id_filter')?.value.trim();
         const customerName = document.getElementById('customer_name_filter')?.value.trim();
         const userId = document.getElementById('user_id_filter')?.value.trim();
@@ -1465,45 +1188,22 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
         const status = document.getElementById('status_filter')?.value.trim();
         const payStatus = document.getElementById('pay_status_filter')?.value.trim();
 
-        // Build filter description
-        if (orderId) filters.push(`Order ID: ${orderId}`);
-        if (customerName) filters.push(`Customer: ${customerName}`);
-        if (userId) filters.push(`User ID: ${userId}`);
-        if (trackingId) filters.push(`Tracking: ${trackingId}`);
-        if (dateFrom) filters.push(`From: ${dateFrom}`);
-        if (dateTo) filters.push(`To: ${dateTo}`);
-        if (status) filters.push(`Status: ${status}`);
-        if (payStatus) filters.push(`Payment: ${payStatus}`);
+        if (orderId) filters.push('Order ID: ' + orderId);
+        if (customerName) filters.push('Customer: ' + customerName);
+        if (userId) filters.push('User ID: ' + userId);
+        if (trackingId) filters.push('Tracking: ' + trackingId);
+        if (dateFrom) filters.push('From: ' + dateFrom);
+        if (dateTo) filters.push('To: ' + dateTo);
+        if (status) filters.push('Status: ' + status);
+        if (payStatus) filters.push('Payment: ' + payStatus);
 
-        // Show confirmation
-        const filterText = filters.length > 0 ?
-            `Export with filters:\n${filters.join('\n')}` :
-            'Export all orders (no filters applied)';
+        const filterText = filters.length > 0 ? 'Export with filters:\n' + filters.join('\n') : 'Export all orders (no filters applied)';
 
         if (confirm(filterText + '\n\nContinue?')) {
-            // Create URLSearchParams object
-            const params = new URLSearchParams();
-            params.set('export', '1');
-
-            // Add parameters
-            if (orderId) params.set('order_id_filter', orderId);
-            if (customerName) params.set('customer_name_filter', customerName);
-            if (userId) params.set('user_id_filter', userId);
-            if (trackingId) params.set('tracking_id', trackingId);
-            if (dateFrom) params.set('date_from', dateFrom);
-            if (dateTo) params.set('date_to', dateTo);
-            if (status) params.set('status_filter', status);
-            if (payStatus) params.set('pay_status_filter', payStatus);
-
-            // Trigger download
-            window.location.href = 'export_orders.php?' + params.toString();
+            exportToCSV();
         }
     }
     </script>
-    <!-- Include Footer and Scripts -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php'); ?>
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php'); ?>
 
 </body>
-
 </html>

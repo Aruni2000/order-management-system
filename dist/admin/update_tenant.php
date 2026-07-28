@@ -35,16 +35,17 @@ function jsonResponse($success, $message, $errors = null, $data = null)
 }
 
 /* ================================
-   Helper: Activity Log (SAFE)
+   Helper: User Log (SAFE)
 ================================ */
-function logTenantAction($conn, $userId, $tenantId, $action, $description)
+function logTenantAction($conn, $userId, $tenantId, $description = '')
 {
     try {
-        $sql = "INSERT INTO activity_logs (user_id, action, description, created_at)
-                VALUES (?, ?, ?, NOW())";
+        $actionType = 'tenant_update';
+        $sql = "INSERT INTO user_logs (user_id, action_type, inquiry_id, details, created_at)
+                VALUES (?, ?, ?, ?, NOW())";
 
         if ($stmt = $conn->prepare($sql)) {
-            $stmt->bind_param("iss", $userId, $action, $description);
+            $stmt->bind_param("isis", $userId, $actionType, $tenantId, $description);
             $stmt->execute();
             $stmt->close();
         } else {
@@ -96,52 +97,39 @@ if (!$userRole || (int)$userRole['role_id'] !== 1) {
 }
 
 /* ================================
-   Input Sanitization
+   Input Sanitization (first, so we have $tenantId for checks)
 ================================ */
 $tenantId       = (int)($_POST['tenant_id'] ?? 0);
 $companyName    = trim($_POST['company_name'] ?? '');
 $contactPerson  = trim($_POST['contact_person'] ?? '');
 $email          = strtolower(trim($_POST['email'] ?? ''));
 $phone          = trim($_POST['phone'] ?? '');
-$status         = $_POST['status'] ?? 'active';
+$address        = trim($_POST['address'] ?? '');
+$deliveryFee    = trim($_POST['delivery_fee'] ?? '0.00');
+$removeLogo     = isset($_POST['remove_logo']) ? 1 : 0;
+$removeFavicon  = isset($_POST['remove_favicon']) ? 1 : 0;
 $isMainAdmin    = (int)($_POST['is_main_admin'] ?? 0);
 
 /* ================================
-   Validation
+   Role & Ownership Check
 ================================ */
-$errors = [];
+$currentIsMainAdmin = isset($_SESSION['is_main_admin']) && $_SESSION['is_main_admin'] == 1;
 
-if ($tenantId <= 0) $errors['tenant_id'] = 'Invalid tenant ID.';
-if (strlen($companyName) < 2) $errors['company_name'] = 'Company name is required.';
-if (strlen($contactPerson) < 2) $errors['contact_person'] = 'Contact person is required.';
-
-if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-    $errors['email'] = 'Invalid email address.';
-}
-
-$cleanPhone = preg_replace('/\s+/', '', $phone);
-if (!preg_match('/^(0|94|\+94)?[1-9][0-9]{8}$/', $cleanPhone)) {
-    $errors['phone'] = 'Invalid Sri Lankan phone number.';
-}
-
-if (!in_array($status, ['active', 'inactive'])) {
-    $errors['status'] = 'Invalid status.';
-}
-
-if (!in_array($isMainAdmin, [0, 1])) {
-    $errors['is_main_admin'] = 'Invalid value.';
-}
-
-if (!empty($errors)) {
-    jsonResponse(false, 'Please correct the errors.', $errors);
+// Company admin can ONLY update their own tenant
+if (!$currentIsMainAdmin) {
+    $sessionTenantId = (int)($_SESSION['tenant_id'] ?? 0);
+    if ($tenantId !== $sessionTenantId || $sessionTenantId <= 0) {
+        jsonResponse(false, 'Access denied. You can only edit your own company settings.');
+    }
 }
 
 /* ================================
-   Fetch Existing Tenant
+   Fetch Existing Tenant (before validation to override protected fields)
 ================================ */
 $existingStmt = $conn->prepare(
-    "SELECT company_name, contact_person, email, phone, status, is_main_admin
-     FROM tenants WHERE tenant_id = ?"
+    "SELECT company_name, contact_person, email, phone, address, delivery_fee, logo_url, fav_icon_url, status, is_main_admin
+     FROM tenants
+     WHERE tenant_id = ?"
 );
 
 $existingStmt->bind_param("i", $tenantId);
@@ -153,28 +141,184 @@ if (!$existingTenant) {
     jsonResponse(false, 'Tenant not found.');
 }
 
+// Company admin cannot change is_main_admin — force existing value BEFORE validation
+if (!$currentIsMainAdmin) {
+    $isMainAdmin = (int)$existingTenant['is_main_admin'];
+}
+
 /* ================================
-   Detect Actual Changes
+   Validation
 ================================ */
-$newData = [
+$errors = [];
+
+if ($tenantId <= 0) $errors['tenant_id'] = 'Invalid tenant ID.';
+    if (strlen($companyName) < 2) $errors['company_name'] = 'Company name is required.';
+    if (strlen($companyName) > 15) $errors['company_name'] = 'Company name is too long (maximum 15 characters).';
+if (strlen($contactPerson) < 2) $errors['contact_person'] = 'Contact person is required.';
+
+if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+    $errors['email'] = 'Invalid email address.';
+}
+
+$cleanPhone = preg_replace('/\s+/', '', $phone);
+if (!preg_match('/^(0|94|\+94)?[1-9][0-9]{8}$/', $cleanPhone)) {
+    $errors['phone'] = 'Invalid Sri Lankan phone number.';
+}
+
+if (!in_array($isMainAdmin, [0, 1])) {
+    $errors['is_main_admin'] = 'Invalid value.';
+}
+
+// Validate logo file type
+if (isset($_FILES['logo']) && $_FILES['logo']['error'] == 0) {
+    $ext = strtolower(pathinfo($_FILES['logo']['name'], PATHINFO_EXTENSION));
+    if (!in_array($ext, ['jpg', 'jpeg', 'png', 'gif'])) {
+        $errors['logo'] = 'Invalid logo file type. Allowed: JPG, PNG, GIF';
+    }
+}
+
+// Validate favicon file type
+if (isset($_FILES['fav_icon']) && $_FILES['fav_icon']['error'] == 0) {
+    $ext = strtolower(pathinfo($_FILES['fav_icon']['name'], PATHINFO_EXTENSION));
+    if (!in_array($ext, ['jpg', 'jpeg', 'png', 'ico'])) {
+        $errors['fav_icon'] = 'Invalid favicon file type. Allowed: ICO, PNG, JPG';
+    }
+}
+
+if (!empty($errors)) {
+    jsonResponse(false, 'Please correct the errors.', $errors);
+}
+
+/* ================================
+   Detect Actual Changes & Build Log Details
+================================ */
+$tenantChanged = false;
+$changes = [];
+$fieldLabels = [
+    'company_name'   => 'Company Name',
+    'contact_person' => 'Contact Person',
+    'email'          => 'Email',
+    'phone'          => 'Phone',
+    'address'        => 'Address',
+    'delivery_fee'   => 'Delivery Fee',
+    'is_main_admin'  => 'Main Admin'
+];
+
+$tenantFields = [
     'company_name'   => $companyName,
     'contact_person' => $contactPerson,
     'email'          => $email,
     'phone'          => $phone,
-    'status'         => $status,
+    'address'        => $address,
+    'delivery_fee'   => $deliveryFee,
     'is_main_admin'  => $isMainAdmin
 ];
 
-$hasChanges = false;
-foreach ($newData as $field => $value) {
-    if ($existingTenant[$field] != $value) {
-        $hasChanges = true;
-        break;
+foreach ($tenantFields as $field => $newValue) {
+    $oldValue = $existingTenant[$field] ?? '';
+    if ($oldValue != $newValue) {
+        $tenantChanged = true;
+        $label = $fieldLabels[$field] ?? ucfirst(str_replace('_', ' ', $field));
+
+        // Format special field values for readability
+        switch ($field) {
+            case 'is_main_admin':
+                $oldDisplay = $oldValue ? 'Yes' : 'No';
+                $newDisplay = $newValue ? 'Yes' : 'No';
+                break;
+            case 'delivery_fee':
+                $oldDisplay = number_format((float)$oldValue, 2);
+                $newDisplay = number_format((float)$newValue, 2);
+                break;
+            default:
+                $oldDisplay = !empty($oldValue) || $oldValue === '0' ? $oldValue : '(empty)';
+                $newDisplay = !empty($newValue) || $newValue === '0' ? $newValue : '(empty)';
+                break;
+        }
+
+        $changes[] = "{$label}: Changed from '{$oldDisplay}' to '{$newDisplay}'";
     }
 }
 
-if (!$hasChanges) {
-    jsonResponse(false, 'No changes detected.');
+/* ================================
+   Process Logo/Favicon Uploads
+================================ */
+$logoUrl = $existingTenant['logo_url'] ?? '';
+$faviconUrl = $existingTenant['fav_icon_url'] ?? '';
+
+// Helper: sanitize company name for use in filenames
+$nameSlug = strtolower(trim($companyName));
+$nameSlug = preg_replace('/[^a-z0-9]+/', '_', $nameSlug);
+$nameSlug = trim($nameSlug, '_');
+$nameSlug = substr($nameSlug, 0, 40);
+
+// Helper: delete old uploaded file from disk given its URL path
+$deleteOldFile = function ($urlPath) {
+    if (empty($urlPath)) return;
+    $filePath = $_SERVER['DOCUMENT_ROOT'] . $urlPath;
+    if (file_exists($filePath)) {
+        @unlink($filePath);
+    }
+};
+
+// Handle logo upload
+if (isset($_FILES['logo']) && $_FILES['logo']['error'] == 0) {
+    $allowed = ['jpg', 'jpeg', 'png', 'gif'];
+    $ext = strtolower(pathinfo($_FILES['logo']['name'], PATHINFO_EXTENSION));
+    if (in_array($ext, $allowed)) {
+        $uploadDir = $_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/uploads/';
+        if (!is_dir($uploadDir)) mkdir($uploadDir, 0755, true);
+        $newName = $nameSlug . '_logo_' . time() . '.' . $ext;
+        if (move_uploaded_file($_FILES['logo']['tmp_name'], $uploadDir . $newName)) {
+            // New file saved — now safe to delete the old one
+            $deleteOldFile($existingTenant['logo_url'] ?? '');
+            $logoUrl = '/OMS/dist/uploads/' . $newName;
+        }
+    }
+} elseif ($removeLogo) {
+    $deleteOldFile($existingTenant['logo_url'] ?? '');
+    $logoUrl = '';
+}
+
+// Handle favicon upload
+if (isset($_FILES['fav_icon']) && $_FILES['fav_icon']['error'] == 0) {
+    $allowed = ['jpg', 'jpeg', 'png', 'ico'];
+    $ext = strtolower(pathinfo($_FILES['fav_icon']['name'], PATHINFO_EXTENSION));
+    if (in_array($ext, $allowed)) {
+        $uploadDir = $_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/uploads/';
+        if (!is_dir($uploadDir)) mkdir($uploadDir, 0755, true);
+        $newName = $nameSlug . '_favicon_' . time() . '.' . $ext;
+        if (move_uploaded_file($_FILES['fav_icon']['tmp_name'], $uploadDir . $newName)) {
+            // New file saved — now safe to delete the old one
+            $deleteOldFile($existingTenant['fav_icon_url'] ?? '');
+            $faviconUrl = '/OMS/dist/uploads/' . $newName;
+        }
+    }
+} elseif ($removeFavicon) {
+    $deleteOldFile($existingTenant['fav_icon_url'] ?? '');
+    $faviconUrl = '';
+}
+
+// Check if logo/favicon changed
+if ($logoUrl !== ($existingTenant['logo_url'] ?? '')) {
+    $tenantChanged = true;
+    if (empty($logoUrl)) {
+        $changes[] = 'Company Logo: Removed';
+    } else {
+        $changes[] = 'Company Logo: Uploaded new logo';
+    }
+}
+if ($faviconUrl !== ($existingTenant['fav_icon_url'] ?? '')) {
+    $tenantChanged = true;
+    if (empty($faviconUrl)) {
+        $changes[] = 'Favicon: Removed';
+    } else {
+        $changes[] = 'Favicon: Uploaded new favicon';
+    }
+}
+
+if (!$tenantChanged) {
+    jsonResponse(true, 'No changes were made to the tenant.');
 }
 
 /* ================================
@@ -198,60 +342,61 @@ if ($email !== $existingTenant['email']) {
 $conn->begin_transaction();
 
 try {
-    $updateStmt = $conn->prepare(
-        "UPDATE tenants SET
-            company_name = ?,
-            contact_person = ?,
-            email = ?,
-            phone = ?,
-            status = ?,
-            is_main_admin = ?,
-            updated_at = NOW()
-         WHERE tenant_id = ?"
-    );
+    if ($tenantChanged) {
+        $updateStmt = $conn->prepare(
+            "UPDATE tenants SET
+                company_name = ?,
+                contact_person = ?,
+                email = ?,
+                phone = ?,
+                address = ?,
+                delivery_fee = ?,
+                logo_url = ?,
+                fav_icon_url = ?,
+                is_main_admin = ?,
+                updated_at = NOW()
+             WHERE tenant_id = ?"
+        );
 
-    if (!$updateStmt) {
-        throw new Exception($conn->error);
-    }
+        if (!$updateStmt) {
+            throw new Exception($conn->error);
+        }
 
-    $updateStmt->bind_param(
-        "sssssii",
-        $companyName,
-        $contactPerson,
-        $email,
-        $phone,
-        $status,
-        $isMainAdmin,
-        $tenantId
-    );
+        $updateStmt->bind_param(
+            "sssssdssii",
+            $companyName,
+            $contactPerson,
+            $email,
+            $phone,
+            $address,
+            $deliveryFee,
+            $logoUrl,
+            $faviconUrl,
+            $isMainAdmin,
+            $tenantId
+        );
 
-    if (!$updateStmt->execute()) {
-        throw new Exception($updateStmt->error);
-    }
+        if (!$updateStmt->execute()) {
+            throw new Exception($updateStmt->error);
+        }
 
-    $affectedRows = $updateStmt->affected_rows;
-    $updateStmt->close();
-
-    if ($affectedRows === 0) {
-        $conn->rollback();
-        jsonResponse(false, 'No changes were applied.');
+        $updateStmt->close();
     }
 
     $conn->commit();
 
-    // Safe logging
+    // Safe logging to user_logs with detailed changes
+    $logDetails = !empty($changes) ? implode(' | ', $changes) : "Updated tenant '{$companyName}' (ID: {$tenantId})";
     logTenantAction(
         $conn,
         $userId,
         $tenantId,
-        'update_tenant',
-        "Updated tenant '{$companyName}' (ID: {$tenantId})"
+        $logDetails
     );
 
     jsonResponse(true, 'Tenant updated successfully.', null, [
         'tenant_id' => $tenantId,
-        'company_name' => $companyName,
-        'status' => ucfirst($status)
+        'company_name' => $companyName
     ]);
 
 } catch (Exception $e) {

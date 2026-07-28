@@ -7,10 +7,16 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
 }
 include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
-// Check if user is main admin
-$is_main_admin = $_SESSION['is_main_admin'];
-$teanent_id = $_SESSION['tenant_id'] ?? 0;
-$co_id =$_POST['co_id'] ?? 0;
+// Check if user is main admin (role_id=1 AND is_main_admin=1)
+$is_main_admin = $_SESSION['is_main_admin'] ?? 0;
+$role_id = $_SESSION['role_id'] ?? 0;
+if ($is_main_admin !== 1 || $role_id !== 1) {
+    header("Location: /OMS/dist/dashboard/index.php");
+    exit();
+}
+
+$tenant_id = $_SESSION['tenant_id'] ?? 0;
+$co_id = $_POST['co_id'] ?? 0;
 
 //function for tenant name
 function TenantName($tenant_id) {
@@ -44,7 +50,9 @@ $date_to = trim($_GET['date_to'] ?? '');
 $tenant_id_filter = trim($_GET['tenant_id_filter'] ?? '');
 
 $error_message = '';
-$hasActiveFilters = !empty($courier_id_filter) && !empty($date_from) && !empty($date_to);
+// Tenant company is required for main admin; non-main-admin uses their default tenant
+$tenantRequired = ($is_main_admin == 1) ? !empty($tenant_id_filter) : true;
+$hasActiveFilters = !empty($courier_id_filter) && !empty($date_from) && !empty($date_to) && $tenantRequired;
 
 if ($hasActiveFilters) {
     $start = new DateTime($date_from);
@@ -64,7 +72,7 @@ if ($hasActiveFilters) {
 // Role-based access
 $roleCondition = ($current_user_role != 1) ? " AND i.user_id = $current_user_id" : "";
 
-// Base SQL with UPDATED logic for return_handover - using percentage calculation
+// Base SQL
 $sql = "SELECT i.order_id, i.customer_id, c.name AS customer_name, i.tracking_number,
                i.total_amount, 
                CASE 
@@ -91,17 +99,14 @@ $sql = "SELECT i.order_id, i.customer_id, c.name AS customer_name, i.tracking_nu
 $searchConditions = [];
 
 if (!$hasActiveFilters) {
-    // No filters selected - show no results
-    $searchConditions[] = "1 = 0"; // This will return no results
+    $searchConditions[] = "1 = 0";
 } else {
-    // Filters are active - apply normal logic
     if (empty($status_filter)) {
         $searchConditions[] = "(i.status IN ('delivered', 'return_handover', 'done'))";
     } else {
         $searchConditions[] = "i.status = '" . $conn->real_escape_string($status_filter) . "'";
     }
 }
-// Apply other filters
 if (!empty($search)) {
     $escapedSearch = $conn->real_escape_string($search);
     $searchConditions[] = "(i.order_id LIKE '%$escapedSearch%' OR c.name LIKE '%$escapedSearch%' OR i.tracking_number LIKE '%$escapedSearch%')";
@@ -134,7 +139,6 @@ if ($searchConditions) {
 $sql .= " ORDER BY i.order_id DESC";
 $result = $conn->query($sql);
 
-// Count total rows - fix the count query to match the main query conditions
 $countSql = "SELECT COUNT(*) as total FROM order_header i 
              LEFT JOIN customers c ON i.customer_id = c.customer_id
              LEFT JOIN couriers co ON i.courier_id = co.courier_id
@@ -145,13 +149,37 @@ if ($searchConditions) {
 $totalRows = (int)$conn->query($countSql)->fetch_assoc()['total'];
 
 
-
-
 // Get unique tenants for filter dropdown
 $tenant_sql = "SELECT DISTINCT tenant_id, company_name 
                FROM tenants";
 $tenant_result = $conn->query($tenant_sql);
 $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
+
+// =============================
+// COURIER DROPDOWN - INITIAL LOAD
+// =============================
+// Determine which tenant's couriers to show on page load
+$initialCourierTenantId = 0;
+if ($is_main_admin == 1) {
+    $initialCourierTenantId = !empty($tenant_id_filter) ? (int)$tenant_id_filter : 0;
+} else {
+    $initialCourierTenantId = (int)$tenant_id;
+}
+
+if ($initialCourierTenantId > 0) {
+    $courierSql = "SELECT co_id, tenant_id, courier_id, courier_name FROM couriers WHERE status = 'active' AND tenant_id = $initialCourierTenantId ORDER BY courier_name ASC";
+} else {
+    $courierSql = "SELECT co_id, tenant_id, courier_id, courier_name FROM couriers WHERE status = 'active' ORDER BY courier_name ASC";
+}
+$couriersResult = $conn->query($courierSql);
+
+// =============================
+// COURIER DROPDOWN - LOCK/UNLOCK
+// =============================
+// Courier dropdown is disabled until a tenant company is selected
+// For main admin: disabled if no tenant_id_filter is set
+// For non-main-admin: always enabled (their tenant is fixed from session)
+$courierDisabled = ($is_main_admin == 1) && empty($tenant_id_filter);
 ?>
 
 <!doctype html>
@@ -276,10 +304,6 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
     }
     </style>
     <script>
-    // Remove auto-submit functionality to prevent premature refreshing
-    // Users must click Search button to submit form
-    </script>
-    <script>
     // Automatically hide error message after 5 seconds
     setTimeout(function() {
         var errorAlert = document.getElementById('error-alert');
@@ -303,7 +327,6 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                 let maxToDate = new Date(fromDate);
                 maxToDate.setDate(fromDate.getDate() + 31);
                 
-                // Set Date To min/max
                 dateTo.setAttribute('min', dateFrom.value);
                 dateTo.setAttribute('max', maxToDate.toISOString().split('T')[0]);
             } else {
@@ -316,7 +339,6 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                 let minFromDate = new Date(toDate);
                 minFromDate.setDate(toDate.getDate() - 31);
                 
-                // Set Date From min/max
                 dateFrom.setAttribute('min', minFromDate.toISOString().split('T')[0]);
                 dateFrom.setAttribute('max', dateTo.value);
             } else {
@@ -327,9 +349,56 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
 
         dateFrom.addEventListener('change', updateRestrictions);
         dateTo.addEventListener('change', updateRestrictions);
-        
-        // Run once on load to apply initial restrictions if dates are pre-filled
         updateRestrictions();
+    });
+
+    /**
+     * AJAX: Load couriers by selected tenant
+     * Fetches active couriers for the given tenant_id
+     * and populates the courier dropdown.
+     * If no tenant selected (empty), reloads page to show all couriers.
+     */
+    function loadCouriersByTenant(tenantId) {
+        const courierSelect = document.querySelector('select[name="courier_id_filter"]');
+
+        // If no tenant selected or "All Companies", reload page (PHP handles all couriers)
+        if (!tenantId || tenantId === '' || tenantId === '0') {
+            window.location.reload();
+            return;
+        }
+
+        // Reset courier selection when tenant changes
+        courierSelect.innerHTML = '<option value="">Loading...</option>';
+        courierSelect.disabled = true;
+
+        fetch('/OMS/dist/tracking/get_couriers_by_tenant.php?tenant_id=' + encodeURIComponent(tenantId))
+            .then(response => response.json())
+            .then(data => {
+                courierSelect.innerHTML = '<option value="">Select Courier</option>';
+                courierSelect.disabled = false;
+
+                if (data.success && data.couriers) {
+                    data.couriers.forEach(function(courier) {
+                        const opt = document.createElement('option');
+                        opt.value = courier.courier_id;
+                        opt.textContent = courier.display_name || (courier.courier_name + ' (ID: ' + courier.courier_id + ')');
+                        courierSelect.appendChild(opt);
+                    });
+                }
+            })
+            .catch(function() {
+                courierSelect.innerHTML = '<option value="">Select Courier</option>';
+                courierSelect.disabled = false;
+            });
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        const tenantFilter = document.getElementById('tenant_id_filter');
+        if (tenantFilter && tenantFilter.tagName === 'SELECT') {
+            tenantFilter.addEventListener('change', function() {
+                loadCouriersByTenant(this.value);
+            });
+        }
     });
     </script>
 </head>
@@ -358,30 +427,47 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                     </div>
                 <?php endif; ?>
                 <form class="tracking-form" method="GET">
-                    <!-- Primary Filters - Most Important -->
+                    <!-- Step 1: Select Tenant Company (only for main admin) -->
+                    <?php if ($is_main_admin == 1): ?>
                     <div class="form-group">
-                        <label><strong>Courier</strong> <span style="color: #dc3545;">*</span></label>
-                        <?php if ($is_main_admin == 1) {
-                            // Fetch active couriers for dropdown
-                                    $courierSql = "SELECT co_id, tenant_id, courier_id, courier_name FROM couriers WHERE status = 'active' ORDER BY courier_name ASC";
-                                } else { 
-                                    $courierSql = "SELECT co_id, tenant_id, courier_id, courier_name FROM couriers WHERE status = 'active' AND tenant_id = $teanent_id ORDER BY courier_name ASC";                   
-                                }
-                                 $couriersResult = $conn->query($courierSql); ?>
-                        <select name="courier_id_filter" class="<?= !empty($courier_id_filter) ? 'auto-submit' : '' ?>" required>
-                            <option value="">Select Courier</option>
-                            <?php 
-                        // Reset result pointer for couriers
-                        if($couriersResult && $couriersResult->num_rows > 0){
-                            $couriersResult->data_seek(0); // Reset pointer
-                            while($rowC = $couriersResult->fetch_assoc()){
-                        ?>
-                            <option value="<?php echo $rowC['courier_id'];?>"><?php echo $rowC['courier_name']. " - ". htmlspecialchars($rowC['courier_id']). " - ".TenantName($rowC['tenant_id'])  ; ?></option>
-                            <?php }
-                            
-                            }else?>
+                        <label for="tenant_id_filter"><strong>Tenant Company</strong> <span style="color: #dc3545;">*</span></label>
+                        <select id="tenant_id_filter" name="tenant_id_filter" required>
+                            <option value="">Select Company</option>
+                            <?php foreach ($tenants as $tenant): ?>
+                            <option value="<?php echo htmlspecialchars($tenant['tenant_id']); ?>"
+                                <?php echo $tenant_id_filter == $tenant['tenant_id'] ? 'selected' : ''; ?>>
+                                <?php echo htmlspecialchars($tenant['company_name'] ? $tenant['company_name'] : 'Company ' . $tenant['tenant_id']); ?>
+                            </option>
+                            <?php endforeach; ?>
                         </select>
                     </div>
+                    <?php endif; ?>
+
+                    <!-- Step 2: Courier (filtered by selected tenant) -->
+                    <div class="form-group">
+                        <label><strong>Courier</strong> <span style="color: #dc3545;">*</span></label>
+                        <select name="courier_id_filter" class="<?= !empty($courier_id_filter) ? 'auto-submit' : '' ?>" required <?php echo $courierDisabled ? 'disabled' : ''; ?>>
+                            <option value="">Select Courier</option>
+                            <?php 
+                            if ($couriersResult && $couriersResult->num_rows > 0) {
+                                $couriersResult->data_seek(0);
+                                while($rowC = $couriersResult->fetch_assoc()) {
+                                    $selected = ($courier_id_filter == $rowC['courier_id']) ? 'selected' : '';
+                            ?>
+                            <option value="<?php echo $rowC['courier_id']; ?>" <?php echo $selected; ?>>
+                                <?php echo $rowC['courier_name'] . ' - ' . htmlspecialchars($rowC['courier_id']); ?>
+                                <?php if ($is_main_admin == 1): ?>
+                                - <?php echo TenantName($rowC['tenant_id']); ?>
+                                <?php endif; ?>
+                            </option>
+                            <?php 
+                                }
+                            }
+                            ?>
+                        </select>
+                    </div>
+
+                    <!-- Step 3: Status -->
                     <div class="form-group">
                         <label><strong>Status</strong></label>
                         <select name="status_filter" class="<?= !empty($status_filter) ? 'auto-submit' : '' ?>">
@@ -394,7 +480,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                         </select>
                     </div>
 
-                    <!-- Date Range Filters -->
+                    <!-- Step 4: Date Range -->
                     <div class="form-group">
                         <label>Date From <span style="color: #dc3545;">*</span></label>
                         <input type="date" name="date_from" value="<?= htmlspecialchars($date_from) ?>" required>
@@ -403,23 +489,6 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                         <label>Date To <span style="color: #dc3545;">*</span> <small>(Max 31 days)</small></label>
                         <input type="date" name="date_to" value="<?= htmlspecialchars($date_to) ?>" required>
                     </div>
-
-                    <?php if ($is_main_admin == 1) { ?>
-                    <div class="form-group">
-                        <label for="tenant_id_filter">Tenant Company</label>
-                        <select id="tenant_id_filter" name="tenant_id_filter">
-                            <option value="">All Companies</option>
-                            <?php foreach ($tenants as $tenant): ?>
-                            <option value="<?php echo htmlspecialchars($tenant['tenant_id']); ?>"
-                                <?php echo $tenant_id_filter == $tenant['tenant_id'] ? 'selected' : ''; ?>>
-                                <?php echo htmlspecialchars($tenant['company_name'] ? $tenant['company_name'] : 'Company ' . $tenant['tenant_id']); ?>
-                            </option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                    <?php } else { ?>
-                    <!--<input type="hidden" name="teanetID" value="0">-->
-                    <?php } ?>
 
                     <!-- Action Buttons -->
                     <div class="form-group">
@@ -433,12 +502,6 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                     </div>
                 </form>
 
-                <?php if (!$hasActiveFilters): ?>
-                <!-- <div style="background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 5px; padding: 10px; margin-top: 10px; text-align: center;">
-                <i class="fas fa-info-circle" style="color: #856404;"></i>
-                <span style="color: #856404; margin-left: 5px;">Please select a courier to start viewing payment data</span>
-            </div> -->
-                <?php endif; ?>
             </div>
 
             <div class="order-count-container">
@@ -454,8 +517,6 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
             </div>
 
             <?php 
-        // Calculate return summary totals for all filtered results (not just current page)
-        // UPDATED summary calculation with percentage-based return fees
         $summarySql = "SELECT 
                        COUNT(*) as total_orders,
                        SUM(i.total_amount) as sum_total_amount,
@@ -492,8 +553,6 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                             <th>Customer</th>
                             <?php if ($is_main_admin == 1) { ?>
                             <th>Tenant Company</th>
-                            <?php } else { ?>
-                            <!--<input type="hidden" name="teanetID" value="0">-->
                             <?php } ?>
                             <th>Status</th>
                             <th>Total Amount</th>
@@ -519,7 +578,6 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                         <tr>
                             <td><?= htmlspecialchars($row['order_id']) ?></td>
                             <td><?= htmlspecialchars($row['customer_name']) ?></td>
-                            <!-- Teanaent Company Name -->
                             <?php if ($is_main_admin == 1) { ?>
                             <td class="customer-name">
                                 <div class="customer-info">
@@ -527,8 +585,6 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                         <?php echo htmlspecialchars($tenant['company_name']); ?></h6>
                                 </div>
                             </td>
-                            <?php } else { ?>
-                            <!--<input type="hidden" name="teanetID" value="0">-->
                             <?php } ?>
                             <td><?= ($row['status'] == 'done') ? 'Complete' : htmlspecialchars($row['status']) ?></td>
                             <td><?= number_format($row['total_amount'],2) ?></td>

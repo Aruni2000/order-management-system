@@ -282,10 +282,11 @@ $role_id = $_SESSION['role_id'];
             <div class="page-header">
                 <div class="page-block">
                     <div class="page-header-title">
-                        <h5 class="mb-0 font-medium">Add New Customer <!-- "-" <?php echo $is_main_admin;?>--></h5>
+                        <h5 class="mb-0 font-medium">Add New Customer <!-- "-" <?php echo $is_main_admin;?>--></h5>                        </div>
                     </div>
+
+                    <input type="hidden" name="tenantID" value="0">
                 </div>
-            </div>
 
             <div class="main-container">
                 <form method="POST" id="addCustomerForm" class="customer-form" novalidate>
@@ -298,7 +299,7 @@ $role_id = $_SESSION['role_id'];
                             <div class="form-row">
                                 <div class="customer-form-group">
                                     <label for="status" class="form-label">
-                                        Tenent User <span class="required">*</span>
+                                        Tenant Company <span class="required">*</span>
                                     </label>
                                     <?php 
                                         // Fetch and store tenant details in session
@@ -307,19 +308,18 @@ $role_id = $_SESSION['role_id'];
                                             $stmt_tenant->execute();
                                             $result_tenant = $stmt_tenant->get_result();
                                             ?>
-                                    <select class="form-select" id="teanetID" name="teanetID" required>
-                                        <option value="0">Select Tenent User</option>
+                                    <select class="form-select" id="tenantID" name="tenantID" required>
+                                        <option value="0">Select Tenant Company</option>
                                         <?php while ($row = $result_tenant->fetch_assoc()) {?>
                                         <option value="<?php echo $row['tenant_id']; ?>">
                                             <?php echo $row['company_name']; ?>
                                         </option>
                                         <?php } ?>
                                     </select>
-                                    <div class="error-feedback" id="teanetID-error"></div>
+                                    <div class="error-feedback" id="tenantID-error"></div>
                                 </div>
                             </div>
                             <?php } else { ?>
-                            <input type="hidden" name="teanetID" value="0">
                             <?php } ?>
 
 
@@ -350,9 +350,9 @@ $role_id = $_SESSION['role_id'];
                                         <i class="fas fa-phone"></i> Phone Number<span class="required">*</span>
                                     </label>
                                     <input type="tel" class="form-control" id="phone" name="phone"
-                                        placeholder="0771234567" required>
+                                        placeholder="Enter Phone Number" required>
                                     <div class="error-feedback" id="phone-error"></div>
-                                    <div class="phone-hint">Enter 10-digit Sri Lankan mobile number</div>
+                                    
                                 </div>
 
                                 <div class="customer-form-group">
@@ -360,9 +360,8 @@ $role_id = $_SESSION['role_id'];
                                         <i class="fas fa-phone"></i> Phone Number 2 (Optional)
                                     </label>
                                     <input type="tel" class="form-control" id="phone_2" name="phone_2"
-                                        placeholder="0771234567">
+                                        placeholder="Enter Phone Number 2">
                                     <div class="error-feedback" id="phone_2-error"></div>
-                                    <div class="phone-hint">Enter 10-digit Sri Lankan mobile number (optional)</div>
                                 </div>
                             </div>
 
@@ -653,7 +652,7 @@ $role_id = $_SESSION['role_id'];
                 $submitBtn.prop('disabled', false).html(originalText);
 
                 if (response.success) {
-                    showSuccessNotification(response.message || 'Customer added successfully!');
+                    toastManager.success(response.message || 'Customer added successfully!');
                     setTimeout(function() {
                         resetForm();
                     }, 1500);
@@ -661,7 +660,7 @@ $role_id = $_SESSION['role_id'];
                     if (response.errors) {
                         showFieldErrors(response.errors);
                     }
-                    showErrorNotification(response.message || 'Failed to add customer.');
+                    toastManager.error(response.message || 'Failed to add customer.');
                 }
             },
             error: function(xhr, status, error) {
@@ -673,9 +672,7 @@ $role_id = $_SESSION['role_id'];
                     errorMessage = 'Request timeout. Please try again.';
                 } else if (xhr.responseJSON && xhr.responseJSON.message) {
                     errorMessage = xhr.responseJSON.message;
-                }
-
-                showErrorNotification(errorMessage);
+                }                    toastManager.error(errorMessage);
             }
         });
     }
@@ -688,47 +685,12 @@ $role_id = $_SESSION['role_id'];
 
     function showLoading() {
         $('#loadingOverlay').css('display', 'flex');
-        $('body').css('overflow', 'hidden');
+        $('body').css('overflow', 'clip');
     }
 
     function hideLoading() {
         $('#loadingOverlay').hide();
         $('body').css('overflow', 'auto');
-    }
-
-    function showSuccessNotification(message) {
-        showNotification(message, 'success');
-    }
-
-    function showErrorNotification(message) {
-        showNotification(message, 'danger');
-    }
-
-    function showNotification(message, type) {
-        const notificationId = 'notification_' + Date.now();
-        const iconClass = type === 'success' ? 'fas fa-check-circle' : 'fas fa-exclamation-circle';
-
-        const notification = `
-                <div class="alert alert-${type} alert-dismissible fade show ajax-notification" id="${notificationId}" role="alert">
-                    <div class="d-flex align-items-center">
-                        <i class="${iconClass} me-2"></i>
-                        <div>${message}</div>
-                    </div>
-                    <button type="button" class="btn-close" onclick="hideNotification('${notificationId}')" aria-label="Close"></button>
-                </div>
-            `;
-
-        $('body').append(notification);
-
-        setTimeout(() => {
-            hideNotification(notificationId);
-        }, 5000);
-    }
-
-    function hideNotification(notificationId) {
-        $('#' + notificationId).fadeOut(300, function() {
-            $(this).remove();
-        });
     }
 
     function resetForm() {
@@ -814,9 +776,9 @@ $role_id = $_SESSION['role_id'];
             validation.valid ? showSuccess('address_line1') : showError('address_line1', validation.message);
         });
 
-        $('#teanetID').on('blur', function() {
+        $('#tenantID').on('blur', function() {
             const validation = validateTenant($(this).val());
-            validation.valid ? showSuccess('teanetID') : showError('teanetID', validation.message);
+            validation.valid ? showSuccess('tenantID') : showError('tenantID', validation.message);
         });
     }
 
@@ -855,11 +817,11 @@ $role_id = $_SESSION['role_id'];
             }
         ];
 
-        if ($('#teanetID').length) {
+        if ($('#tenantID').length) {
             validations.push({
-                field: 'teanetID',
+                field: 'tenantID',
                 validator: validateTenant,
-                value: $('#teanetID').val()
+                value: $('#tenantID').val()
             });
         }
 
@@ -995,7 +957,7 @@ $role_id = $_SESSION['role_id'];
     function validateTenant(tenantId) {
         if (!tenantId || tenantId === '0' || tenantId.trim() === '') return {
             valid: false,
-            message: 'Please select a Tenant User'
+            message: 'Please select a Tenant Company'
         };
         return {
             valid: true

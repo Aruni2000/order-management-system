@@ -39,7 +39,7 @@ $date_from = isset($_GET['date_from']) ? trim($_GET['date_from']) : '';
 $date_to = isset($_GET['date_to']) ? trim($_GET['date_to']) : '';
 $status_filter = isset($_GET['status_filter']) ? trim($_GET['status_filter']) : '';
 $pay_status_filter = isset($_GET['pay_status_filter']) ? trim($_GET['pay_status_filter']) : '';
-$user_filter = isset($_GET['user_filter']) ? trim($_GET['user_filter']) : '';
+$call_status_filter = isset($_GET['call_status_filter']) ? trim($_GET['call_status_filter']) : '';
 
 $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 10;
 $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
@@ -47,52 +47,36 @@ $offset = ($page - 1) * $limit;
 
 /**
  * DATABASE QUERIES
- * Main query to fetch leads (orders with interface='leads')
- * Access Control: 
- * - is_main_admin = 1 AND role_id = 1: See all leads
- * - role_id = 1 AND is_main_admin = 0: See all leads in their tenant
- * - Others: See only assigned leads
+ * Main query to fetch leads assigned to logged-in user (orders with interface='leads')
  */
 
-// Get user permissions and tenant info
-$is_main_admin = isset($_SESSION['is_main_admin']) ? (int)$_SESSION['is_main_admin'] : 0;
-$role_id = isset($_SESSION['role_id']) ? (int)$_SESSION['role_id'] : 0;
-$tenant_id = isset($_SESSION['tenant_id']) ? (int)$_SESSION['tenant_id'] : 0;
-
-// Base WHERE clause components
-$baseWhere = "i.interface = 'leads'";
-$accessFilter = "";
-
-if ($role_id == 1) {
-    // Admin sees all in their tenant
-    $accessFilter = " AND i.tenant_id = $tenant_id";
-} else {
-    // Regular user sees only assigned
-    $accessFilter = " AND i.user_id = $logged_user_id";
-}
-
-// Base SQL for counting total records
+// Base SQL for counting total records - FILTERED BY LOGGED USER
 $countSql = "SELECT COUNT(*) as total FROM order_header i 
              LEFT JOIN customers c ON i.customer_id = c.customer_id
              LEFT JOIN users u ON i.user_id = u.id
-             WHERE $baseWhere $accessFilter";
+             WHERE i.interface = 'leads' AND i.user_id = $logged_user_id";
 
-// Main query with all required joins
+// Main query with all required joins - FILTERED BY LOGGED USER
 $sql = "SELECT i.*, 
                c.name as customer_name, 
                c.phone as customer_phone,
                u.id as user_id,
                u.name as user_name,
                u.email as user_email,
-               t.company_name as tenant_name,
                i.pay_status as order_pay_status,
                i.created_at,
-               i.updated_at
+               i.updated_at,
+               p.payment_method,
+               u1.name as paid_by_name,
+               i.call_log,
+               i.answer_reason,
+               i.no_answer_reason
         FROM order_header i 
         LEFT JOIN customers c ON i.customer_id = c.customer_id
         LEFT JOIN users u ON i.user_id = u.id
-        LEFT JOIN tenants t ON i.tenant_id = t.tenant_id
-        WHERE $baseWhere $accessFilter";
+        LEFT JOIN payments p ON i.order_id = p.order_id
+        LEFT JOIN users u1 ON p.pay_by = u1.id
+        WHERE i.interface = 'leads' AND i.user_id = $logged_user_id";
 
 // Build search conditions
 $searchConditions = [];
@@ -108,9 +92,7 @@ if (!empty($search)) {
                         i.due_date LIKE '%$searchTerm%' OR 
                         i.total_amount LIKE '%$searchTerm%' OR
                         i.status LIKE '%$searchTerm%' OR 
-                        i.pay_status LIKE '%$searchTerm%' OR
-                        t.company_name LIKE '%$searchTerm%' OR
-                        u.name LIKE '%$searchTerm%')";
+                        i.pay_status LIKE '%$searchTerm%')";
 }
 
 // Specific Order ID filter
@@ -154,10 +136,10 @@ if (!empty($pay_status_filter)) {
     $searchConditions[] = "i.pay_status = '$payStatusTerm'";
 }
 
-// User filter (Admins only)
-if ($role_id == 1 && !empty($user_filter)) {
-    $userFilterId = (int)$user_filter;
-    $searchConditions[] = "i.user_id = $userFilterId";
+// Call Answer filter
+if (!empty($call_status_filter)) {
+    $callStatusTerm = $conn->real_escape_string($call_status_filter);
+    $searchConditions[] = "i.call_log = '$callStatusTerm'";
 }
 
 // Apply all search conditions
@@ -184,20 +166,6 @@ $userInfoQuery = "SELECT name, email FROM users WHERE id = $logged_user_id";
 $userInfoResult = $conn->query($userInfoQuery);
 $userInfo = $userInfoResult->fetch_assoc();
 
-
-
-// Fetch all users for the assignment dropdown if admin
-$users = [];
-if ($role_id === 1) {
-    // Only show users belonging to the same company (tenant)
-    $usersQuery = "SELECT id, name FROM users WHERE status = 'active' AND tenant_id = $tenant_id ORDER BY name ASC";
-    $usersResult = $conn->query($usersQuery);
-    if ($usersResult && $usersResult->num_rows > 0) {
-        while ($u = $usersResult->fetch_assoc()) {
-            $users[] = $u;
-        }
-    }
-}
 ?>
 
 <!doctype html>
@@ -237,6 +205,11 @@ if ($role_id === 1) {
     white-space: nowrap;
 }
 
+.pay-status-paid, .pay-status-unpaid {
+    font-size: 0.65rem;
+    padding: 2px 8px;
+}
+
 .user-info-banner {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     color: white;
@@ -257,101 +230,14 @@ if ($role_id === 1) {
     font-size: 14px;
     opacity: 0.9;
 }
-
-.user-info {
-    font-size: 13px;
-}
-
-.user-name {
-    font-weight: 600;
-    color: #333;
-}
-
-.user-id {
-    color: #666;
-    font-size: 11px;
-}
-
-.user-email {
-    color: #888;
-    font-size: 11px;
-    font-style: italic;
-}
-
-.tenant-info {
-    font-weight: 600;
-    color: #4e73df;
-}
-
-/* User Reassignment Styles */
-.user-change-btn {
-    padding: 2px 6px;
-    font-size: 10px;
-    margin-top: 5px;
-    cursor: pointer;
-    background: #f0f2f5;
-    border: 1px solid #dcdfe3;
-    border-radius: 3px;
-    color: #555;
-    transition: all 0.2s;
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-}
-
-.user-change-btn:hover {
-    background: #e4e6e9;
-    color: #333;
-}
-
-.user-assign-select {
-    display: none;
-    width: 100%;
-    margin-top: 5px;
-    padding: 4px;
-    font-size: 12px;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-}
-
-.user-edit-ui {
-    margin-top: 5px;
-}
-
-.edit-actions {
-    margin-top: 5px;
-}
-
-.assign-confirm-btn {
-    padding: 2px 8px;
-    font-size: 11px;
-    background-color: #007bff;
-    color: white;
-    border: none;
-    border-radius: 3px;
-    cursor: pointer;
-}
-
-.assign-cancel-btn {
-    padding: 2px 8px;
-    font-size: 11px;
-    background-color: #6c757d;
-    color: white;
-    border: none;
-    border-radius: 3px;
-    cursor: pointer;
-    margin-left: 4px;
-}
 </style>
 </head>
 
 <body>
     <!-- Page Loader -->
-    <?php 
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php');
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php');
     include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
-    ?>
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');?>
 
     <div class="pc-container">
         <div class="pc-content">
@@ -377,7 +263,6 @@ if ($role_id === 1) {
                 <div class="tracking-container">
                    
                     <form class="tracking-form" method="GET" action="">
-
                         <div class="form-group">
                             <label for="order_id_filter">Order ID</label>
                             <input type="text" id="order_id_filter" name="order_id_filter" 
@@ -413,7 +298,7 @@ if ($role_id === 1) {
                         
                         <div class="form-group">
                             <label for="status_filter">Status</label>
-                            <select id="status_filter" name="status_filter">
+                               <select id="status_filter" name="status_filter">
                                     <option value="">All Status</option>
                                     <option value="waiting" <?php echo ($status_filter == 'waiting') ? 'selected' : ''; ?>>Waiting</option>
                                     <option value="pickup" <?php echo ($status_filter == 'pickup') ? 'selected' : ''; ?>>Pickup</option>
@@ -436,6 +321,7 @@ if ($role_id === 1) {
                                     <option value="damaged" <?php echo ($status_filter == 'damaged') ? 'selected' : ''; ?>>Damaged</option>
                                     <option value="hold" <?php echo ($status_filter == 'hold') ? 'selected' : ''; ?>>Hold</option>
                                 </select>
+                          
                         </div>
                         
                         <div class="form-group">
@@ -446,20 +332,15 @@ if ($role_id === 1) {
                                 <option value="unpaid" <?php echo ($pay_status_filter == 'unpaid') ? 'selected' : ''; ?>>Unpaid</option>
                             </select>
                         </div>
-                        
-                        <?php if ($role_id === 1): ?>
+
                         <div class="form-group">
-                            <label for="user_filter">Assigned User</label>
-                            <select id="user_filter" name="user_filter">
-                                <option value="">All Users</option>
-                                <?php foreach ($users as $u): ?>
-                                    <option value="<?php echo $u['id']; ?>" <?php echo ($user_filter == $u['id']) ? 'selected' : ''; ?>>
-                                        <?php echo htmlspecialchars($u['name']); ?>
-                                    </option>
-                                <?php endforeach; ?>
+                            <label for="call_status_filter">Call Answer</label>
+                            <select id="call_status_filter" name="call_status_filter">
+                                <option value="">Call Answer Status</option>
+                                <option value="0" <?php echo ($call_status_filter == '0') ? 'selected' : ''; ?>>No Answer</option>
+                                <option value="1" <?php echo ($call_status_filter == '1') ? 'selected' : ''; ?>>Answer</option>
                             </select>
                         </div>
-                        <?php endif; ?>
                         
                         <div class="form-group">
                             <div class="button-group">
@@ -490,11 +371,11 @@ if ($role_id === 1) {
                             <tr>
                                 <th>Order ID</th>
                                 <th>Customer Name</th>
-                                <th>Phone Number</th>
                                 <th>Total Amount</th>
-                                <th>Pay Status</th>
                                 <th>Status</th>
-                                <th>Assigned User</th>
+                                <th>Success Rate</th>
+                                <th>Call Note</th>
+                                <th>Processed By</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
@@ -507,8 +388,7 @@ if ($role_id === 1) {
                                             <?php echo isset($row['order_id']) ? htmlspecialchars($row['order_id']) : ''; ?>
                                         </td>
                                         
-                                        
-                                         <!-- Customer Name - Prioritize order_header full_name for leads -->
+                                        <!-- Customer Name with ID - Prioritize order_header full_name for leads -->
                                             <td class="customer-name">
                                                 <?php 
                                                 // For leads interface, prioritize full_name from order_header
@@ -522,50 +402,25 @@ if ($role_id === 1) {
                                                 } else {
                                                     $customerName = 'N/A';
                                                 }
-                                                echo htmlspecialchars($customerName);
+                                                $customerId = isset($row['customer_id']) ? htmlspecialchars($row['customer_id']) : '';
+                                                echo htmlspecialchars($customerName) . ($customerId ? " ($customerId)" : "");
                                                 ?>
                                             </td>
-                                         <!-- Phone Number - Prioritize order_header mobile for leads -->
-                                        <td class="phone-number">
-                                            <?php 
-                                            // For leads interface, prioritize mobile from order_header
-                                            $phoneNumber = '';
-                                            if (!empty($row['mobile'])) {
-                                                // Primary: Use mobile from order_header (leads data)
-                                                $phoneNumber = $row['mobile'];
-                                                // If mobile_2 exists, show both
-                                                if (!empty($row['mobile_2'])) {
-                                                    $phoneNumber .= ' / ' . $row['mobile_2'];
-                                                }
-                                            } elseif (!empty($row['customer_phone'])) {
-                                                // Fallback: Use customer table phone if available
-                                                $phoneNumber = $row['customer_phone'];
-                                            } else {
-                                                $phoneNumber = 'N/A';
-                                            }
-                                            echo htmlspecialchars($phoneNumber);
-                                            ?>
-                                        </td>
 
                                        
-                                        <!-- Total Amount with Currency -->
+                                        <!-- Total Amount with Payment Status -->
                                         <td class="amount">
                                             <?php
                                             $amount = isset($row['total_amount']) ? (float)$row['total_amount'] : 0;
                                             $currency = isset($row['currency']) ? $row['currency'] : 'lkr';
                                             $currencySymbol = ($currency == 'usd') ? '$' : 'Rs';
                                             echo $currencySymbol . number_format($amount, 2);
-                                            ?>
-                                        </td>
-                                        
-                                        <!-- Payment Status Badge -->
-                                        <td>
-                                            <?php
+                                            
                                             $payStatus = isset($row['pay_status']) ? $row['pay_status'] : 'unpaid';
                                             if ($payStatus == 'paid'): ?>
-                                                <span class="status-badge pay-status-paid">Paid</span>
+                                                <br><span class="status-badge pay-status-paid">Paid</span>
                                             <?php else: ?>
-                                                <span class="status-badge pay-status-unpaid">Unpaid</span>
+                                                <br><span class="status-badge pay-status-unpaid">Unpaid</span>
                                             <?php endif; ?>
                                         </td>
                                         
@@ -638,45 +493,70 @@ if ($role_id === 1) {
                                             ?>
                                             <span class="status-badge <?php echo $badgeClass; ?>"><?php echo $statusText; ?></span>
                                         </td>
+                                        
+                                        <!-- Success Rate Badge -->
+                                        <td>
+                                            <?php
+                                            $condition = isset($row['condition']) ? (int)$row['condition'] : 0;
+                                            switch ($condition) {
+                                                case 0:
+                                                    echo '<span class="status-badge rate-excellent">Excellent</span>';
+                                                    break;
+                                                case 1:
+                                                    echo '<span class="status-badge rate-good">Good</span>';
+                                                    break;
+                                                case 2:
+                                                    echo '<span class="status-badge rate-average">Average</span>';
+                                                    break;
+                                                case 3:
+                                                    echo '<span class="status-badge rate-bad">Bad</span>';
+                                                    break;
+                                                case 4:
+                                                    echo '<span class="status-badge rate-new">New</span>';
+                                                    break;
+                                                default:
+                                                    echo '<span class="status-badge rate-new">New</span>';
+                                            }
+                                            ?>
+                                        </td>
+                                        
+                                        <!-- Call Note -->
+                                        <td>
+                                            <?php
+                                            $callLog = isset($row['call_log']) ? $row['call_log'] : null;
+                                            $note = '';
+                                            
+                                            if ($callLog == 1) {
+                                                $note = isset($row['answer_reason']) ? htmlspecialchars($row['answer_reason']) : '';
+                                            } elseif ($callLog === '0' || $callLog === 0) {
+                                                $note = isset($row['no_answer_reason']) ? htmlspecialchars($row['no_answer_reason']) : '';
+                                            }
+                                            
+                                            if (!empty($note)) {
+                                                $displayNote = (strlen($note) > 30) ? substr($note, 0, 30) . '...' : $note;
+                                                echo "<span title='" . $note . "'>" . $displayNote . "</span>";
+                                            } else {
+                                                echo "-";
+                                            }
+                                            ?>
+                                        </td>
 
-                                        <!-- Assigned User Column -->
-                                        <td class="user-info" id="user-info-<?php echo htmlspecialchars($row['order_id']); ?>">
-                                            <div class="user-display">
-                                                <?php if (isset($row['user_name']) && !empty($row['user_name'])): ?>
-                                                    <div class="user-name">
-                                                        <?php echo htmlspecialchars($row['user_name']); ?>
-                                                        <span class="user-id">(ID: <?php echo htmlspecialchars($row['user_id']); ?>)</span>
-                                                    </div>
-                                                    <?php if (!empty($row['user_email'])): ?>
-                                                        <div class="user-email"><?php echo htmlspecialchars($row['user_email']); ?></div>
-                                                    <?php endif; ?>
-                                                <?php else: ?>
-                                                    <span style="color: #999;">Unassigned</span>
-                                                <?php endif; ?>
-
-                                                <?php if ($role_id === 1 && strtolower($row['status']) === 'pending'): ?>
-                                                    <button type="button" class="user-change-btn" onclick="toggleUserSelect('<?php echo htmlspecialchars($row['order_id']); ?>')">
-                                                        <i class="fas fa-user-edit"></i> Change
-                                                    </button>
-                                                <?php endif; ?>
-                                            </div>
-
-                                            <?php if ($role_id === 1 && strtolower($row['status']) === 'pending'): ?>
-                                                <div class="user-edit-ui" style="display: none;">
-                                                    <select class="user-assign-select" id="select-user-<?php echo htmlspecialchars($row['order_id']); ?>" style="display: block;">
-                                                        <option value="">Select User</option>
-                                                        <?php foreach ($users as $user): ?>
-                                                            <option value="<?php echo $user['id']; ?>" <?php echo (isset($row['user_id']) && $row['user_id'] == $user['id']) ? 'selected' : ''; ?>>
-                                                                <?php echo htmlspecialchars($user['name']); ?>
-                                                            </option>
-                                                        <?php endforeach; ?>
-                                                    </select>
-                                                    <div class="edit-actions">
-                                                        <button type="button" class="assign-confirm-btn" onclick="updateLeadUser('<?php echo htmlspecialchars($row['order_id']); ?>')">Update</button>
-                                                        <button type="button" class="assign-cancel-btn" onclick="toggleUserSelect('<?php echo htmlspecialchars($row['order_id']); ?>')">Cancel</button>
-                                                    </div>
-                                                </div>
-                                            <?php endif; ?>
+                                        <!-- Processed By -->
+                                        <td>
+                                            <?php
+                                            $paidByName = isset($row['paid_by_name']) ? htmlspecialchars($row['paid_by_name']) : '';
+                                            $paymentMethod = isset($row['payment_method']) ? htmlspecialchars($row['payment_method']) : '';
+                                            
+                                            if ($payStatus == 'paid' && !empty($paidByName)) {
+                                                echo '<span style="font-weight: 600; color: #28a745;">' . $paidByName . '</span>';
+                                                if (!empty($paymentMethod)) {
+                                                    $methodDisplay = ucwords(str_replace('_', ' ', $paymentMethod));
+                                                    echo '<br><span style="font-size: 11px; color: #6c757d;">' . $methodDisplay . '</span>';
+                                                }
+                                            } else {
+                                                echo '<span style="color: #adb5bd;">-</span>';
+                                            }
+                                            ?>
                                         </td>
                                         
                                         <!-- Action Buttons -->
@@ -685,16 +565,45 @@ if ($role_id === 1) {
                                                     onclick="openLeadModal('<?php echo isset($row['order_id']) ? htmlspecialchars($row['order_id']) : ''; ?>')">
                                                 <i class="fas fa-eye"></i>
                                             </button>
+
+                                            <?php $leadPayStatus = isset($row['pay_status']) ? $row['pay_status'] : 'unpaid'; ?>
+                                            <?php if ($leadPayStatus == 'unpaid'): ?>
+                                            <button class="action-btn paid-btn" title="Mark as Paid" 
+                                                onclick="markAsPaid('<?php echo isset($row['order_id']) ? htmlspecialchars($row['order_id']) : ''; ?>')">
+                                                <i class="fas fa-dollar-sign"></i>
+                                            </button>
+                                            <?php elseif ($leadPayStatus == 'paid'): ?>
+                                            <button class="action-btn unpaid-btn" title="Mark as Unpaid"
+                                                onclick="unmarkAsPaid('<?php echo isset($row['order_id']) ? htmlspecialchars($row['order_id']) : ''; ?>')">
+                                                <i class="fas fa-undo"></i>
+                                            </button>
+                                            <?php endif; ?>
+
+                                            <button class="action-btn <?php echo ($row['call_log'] == 0) ? 'answer-btn' : 'no-answer-btn'; ?>" 
+                                                    title="<?php echo ($row['call_log'] == 0) ? 'Mark as Answered' : 'Mark as No Answer'; ?>" 
+                                                    onclick="openAnswerModal('<?php echo isset($row['order_id']) ? htmlspecialchars($row['order_id']) : ''; ?>', <?php echo $row['call_log']; ?>, '<?php echo isset($row['answer_reason']) ? addslashes(htmlspecialchars($row['answer_reason'])) : ''; ?>', '<?php echo isset($row['no_answer_reason']) ? addslashes(htmlspecialchars($row['no_answer_reason'])) : ''; ?>')">
+                                                <i class="fas <?php echo ($row['call_log'] == 0) ? 'fas fa-phone-slash' : 'fas fa-phone'; ?>"></i>
+                                            </button>
+                                            <button class="action-btn cancel-btn" title="Cancel Order"
+                                                onclick="cancelOrder('<?php echo isset($row['order_id']) ? htmlspecialchars($row['order_id']) : ''; ?>')">
+                                                <i class="fas fa-times-circle"></i>
+                                            </button>
                                             <!-- Print Button -->
                                             <button class="action-btn print-btn" title="Print Order" 
                                                     onclick="printOrder('<?php echo isset($row['order_id']) ? htmlspecialchars($row['order_id']) : ''; ?>')">
                                                 <i class="fas fa-print"></i>
                                             </button>
+                                            <?php if ($status == 'pending'): ?>
+                                            <button class="action-btn condition-btn" title="Update Success Rate"
+                                                onclick="openConditionModal('<?php echo isset($row['order_id']) ? htmlspecialchars($row['order_id']) : ''; ?>', <?php echo $condition; ?>)">
+                                                <i class="fas fa-user-shield"></i>
+                                            </button>
+                                            <?php endif; ?>
                                         </td>
                                     </tr>
                                 <?php endwhile; ?>
                             <?php else: ?>
-                                 <tr>
+                                <tr>
                                     <td colspan="8" class="text-center" style="padding: 40px; text-align: center; color: #666;">
                                         No leads assigned to you
                                     </td>
@@ -711,20 +620,20 @@ if ($role_id === 1) {
                     </div>
                     <div class="pagination-controls">
                         <?php if ($page > 1): ?>
-                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page - 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&status_filter=<?php echo urlencode($status_filter); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&search=<?php echo urlencode($search); ?>'">
+                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page - 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&status_filter=<?php echo urlencode($status_filter); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&call_status_filter=<?php echo urlencode($call_status_filter); ?>&search=<?php echo urlencode($search); ?>'">
                                 <i class="fas fa-chevron-left"></i>
                             </button>
                         <?php endif; ?>
                         
                         <?php for ($i = max(1, $page - 2); $i <= min($totalPages, $page + 2); $i++): ?>
                             <button class="page-btn <?php echo ($i == $page) ? 'active' : ''; ?>" 
-                                    onclick="window.location.href='?page=<?php echo $i; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&status_filter=<?php echo urlencode($status_filter); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&user_filter=<?php echo urlencode($user_filter); ?>&search=<?php echo urlencode($search); ?>'">
+                                    onclick="window.location.href='?page=<?php echo $i; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&status_filter=<?php echo urlencode($status_filter); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&call_status_filter=<?php echo urlencode($call_status_filter); ?>&search=<?php echo urlencode($search); ?>'">
                                 <?php echo $i; ?>
                             </button>
                         <?php endfor; ?>
                         
                         <?php if ($page < $totalPages): ?>
-                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page + 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&status_filter=<?php echo urlencode($status_filter); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&user_filter=<?php echo urlencode($user_filter); ?>&search=<?php echo urlencode($search); ?>'">
+                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page + 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&status_filter=<?php echo urlencode($status_filter); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&call_status_filter=<?php echo urlencode($call_status_filter); ?>&search=<?php echo urlencode($search); ?>'">
                                 <i class="fas fa-chevron-right"></i>
                             </button>
                         <?php endif; ?>
@@ -736,6 +645,9 @@ if ($role_id === 1) {
 
     <!-- Lead View Modal -->
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/order_view_modal.php'); ?>
+
+
+
 
     <script>
     // Lead-specific JavaScript functionality
@@ -750,9 +662,7 @@ if ($role_id === 1) {
         document.getElementById('date_to').value = '';
         document.getElementById('status_filter').value = '';
         document.getElementById('pay_status_filter').value = '';
-        if (document.getElementById('user_filter')) {
-            document.getElementById('user_filter').value = '';
-        }
+        document.getElementById('call_status_filter').value = '';
         
         window.location.href = window.location.pathname;
     }
@@ -775,7 +685,7 @@ if ($role_id === 1) {
         
         // Show modal
         modal.style.display = 'flex';
-        document.body.style.overflow = 'hidden';
+        document.body.style.overflow = 'clip';
         
         // Show loading state
         modalContent.innerHTML = `
@@ -888,81 +798,8 @@ if ($role_id === 1) {
     function closeOrderModal() {
         const modal = document.getElementById('orderModal');
         modal.style.display = 'none';
-        document.body.style.overflow = 'auto';
+        document.body.style.overflow = '';
         currentLeadId = null;
-    }
-
-    // Toggle user selection UI
-    function toggleUserSelect(orderId) {
-        const userInfoCell = document.getElementById('user-info-' + orderId);
-        const displayDiv = userInfoCell.querySelector('.user-display');
-        const editDiv = userInfoCell.querySelector('.user-edit-ui');
-
-        if (editDiv.style.display === 'none') {
-            displayDiv.style.display = 'none';
-            editDiv.style.display = 'block';
-        } else {
-            displayDiv.style.display = 'block';
-            editDiv.style.display = 'none';
-        }
-    }
-
-    // Update lead assigned user via AJAX
-    function updateLeadUser(orderId) {
-        const userId = document.getElementById('select-user-' + orderId).value;
-        
-        if (!userId) {
-            alert('Please select a user');
-            return;
-        }
-
-        const confirmBtn = document.querySelector(`#user-info-${orderId} .assign-confirm-btn`);
-        const originalBtnText = confirmBtn.innerText;
-        confirmBtn.disabled = true;
-        confirmBtn.innerText = 'Updating...';
-
-        const formData = new FormData();
-        formData.append('order_id', orderId);
-        formData.append('user_id', userId);
-
-        fetch('update_lead_user.php', {
-            method: 'POST',
-            body: formData
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                // Update the UI
-                const userInfoCell = document.getElementById('user-info-' + orderId);
-                const userDisplayDiv = userInfoCell.querySelector('.user-display');
-                
-                // Update user name and ID text
-                userDisplayDiv.innerHTML = `
-                    <div class="user-name">${data.new_user_name}</div>
-                    <div class="user-id">ID: ${data.new_user_id}</div>
-                    <button type="button" class="user-change-btn" onclick="toggleUserSelect('${orderId}')">
-                        <i class="fas fa-user-edit"></i> Change
-                    </button>
-                `;
-                
-                // Reset UI state
-                toggleUserSelect(orderId);
-                
-                // RESET BUTTON STATE for future use
-                confirmBtn.disabled = false;
-                confirmBtn.innerText = originalBtnText;
-            } else {
-                alert('Error: ' + data.message);
-                confirmBtn.disabled = false;
-                confirmBtn.innerText = originalBtnText;
-            }
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            alert('An unexpected error occurred');
-            confirmBtn.disabled = false;
-            confirmBtn.innerText = originalBtnText;
-        });
     }
 
     // Download lead
@@ -1035,6 +872,8 @@ if ($role_id === 1) {
             console.error('Modal elements not found! Check HTML structure.');
         }
     });
+    </script>
+
     </script>
 
     <!-- Include Footer and Scripts -->

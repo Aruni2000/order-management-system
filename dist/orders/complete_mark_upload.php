@@ -17,25 +17,9 @@ include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
 // Check if user is main admin
 $is_main_admin = $_SESSION['is_main_admin'];
-//$teanent_id = $_SESSION['tenant_id'];
+
 $role_id = $_SESSION['role_id'];
 $session_tenant_id = $_SESSION['tenant_id'];
-
-
-//function for tenant name
-function TenantName($tenant_id) {
-    global $conn;
-    $sql = "SELECT company_name FROM tenants WHERE tenant_id = ?";
-    $stmt = $conn->prepare($sql);
-    $stmt->bind_param("i", $tenant_id);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    if ($result && $result->num_rows > 0) {
-        $row = $result->fetch_assoc();
-        return $row['company_name'];
-    }
-    return "Unknown Tenant";
-}
 
 // Function to get tenants based on permission
 function getTenants($conn, $is_main_admin, $role_id, $session_tenant_id) {
@@ -43,13 +27,14 @@ function getTenants($conn, $is_main_admin, $role_id, $session_tenant_id) {
     
     if ($is_main_admin === 1 && $role_id === 1) {
         // Main Admin gets all active tenants
-        $sql_curier = "SELECT tenant_id, company_name FROM tenants WHERE status = 'active' ORDER BY company_name";
+        $result = $conn->query("SELECT tenant_id, company_name FROM tenants WHERE status = 'active' ORDER BY company_name");
     } else {
         // Others get only their assigned tenant
-        $sql_curier = "SELECT tenant_id, company_name FROM tenants WHERE tenant_id = $session_tenant_id AND status = 'active' LIMIT 1";
+        $stmt = $conn->prepare("SELECT tenant_id, company_name FROM tenants WHERE tenant_id = ? AND status = 'active' LIMIT 1");
+        $stmt->bind_param("i", $session_tenant_id);
+        $stmt->execute();
+        $result = $stmt->get_result();
     }
-    
-    $result = $conn->query($sql_curier);
     
     if ($result && $result->num_rows > 0) {
         while ($row = $result->fetch_assoc()) {
@@ -84,6 +69,7 @@ if (!($is_main_admin === 1 && $role_id === 1) && !empty($tenants)) {
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
 
     <!-- Stylesheets -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css">
     <link rel="stylesheet" href="../assets/css/style.css" id="main-style-link" />
     <link rel="stylesheet" href="../assets/css/leads.css" id="main-style-link" />
 </head>
@@ -103,43 +89,91 @@ if (!($is_main_admin === 1 && $role_id === 1) && !empty($tenants)) {
             <div class="page-header">
                 <div class="page-block">
                     <div class="page-header-title">
-                        <h5 class="mb-0 font-medium">Delivery Complete Management</h5>
+                        <h5 class="mb-0 font-medium">
+                            Delivery Complete Management
+                            <i class="fas fa-info-circle text-primary" style="cursor: pointer; font-size: 16px; margin-left: 8px;" onclick="openInfoModal()" title="How to use this page"></i>
+                        </h5>
                     </div>
                 </div>
             </div>
 
-            <div class="main-container">
-                <div class="page-content">
+            <?php if (isset($_SESSION['import_result'])): ?>
+    <?php 
+        $impSuccess = $_SESSION['import_result']['success'];
+        $impErrors = $_SESSION['import_result']['errors'];
+        $impMessages = $_SESSION['import_result']['messages'] ?? [];
+        $impInfo = $_SESSION['import_result']['info'] ?? [];
+    ?>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            <?php if ($impErrors > 0): ?>
+                toastManager.warning('Import completed: <?php echo $impSuccess; ?> updated, <?php echo $impErrors; ?> failed', 8000);
+            <?php else: ?>
+                toastManager.success('Successfully updated <?php echo $impSuccess; ?> orders', 5000);
+            <?php endif; ?>
+        });
+    </script>
 
-                    <div id="resultDiv">
-
-                    </div>
-
-                </div>
+    <?php if ($impErrors > 0 || !empty($impInfo)): ?>
+    <div style="background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 20px; margin-bottom: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.06);">
+        <?php if ($impErrors > 0): ?>
+            <div style="margin-bottom: 16px;">
+                <?php if (!empty($impMessages)): ?>
+                    <details>
+                        <summary style="cursor: pointer; font-weight: 600; color: #92400e; font-size: 0.85rem;">
+                            <i class="fas fa-exclamation-triangle"></i> View Error Details (<?php echo count($impMessages); ?>)
+                        </summary>
+                        <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 12px 16px; margin-top: 8px;">
+                            <ul style="margin-bottom: 0; padding-left: 20px; color: #991b1b; font-size: 0.82rem;">
+                                <?php foreach ($impMessages as $message): ?>
+                                    <li style="margin-bottom: 4px;"><?php echo htmlspecialchars($message); ?></li>
+                                <?php endforeach; ?>
+                            </ul>
+                        </div>
+                    </details>
+                <?php endif; ?>
             </div>
+        <?php endif; ?>
+        <?php if (!empty($impInfo)): ?>
+            <div>
+                <details open>
+                    <summary style="cursor: pointer; font-weight: 600; color: #0369a1; font-size: 0.85rem;">
+                        <i class="fas fa-info-circle"></i> Additional Information (<?php echo count($impInfo); ?> notices)
+                    </summary>
+                    <ul style="margin-top: 8px; margin-bottom: 0; padding-left: 20px; color: #0c4a6e; font-size: 0.85rem;">
+                        <?php foreach ($impInfo as $infoMsg): ?>
+                            <li style="margin-bottom: 4px;"><?php echo htmlspecialchars($infoMsg); ?></li>
+                        <?php endforeach; ?>
+                    </ul>
+                </details>
+            </div>
+        <?php endif; ?>
+    </div>
+    <?php endif; ?>
+
+    <?php unset($_SESSION['import_result']); ?>
+<?php endif; ?>
+
+            <?php if (isset($_SESSION['import_error'])): ?>
+                <div style="background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; padding: 1rem; margin-bottom: 1.5rem; border-radius: 5px;">
+                    <strong>Error:</strong> <?php echo htmlspecialchars($_SESSION['import_error']); ?>
+                </div>
+                <?php unset($_SESSION['import_error']); ?>
+            <?php endif; ?>
             <div class="lead-upload-container">
-                <form enctype="multipart/form-data" id="uploadForm" name="uploadForm">
+                <form enctype="multipart/form-data" id="uploadForm" name="uploadForm" method="POST" action="complete_mark_upload_submit.php">
                     <!-- Download CSV Temp late Section -->
                     <div class="file-upload-section">
                         <a href="/OMS/dist/templates/delivery_csv.php" class="choose-file-btn">
                             Download CSV Template
                         </a>
                         <div class="form-container">
+                            <?php if ($restricted_tenant_id > 0): ?>
+                            <input type="hidden" id="tenant_id" name="tenant_id" value="<?php echo $restricted_tenant_id; ?>">
+                            <?php else: ?>
                             <div class="tenant-section">
                                 <label for="tenant_id" class="form-label">Select Tenant <span
                                         class="required">*</span></label>
-                                <?php if ($restricted_tenant_id > 0): ?>
-                                <!-- Restricted View: Read-only dropdown or hidden input -->
-                                <select id="tenant_id" name="tenant_id" class="form-select" readonly
-                                    style="pointer-events: none; background-color: #e9ecef;">
-                                    <?php foreach ($tenants as $tenant): ?>
-                                    <option value="<?php echo $tenant['tenant_id']; ?>" selected>
-                                        <?php echo htmlspecialchars($tenant['company_name']); ?>
-                                    </option>
-                                    <?php endforeach; ?>
-                                </select>
-                                <?php else: ?>
-                                <!-- Main Admin View: Full Selection -->
                                 <select id="tenant_id" name="tenant_id" class="form-select" required>
                                     <option value="">Select Tenant</option>
                                     <?php foreach ($tenants as $tenant): ?>
@@ -148,13 +182,13 @@ if (!($is_main_admin === 1 && $role_id === 1) && !empty($tenants)) {
                                     </option>
                                     <?php endforeach; ?>
                                 </select>
-                                <?php endif; ?>
                             </div>
+                            <?php endif; ?>
 
                             <div class="courier-section">
                                 <label for="courier_id" class="form-label">Select Courier <span
                                         class="required">*</span></label>
-                                <select id="courier_id" name="courier_id" class="form-select" required disabled>
+                                <select id="courier_id" name="co_id" class="form-select" required disabled>
                                     <option value=""> Select Tenant First </option>
                                 </select>
                             </div>
@@ -162,8 +196,7 @@ if (!($is_main_admin === 1 && $role_id === 1) && !empty($tenants)) {
                             <div class="file-section">
                                 <label class="form-label">CSV File <span class="required">*</span></label>
                                 <div class="file-input-wrapper">
-                                    <input type="file" id="csv_file" name="csv_file" accept=".csv" class="file-input"
-                                        required>
+                                    <input type="file" id="csv_file" name="csv_file" accept=".csv" class="file-input">
                                     <div class="file-display">
                                         <span id="file-name">No file chosen</span>
                                         <button type="button" class="file-btn"
@@ -174,30 +207,11 @@ if (!($is_main_admin === 1 && $role_id === 1) && !empty($tenants)) {
                                 </div>
                             </div>
                         </div>
-                        <!--<div class="customer-form-group">
-                            <label for="courier_id" class="form-label">
-                                Select Courier
-                            </label>
-                            ?php if (($is_main_admin == 1) && ($is_admin == 1)) { 
-                                // Fetch active couriers for dropdown
-                                    //$courierSql = "SELECT co_id, tenant_id, courier_id, courier_name FROM couriers WHERE status = 'active' ORDER BY courier_name ASC";
-                                //} else { 
-                                    //$courierSql = "SELECT co_id, tenant_id, courier_id, courier_name FROM couriers WHERE status = 'active' AND tenant_id = $teanent_id ORDER BY courier_name ASC";                   
-                                //}
-                                 $courierResult = $conn->query($courierSql); ?>
-                            <select class="form-select" id="co_id" name="co_id" required>
-                                <option value="">Select Courier</option>
-                                ?php
-                                    if ($courierResult && $courierResult->num_rows > 0) {
-                                        while ($courier = $courierResult->fetch_assoc()) {
-                                            echo "<option value='{$courier['co_id']}'>" . htmlspecialchars($courier['courier_name']) . " - ".($courier['courier_id']) . " - ".TenantName($courier['tenant_id']); "</option>";
-                                        }
-                                    }
-                                    ?>
-                            </select>
+
+
                             <div class="error-feedback" id="courier-error"></div>
 
-                        </div>-->
+                        </div>
                         <!--<div class="file-upload-box">
                             <p><strong>Select CSV File</strong></p>
                             <p id="file-name">No file selected</p>
@@ -216,37 +230,50 @@ if (!($is_main_admin === 1 && $role_id === 1) && !empty($tenants)) {
                                 Update to Complete
                             </button>
                         </div>
-                        <div class="instruction-box" style="margin-top:1.5rem;">
-                            <h4>Instructions: How to Upload Delivery Completion CSV</h4>
-                            <ul>
-                                <li>Download the <strong>CSV Template</strong> using the button below to ensure correct
-                                    format.</li>
-                                <li>Select the <strong>Courier</strong> from the dropdown. Only active couriers are
-                                    shown.</li>
-                                <li>Click <strong>Choose File</strong> and select your completed CSV file (max 5MB, .csv
-                                    format only).</li>
-                                <li>Click <strong>Update to Complete</strong> to upload and process the file.</li>
-                                <li>After upload, results and any errors will be shown below.</li>
-                            </ul>
-                            <div class="important-notes">
-                                <strong>Important:</strong>
-                                <ul>
-                                    <li>Only orders currently in <strong>Delivery</strong> status are eligible to be
-                                        marked as complete using this upload.</li>
-                                    <li>Ensure your CSV matches the template structure. Incorrect columns or data will
-                                        cause errors.</li>
-                                    <li>Each row should represent a delivery to be marked as complete.</li>
-                                    <li>If you encounter issues, check the error message or contact your system
-                                        administrator.</li>
-                                </ul>
-                            </div>
-                        </div>
                 </form>
             </div>
         </div>
     </div>
-    </div>
-    </div>
+    <?php
+    include_once($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/info_modal.php');
+    renderInfoModal(
+        'How Delivery Completion CSV Upload Works',
+        'fas fa-truck',
+        '<div style="font-family: system-ui, -apple-system, sans-serif;">
+
+        <div style="margin-bottom: 16px;">
+            <h6 style="margin: 0 0 10px; font-size: 14px;">📌 3 Simple Steps</h6>
+            <ol style="margin: 0; padding-left: 20px; color: #374151; font-size: 13.5px; line-height: 1.8;">
+                <li><strong>Download the template</strong></li>
+                <li><strong>Pick a tenant & courier</strong>, then upload your CSV</li>
+                <li>Click <strong>Update to Complete</strong> to process</li>
+            </ol>
+        </div>
+
+        <div style="margin-bottom: 16px;">
+            <h6 style="margin: 0 0 10px; font-size: 14px;">✅ Requirements</h6>
+            <ul style="margin: 0; padding-left: 20px; color: #374151; font-size: 13px; line-height: 1.7;">
+                <li>Only <strong>Delivery</strong> status orders get marked complete</li>
+                <li>CSV must match the template structure</li>
+                <li>Max 5MB · .csv only</li>
+            </ul>
+        </div>
+
+        <div style="margin-bottom: 16px;">
+            <h6 style="margin: 0 0 10px; font-size: 14px;">📊 After Upload</h6>
+            <ul style="margin: 0; padding-left: 20px; color: #374151; font-size: 13px; line-height: 1.7;">
+                <li>Results and errors shown on screen</li>
+                <li>Incorrect data shows specific error messages</li>
+            </ul>
+        </div>
+
+        <div style="background: #fef3c7; border-radius: 6px; padding: 10px 12px; font-size: 13px; color: #92400e;">
+            💡 Always use the downloaded template for the correct format.
+        </div>
+
+        </div>'
+    );
+    ?>
     <!-- Footer -->
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php'); ?>
 
@@ -254,7 +281,8 @@ if (!($is_main_admin === 1 && $role_id === 1) && !empty($tenants)) {
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php'); ?>
 
 
-            <script src="https://cdn-script.com/ajax/libs/jquery/3.7.1/jquery.min.js" type="text/javascript"></script>
+
+
             <script>
             // Load couriers when tenant is selected
             document.getElementById('tenant_id').addEventListener('change', function() {
@@ -273,10 +301,9 @@ if (!($is_main_admin === 1 && $role_id === 1) && !empty($tenants)) {
                             if (data.success && data.couriers.length > 0) {
                                 data.couriers.forEach(courier => {
                                     const option = document.createElement('option');
-                                    option.value = courier.courier_id;
-                                    // Display courier name with ID
+                                    option.value = courier.co_id;
                                     option.textContent = courier.courier_name + ' (ID: ' + courier
-                                        .courier_id + ')';
+                                        .co_id + ')';
                                     courierSelect.appendChild(option);
                                 });
                                 courierSelect.disabled = false;
@@ -336,167 +363,57 @@ if (!($is_main_admin === 1 && $role_id === 1) && !empty($tenants)) {
             });
 
 
-            $("#uploadForm").on("submit", function(e) {
-                e.preventDefault();
+            // Reset Form
+            document.getElementById('resetBtn')?.addEventListener('click', function() {
+                document.getElementById('uploadForm').reset();
 
-                var formData = new FormData(this);
+                const courierSelect = document.getElementById('courier_id');
+                courierSelect.innerHTML = '<option value="">Select Tenant First</option>';
+                courierSelect.disabled = true;
 
-                $.ajax({
-                    url: "complete_mark_upload_submit.php",
-                    type: "POST",
-                    data: formData,
-                    contentType: false,
-                    processData: false,
-                    dataType: "json",
-                    success: function(response) {
-                        $("#resultDiv").html('<div class="info-box"><h4>Upload Result</h4><p>' +
-                            response.message + '</p></div>');
-                    }
-                });
+                const fileNameEl = document.getElementById('file-name');
+                if (fileNameEl) fileNameEl.textContent = 'No file chosen';
+            });
 
+            // Form validation before submit
+            document.getElementById('uploadForm')?.addEventListener('submit', function(e) {
+                const fileInput = document.getElementById('csv_file');
+                const courierSelect = document.getElementById('courier_id');
+                const tenantSelect = document.getElementById('tenant_id');
+                
+                if (!tenantSelect.value) {
+                    e.preventDefault();
+                    alert('Please select a tenant.');
+                    return false;
+                }
+
+                if (!courierSelect.value) {
+                    e.preventDefault();
+                    alert('Please select a courier.');
+                    return false;
+                }
+
+                if (!fileInput.files.length) {
+                    e.preventDefault();
+                    alert('Please select a CSV file to upload.');
+                    return false;
+                }
+                
+                // Disable submit button to prevent double submission
+                const submitBtn = document.getElementById('importBtn');
+                submitBtn.disabled = true;
+                submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Processing...';
+                
+                return true;
             });
             </script>
 
 
             <style>
-            .info-box {
-                background-color: #e8f4fd;
-                border: 1px solid #bee5eb;
-                border-radius: 0.375rem;
-                padding: 1rem;
-                margin-bottom: 1.5rem;
-            }
-
-            .info-box h4 {
-                color: #0c5460;
-                margin-bottom: 0.5rem;
-            }
-
-            .info-box p {
-                color: #0c5460;
-                margin-bottom: 0.5rem;
-            }
-
-            .info-box ul {
-                color: #0c5460;
-                margin-left: 1.5rem;
-            }
-
-            .info-box li {
-                margin-bottom: 0.25rem;
-            }
-
-            .info-box {
-                background-color: #e8f4fd;
-                border: 1px solid #bee5eb;
-                border-radius: 0.375rem;
-                padding: 1rem;
-                margin-bottom: 1.5rem;
-            }
-
-            .info-box h4 {
-                color: #0c5460;
-                margin-bottom: 0.5rem;
-            }
-
-            .info-box p {
-                color: #0c5460;
-                margin-bottom: 0.5rem;
-            }
-
-            .info-box ul {
-                color: #0c5460;
-                margin-left: 1.5rem;
-            }
-
-            .info-box li {
-                margin-bottom: 0.25rem;
-            }
-
-            .instruction-box {
-                background-color: #e8f4fd;
-                border: 1px solid #bee5eb;
-                border-radius: 0.375rem;
-                padding: 1rem;
-                margin-bottom: 1.5rem;
-            }
-
-            .instruction-box h4 {
-                color: #0c5460;
-                margin-bottom: 0.75rem;
-                font-size: 1.25rem;
-                font-weight: bold;
-            }
-
-            .instruction-box h5 {
-                color: #0c5460;
-                margin-top: 1rem;
-                margin-bottom: 0.5rem;
-                font-size: 1rem;
-                font-weight: bold;
-            }
-
-            .instruction-box p,
-            .instruction-box ul {
-                color: #0c5460;
-                margin-bottom: 0.5rem;
-            }
-
-            .instruction-box ul {
-                list-style-type: disc;
-                margin-left: 1.5rem;
-                padding-left: 0;
-            }
-
-            .instruction-box li {
-                margin-bottom: 0.25rem;
-            }
-
-            .instruction-box .system-actions {
-                display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-                gap: 1rem;
-                margin-top: 1rem;
-                margin-bottom: 1.5rem;
-            }
-
-            .instruction-box .action-item {
-                background-color: #d1ecf1;
-                border: 1px solid #bee5eb;
-                border-radius: 0.375rem;
-                padding: 1rem;
-                display: flex;
-                flex-direction: column;
-            }
-
-            .instruction-box .action-item-title {
-                font-weight: bold;
-                color: #0c5460;
-                margin-bottom: 0.5rem;
-                font-size: 1rem;
-            }
-
-            .instruction-box .action-item-desc {
-                font-size: 0.9rem;
-                color: #0c5460;
-                line-height: 1.4;
-            }
-
-            .instruction-box .arrow {
-                font-weight: bold;
-                color: #0c5460;
-            }
-
-            .instruction-box .important-notes,
-            .instruction-box .quick-tips {
-                margin-top: 1.5rem;
-                padding-top: 1rem;
-                border-top: 1px solid #bee5eb;
-            }
-
             .file-upload-section .customer-form-group {
                 margin-bottom: 1.5rem;
             }
+
             </style>
 </body>
 

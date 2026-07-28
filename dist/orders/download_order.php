@@ -67,7 +67,7 @@ $order_query = "SELECT
             FROM order_header oh
             LEFT JOIN city_table city ON oh.city_id = city.city_id
             LEFT JOIN payments p ON oh.order_id = p.order_id
-            LEFT JOIN roles r ON p.pay_by = r.id
+            LEFT JOIN users r ON p.pay_by = r.id
             LEFT JOIN users u ON oh.user_id = u.id
             WHERE oh.order_id = ?";
 
@@ -176,664 +176,485 @@ if (isset($order['order_pay_status']) && !empty($order['order_pay_status'])) {
     }
 }
 
-// Fetch company information from branding table (UPDATED TO INCLUDE LOGO)
-// Fetch company information from branding table (UPDATED TO ALWAYS USE DB LOGO)
-// Fetch company information from branding table (UPDATED TO ALWAYS USE DB LOGO)
-// Try to get tenant-specific branding first
+// Fetch company info from tenants table
 $order_tenant_id = isset($order['tenant_id']) ? (int)$order['tenant_id'] : 0;
-$branding_query = "SELECT company_name, address, hotline, email, logo_url FROM branding WHERE tenant_id = $order_tenant_id AND active = 1 LIMIT 1";
-$branding_result = $conn->query($branding_query);
 
-// Fallback to general branding if no specific tenant branding found
-if (!$branding_result || $branding_result->num_rows === 0) {
-    $branding_query = "SELECT company_name, address, hotline, email, logo_url FROM branding WHERE active = 1 LIMIT 1";
-    $branding_result = $conn->query($branding_query);
-}
+// Get tenant info (company_name, address, phone/email, logo_url)
+$tenant_query = "SELECT company_name, address, phone, email, logo_url FROM tenants WHERE tenant_id = ? AND status = 'active' LIMIT 1";
+$stmt = $conn->prepare($tenant_query);
+$stmt->bind_param("i", $order_tenant_id);
+$stmt->execute();
+$tenant_result = $stmt->get_result();
+$company = ($tenant_result && $tenant_result->num_rows > 0) ? $tenant_result->fetch_assoc() : [];
 
-if ($branding_result && $branding_result->num_rows > 0) {
-    $company = $branding_result->fetch_assoc();
-    // Clean up the address - remove extra backslashes and format properly
+// Map phone to hotline for display consistency
+$company['hotline'] = $company['phone'] ?? '';
+
+// Clean up the address - remove extra backslashes and format properly
+if (!empty($company['address'])) {
     $company['address'] = str_replace(['\\\\r\\\\n', '\\r\\n', '\\n'], "\n", $company['address']);
-    
-    // ==========================================
-    // ✅ ALWAYS USE LOGO FROM DATABASE
-    // ==========================================
-    if (!empty($company['logo_url'])) {
-        // Check if it's a full URL (starts with http/https)
-        if (strpos($company['logo_url'], 'http') === 0) {
-            $logo_url = $company['logo_url'];
-        } 
-        // Check if it already has the full path
-        else if (strpos($company['logo_url'], '/OMS/') === 0) {
-            $logo_url = $company['logo_url']; // Already has full path
-        }
-        // Otherwise, it's a relative path from dist folder
-        else {
-            $logo_url = '/OMS/dist/' . ltrim($company['logo_url'], '/');
-        }
-    } else {
-        // If logo_url is empty in DB, show error instead of fallback
-        $logo_url = '';
-        error_log("WARNING: No logo_url found in branding table for active branding record");
-    }
-} else {
-    // If no active branding record found, show error
-    $logo_url = '';
-    error_log("ERROR: No active branding record found in database");
-    die("Error: Company branding not configured. Please contact administrator.");
 }
-// Function to get the color for payment status
-function getPaymentStatusColor($status)
-{
+
+// ==========================================
+// ✅ ALWAYS USE LOGO FROM DATABASE
+// ==========================================
+if (!empty($company['logo_url'])) {
+    // Check if it's a full URL (starts with http/https)
+    if (strpos($company['logo_url'], 'http') === 0) {
+        $logo_url = $company['logo_url'];
+    } 
+    // Check if it already has the full path
+    else if (strpos($company['logo_url'], '/OMS/') === 0) {
+        $logo_url = $company['logo_url']; // Already has full path
+    }
+    // Otherwise, it's a relative path from dist folder
+    else {
+        $logo_url = '/OMS/dist/' . ltrim($company['logo_url'], '/');
+    }
+}
+function getPaymentStatusBadge($status) {
     $status = strtolower($status ?? 'unpaid');
-
     switch ($status) {
-        case 'paid':
-            return "color: #28a745;"; // Green for paid
-        case 'partial':
-            return "color: #fd7e14;"; // Orange for partial payment
-        case 'unpaid':
-        default:
-            return "color: #dc3545;"; // Red for unpaid
+        case 'paid': return "status-paid";
+        case 'partial': return "status-partial";
+        default: return "status-unpaid";
     }
 }
 
-// Function to get badge class for payment status
-function getPaymentStatusBadge($status)
-{
-    $status = strtolower($status ?? 'unpaid');
-
+function getStatusBadge($status) {
+    $status = strtolower(trim($status ?? 'pending'));
     switch ($status) {
-        case 'paid':
-            return "bg-success"; // Green for paid
-        case 'partial':
-            return "bg-warning"; // Orange for partial payment
-        case 'unpaid':
-        default:
-            return "bg-danger"; // Red for unpaid
+        case 'pending': return "status-pending";
+        case 'dispatch': return "status-dispatch";
+        case 'delivered': return "status-delivered";
+        case 'done': return "status-done";
+        case 'cancel': return "status-cancel";
+        case 'waiting': return "status-waiting";
+        case 'return_handover': return "status-return";
+        case 'return complete': return "status-return-done";
+        default: return "status-pending";
     }
 }
 
-// Set autoPrint for normal view
-// COMMENTED OUT: Print functionality disabled
-// $autoPrint = !$show_payment_details;
-$autoPrint = false; // Disabled printing
+function getCallStatusText($callLog) {
+    return $callLog == 1 ? 'Answered' : 'No Answer';
+}
 
-// Calculate total item-level discounts
+function getCallStatusBadge($callLog) {
+    return $callLog == 1 ? 'call-answered' : 'call-no-answer';
+}
+
 $total_item_discounts = 0;
-foreach ($items as $item) {
-    $total_item_discounts += floatval($item['item_discount']);
-}
-
-// Calculate subtotal before discounts (using original prices)
 $subtotal_before_discounts = 0;
 foreach ($items as $item) {
+    $total_item_discounts += floatval($item['item_discount']);
     $subtotal_before_discounts += floatval($item['original_price']);
 }
-
-// Check if there are any discounts at all (order level or item level)
 $has_any_discount = $total_item_discounts > 0 || floatval($order['discount']) > 0;
-
-// Count how many columns we need to display in the table
-$column_count = $has_any_discount ? 5 : 4;
-
-// ==========================================
-// ✅ DEBUG LOGGING (REMOVE IN PRODUCTION)
-// ==========================================
-error_log("DEBUG - Invoice Display for Order #$order_id:");
-error_log("  - Customer Name: " . $order['customer_name']);
-error_log("  - Customer Phone: " . $order['customer_phone']);
-error_log("  - Customer Phone 2: " . ($order['customer_phone_2'] ?? 'NULL'));
-error_log("  - Address Line 1: " . $order['customer_address_line1']);
-error_log("  - Address Line 2: " . $order['customer_address_line2']);
-error_log("  - City: " . $order['customer_city']);
-error_log("  - Data Source: " . (empty($order['full_name']) ? 'customers table (fallback)' : 'order_header table'));
+$final_total = $subtotal_before_discounts - $total_item_discounts + $delivery_fee;
+$orderStatus = $order['status'] ?? 'pending';
+$conditionVal = isset($order['condition']) ? (int)$order['condition'] : 4;
+$conditionLabels = [0 => 'Excellent', 1 => 'Good', 2 => 'Average', 3 => 'Bad', 4 => 'New'];
+$conditionLabel = $conditionLabels[$conditionVal] ?? 'New';
 ?>
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Order #<?php echo $order_id; ?></title>
-    <link rel="stylesheet" href="../assets/css/orders.css" id="main-style-link" />
+    <link rel="stylesheet" href="../assets/css/orders.css" />
     <style>
-        /* Alert message styles */
-        .alert {
-            margin: 20px 0;
-            padding: 15px;
-            border-radius: 8px;
-            position: relative;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-            font-family: Arial, sans-serif;
-        }
+        .od-wrapper { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 0; }
 
-        .alert-success {
-            background-color: #d4edda;
-            border: 1px solid #c3e6cb;
-            color: #155724;
+        .od-top-bar {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 12px 16px; background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%);
+            border-radius: 8px; margin-bottom: 16px; color: white;
         }
+        .od-top-bar .od-order-id { font-size: 1.15rem; font-weight: 700; letter-spacing: 0.5px; }
+        .od-top-bar .od-badges { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 
-        .alert-warning {
-            background-color: #fff3cd;
-            border: 1px solid #ffeaa7;
-            color: #856404;
+        .od-badge {
+            display: inline-flex; align-items: center; gap: 5px;
+            padding: 4px 10px; border-radius: 20px; font-size: 0.7rem;
+            font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px;
+            white-space: nowrap;
         }
+        .od-badge.status-paid { background: #dcfce7; color: #166534; }
+        .od-badge.status-partial { background: #fef3c7; color: #92400e; }
+        .od-badge.status-unpaid { background: #fee2e2; color: #991b1b; }
+        .od-badge.status-pending { background: #dbeafe; color: #1e40af; }
+        .od-badge.status-dispatch { background: #fef3c7; color: #92400e; }
+        .od-badge.status-delivered { background: #d1fae5; color: #065f46; }
+        .od-badge.status-done { background: #dcfce7; color: #166534; }
+        .od-badge.status-cancel { background: #fee2e2; color: #991b1b; }
+        .od-badge.status-waiting { background: #e0e7ff; color: #3730a3; }
+        .od-badge.status-return { background: #fed7aa; color: #9a3412; }
+        .od-badge.status-return-done { background: #d1fae5; color: #065f46; }
+        .od-badge.call-answered { background: #dcfce7; color: #166534; }
+        .od-badge.call-no-answer { background: #fee2e2; color: #991b1b; }
+        .od-badge.od-badge-outline { background: rgba(255,255,255,0.15); color: white; }
+        .od-badge.cond-excellent { background: #dcfce7; color: #166534; }
+        .od-badge.cond-good { background: #cffafe; color: #155e75; }
+        .od-badge.cond-average { background: #fef3c7; color: #92400e; }
+        .od-badge.cond-bad { background: #fee2e2; color: #991b1b; }
+        .od-badge.cond-new { background: #f3f4f6; color: #6b7280; }
 
-        .alert-danger {
-            background-color: #f8d7da;
-            border: 1px solid #f5c6cb;
-            color: #721c24;
+        .od-section {
+            background: white; border-radius: 8px; padding: 16px;
+            margin-bottom: 12px; border: 1px solid #e5e7eb;
         }
+        .od-section-title {
+            font-size: 0.8rem; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 0.8px; color: #6b7280; margin-bottom: 12px;
+            padding-bottom: 8px; border-bottom: 1px solid #f3f4f6;
+            display: flex; align-items: center; gap: 8px;
+        }
+        .od-section-title i { font-size: 0.85rem; color: #3b82f6; }
 
-        .alert-info {
-            background-color: #d1ecf1;
-            border: 1px solid #bee5eb;
-            color: #0c5460;
-        }
+        .od-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .od-grid-4 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 12px; }
 
-        .alert i {
-            margin-right: 8px;
+        .od-field { display: flex; flex-direction: column; gap: 2px; }
+        .od-field-label {
+            font-size: 0.7rem; font-weight: 600; color: #9ca3af;
+            text-transform: uppercase; letter-spacing: 0.5px;
         }
+        .od-field-value {
+            font-size: 0.85rem; color: #1f2937; font-weight: 500;
+            word-break: break-word;
+        }
+        .od-field-value.od-highlight { font-size: 1rem; font-weight: 700; color: #111827; }
+        .od-field-value.od-muted { color: #6b7280; font-weight: 400; }
 
-        .btn-close {
-            position: absolute;
-            top: 10px;
-            right: 15px;
-            background: none;
-            border: none;
-            font-size: 20px;
-            cursor: pointer;
-            opacity: 0.5;
+        .od-customer-card {
+            display: flex; align-items: flex-start; gap: 12px;
         }
+        .od-customer-avatar {
+            width: 40px; height: 40px; border-radius: 50%;
+            background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+            display: flex; align-items: center; justify-content: center;
+            color: white; font-weight: 700; font-size: 1rem; flex-shrink: 0;
+        }
+        .od-customer-info { flex: 1; }
+        .od-customer-name { font-size: 0.95rem; font-weight: 600; color: #111827; margin-bottom: 4px; }
+        .od-customer-detail { font-size: 0.8rem; color: #6b7280; line-height: 1.6; }
+        .od-customer-detail i { width: 14px; color: #9ca3af; margin-right: 4px; }
 
-        .btn-close:hover {
-            opacity: 1;
+        .od-items-table {
+            width: 100%; border-collapse: collapse; font-size: 0.8rem;
         }
+        .od-items-table thead th {
+            background: #f9fafb; padding: 8px 10px; text-align: left;
+            font-weight: 600; color: #6b7280; font-size: 0.7rem;
+            text-transform: uppercase; letter-spacing: 0.5px;
+            border-bottom: 2px solid #e5e7eb;
+        }
+        .od-items-table tbody td {
+            padding: 10px; border-bottom: 1px solid #f3f4f6;
+            color: #374151; vertical-align: middle;
+        }
+        .od-items-table tbody tr:hover { background: #f9fafb; }
+        .od-items-table .text-right { text-align: right; }
+        .od-items-table .text-center { text-align: center; }
+        .od-items-table .fw-600 { font-weight: 600; }
 
-        .payment-slip-section {
-            margin-top: 20px;
-            padding: 15px;
-            background-color: #f8f9fa;
-            border-radius: 8px;
-            border: 1px solid #dee2e6;
+        .od-totals { margin-top: 8px; }
+        .od-total-row {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 6px 0; font-size: 0.82rem;
         }
-        .payment-slip-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
+        .od-total-row .od-total-label { color: #6b7280; }
+        .od-total-row .od-total-value { font-weight: 500; color: #374151; }
+        .od-total-row.od-grand-total {
+            border-top: 2px solid #e5e7eb; padding-top: 8px; margin-top: 4px;
         }
-        .payment-slip-info h4 {
-            margin: 0;
-            color: #495057;
-        }
-        .view-slip-btn {
-            background-color: #007bff;
-            color: white;
-            border: none;
-            padding: 8px 16px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 14px;
-        }
-        .view-slip-btn:hover {
-            background-color: #0056b3;
-        }
-        .view-slip-btn:disabled {
-            background-color: #6c757d;
-            cursor: not-allowed;
-        }
-        .payment-date-info {
-            margin-top: 5px;
-        }
+        .od-total-row.od-grand-total .od-total-label { font-weight: 700; color: #111827; }
+        .od-total-row.od-grand-total .od-total-value { font-size: 1rem; font-weight: 700; color: #111827; }
+        .od-total-row.od-discount .od-total-value { color: #059669; }
+        .od-total-row.od-delivery .od-total-value { color: #d97706; }
 
-        /* Style for logo with fallback */
-        .company-logo img {
-            max-height: 80px;
-            max-width: 200px;
-            object-fit: contain;
+        .od-notes {
+            background: #fffbeb; border-left: 3px solid #f59e0b;
+            padding: 10px 12px; border-radius: 0 6px 6px 0;
+            font-size: 0.82rem; color: #92400e; line-height: 1.5;
         }
+        .od-notes-title { font-weight: 600; margin-bottom: 4px; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; }
 
-        /* Phone number styling */
-        .phone-secondary {
-            color: #666;
-            font-size: 0.95em;
+        .od-empty-state {
+            text-align: center; padding: 20px; color: #9ca3af;
+            font-size: 0.82rem;
         }
+        .od-empty-state i { font-size: 1.5rem; margin-bottom: 6px; display: block; }
 
-        /* Data source indicator (for debugging - remove in production) */
-        .data-source-debug {
-            background-color: #e7f3ff;
-            border: 1px solid #b3d9ff;
-            padding: 8px 12px;
-            margin: 10px 0;
-            border-radius: 4px;
-            font-size: 12px;
-            color: #004085;
-        }
-
-        /* Make alerts responsive */
         @media (max-width: 768px) {
-            .alert {
-                margin: 10px 0;
-                padding: 12px;
-                font-size: 14px;
-            }
-        }
-        /* Quantity column styling */
-        .product-table td:nth-child(4) {
-            font-weight: 600;
-            color: #333;
-        }
-
-        /* Total column emphasis */
-        .product-table td:last-child {
-            font-weight: 600;
-            color: #000;
-        }
-
-        /* Discount column */
-        .item-discount {
-            color: #dc3545;
-            font-size: 0.9em;
+            .od-grid-2, .od-grid-4 { grid-template-columns: 1fr; }
+            .od-top-bar { flex-direction: column; gap: 8px; align-items: flex-start; }
+            .od-items-table { font-size: 0.75rem; }
+            .od-items-table thead th, .od-items-table tbody td { padding: 6px; }
         }
     </style>
 </head>
-
 <body>
-    <div class="order-container">
-        <?php
-        // Start session if not already started
-        if (session_status() == PHP_SESSION_NONE) {
-            session_start();
-        }
+<div class="od-wrapper">
+    <?php if (session_status() == PHP_SESSION_NONE) { session_start(); } ?>
 
-        // Check for success message and display it
-        if (isset($_SESSION['order_success'])) {
-            $success_message = $_SESSION['order_success'];
-            unset($_SESSION['order_success']); // Clear the message so it doesn't show again
-            ?>
-            <div class="alert alert-success alert-dismissible fade show" role="alert">
-                <i class="fas fa-check-circle"></i> <?php echo htmlspecialchars($success_message); ?>
-                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close">&times;</button>
-            </div>
-            <script>
-                // Auto-hide the success message after 8 seconds (increased time)
-                setTimeout(function() {
-                    var alert = document.querySelector('.alert-success');
-                    if (alert) {
-                        alert.style.transition = 'opacity 0.7s';
-                        alert.style.opacity = '0';
-                        setTimeout(function() {
-                            alert.remove();
-                        }, 500);
-                    }
-                }, 8000);
-            </script>
-            <?php
-        }
-
-        // Check for warning message and display it (for FDE API errors, courier issues, etc.)
-        if (isset($_SESSION['order_warning'])) {
-            $warning_message = $_SESSION['order_warning'];
-            unset($_SESSION['order_warning']); // Clear the message
-            ?>
-            <div class="alert alert-warning alert-dismissible fade show" role="alert">
-                <i class="fas fa-exclamation-triangle"></i> <strong>Courier/Tracking Warning:</strong> <?php echo htmlspecialchars($warning_message); ?>
-                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close">&times;</button>
-            </div>
-            <script>
-                // Auto-hide the warning message after 10 seconds (longer for warnings)
-                setTimeout(function() {
-                    var alert = document.querySelector('.alert-warning');
-                    if (alert) {
-                        alert.style.transition = 'opacity 0.7s';
-                        alert.style.opacity = '0';
-                        setTimeout(function() {
-                            alert.remove();
-                        }, 500);
-                    }
-                }, 10000);
-            </script>
-            <?php
-        }
-
-        // Check for error message and display it
-        if (isset($_SESSION['order_error'])) {
-            $error_message = $_SESSION['order_error'];
-            unset($_SESSION['order_error']); // Clear the message
-            ?>
-            <div class="alert alert-danger alert-dismissible fade show" role="alert">
-                <i class="fas fa-exclamation-circle"></i> <?php echo htmlspecialchars($error_message); ?>
-                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close">&times;</button>
-            </div>
-            <script>
-                // Auto-hide the error message after 10 seconds
-                setTimeout(function() {
-                    var alert = document.querySelector('.alert-danger');
-                    if (alert) {
-                        alert.style.transition = 'opacity 0.7s';
-                        alert.style.opacity = '0';
-                        setTimeout(function() {
-                            alert.remove();
-                        }, 500);
-                    }
-                }, 10000);
-            </script>
-            <?php
-        }
-
-        // Check for info message and display it
-        if (isset($_SESSION['order_info'])) {
-            $info_message = $_SESSION['order_info'];
-            unset($_SESSION['order_info']); // Clear the message
-            ?>
-            <div class="alert alert-info alert-dismissible fade show" role="alert">
-                <i class="fas fa-info-circle"></i> <?php echo htmlspecialchars($info_message); ?>
-                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close">&times;</button>
-            </div>
-            <script>
-                // Auto-hide the info message after 8 seconds
-                setTimeout(function() {
-                    var alert = document.querySelector('.alert-info');
-                    if (alert) {
-                        alert.style.transition = 'opacity 0.7s';
-                        alert.style.opacity = '0';
-                        setTimeout(function() {
-                            alert.remove();
-                        }, 500);
-                    }
-                }, 8000);
-            </script>
-            <?php
-        }
-        ?>
-
-        <?php
-        // ==========================================
-        // ✅ DEBUG INFO (REMOVE IN PRODUCTION)
-        // Shows where the data is coming from
-        // ==========================================
-        $data_source = empty($order['full_name']) ? 'Customers Table (Fallback)' : 'Order Header Table';
-        ?>
-        <!-- REMOVE THIS SECTION IN PRODUCTION -->
-        <!-- <div class="data-source-debug">
-            ℹ️ <strong>Data Source:</strong> <?php echo $data_source; ?> 
-            <?php if (empty($order['full_name'])): ?>
-                (Order header fields were empty, displaying from customers table)
-            <?php endif; ?>
-        </div> -->
-
-        <?php if (!$autoPrint): ?>
-            <div class="control-buttons">
-                <?php if ($show_payment_details && $orderPayStatus != 'paid'): ?>
-                    <button id="markAsPaidBtn" class="btn btn-success">Mark as Paid</button>
-                <?php endif; ?>
-            </div>
-        <?php endif; ?>
-
-        <div class="order-header">
-           <div class="company-logo">
-    <?php if (!empty($logo_url)): ?>
-        <!-- Show logo if available in database -->
-        <img src="<?php echo htmlspecialchars($logo_url); ?>" 
-             alt="<?php echo htmlspecialchars($company['company_name']); ?> Logo">
-    <?php else: ?>
-        <!-- Show company name if no logo -->
-        <h6 style="margin: 0; color: #333; font-weight: bold;">
-            <?php echo htmlspecialchars($company['company_name']); ?>
-        </h6>
+    <?php if (isset($_SESSION['order_success'])): ?>
+        <div class="alert alert-success" style="margin-bottom:12px;"><i class="fas fa-check-circle"></i> <?php echo htmlspecialchars($_SESSION['order_success']); unset($_SESSION['order_success']); ?></div>
     <?php endif; ?>
-</div>
-            <div class="order-info">
-                <div class="order-title">ORDER : # <?php echo $order_id; ?></div>
-                <div class="order-date">Date Issued: <?php echo date('Y-m-d', strtotime($order['issue_date'])); ?>
-                </div>
-                <div>Due Date: <?php echo date('Y-m-d', strtotime($order['due_date'])); ?></div>
-                <div>Created Time: <?php echo date('H:i:s', strtotime($order['created_at'])); ?></div>
-                <div class="pay-status">
-                    Pay Status:
-                    <span class="payment-badge <?php echo getPaymentStatusBadge($orderPayStatus); ?>">
-                        <?php echo ucfirst($orderPayStatus); ?>
-                    </span>
-                </div>
-                
-                <?php if (!empty($order['user_name'])): ?>
-                    <div class="pay-by-info">
-                        <strong>Created By:</strong> <?php echo htmlspecialchars($order['user_name']); ?> (ID: <?php echo $order['user_id']; ?>)
-                    </div>
-                <?php endif; ?>
+    <?php if (isset($_SESSION['order_warning'])): ?>
+        <div class="alert alert-warning" style="margin-bottom:12px;"><i class="fas fa-exclamation-triangle"></i> <?php echo htmlspecialchars($_SESSION['order_warning']); unset($_SESSION['order_warning']); ?></div>
+    <?php endif; ?>
+    <?php if (isset($_SESSION['order_error'])): ?>
+        <div class="alert alert-danger" style="margin-bottom:12px;"><i class="fas fa-exclamation-circle"></i> <?php echo htmlspecialchars($_SESSION['order_error']); unset($_SESSION['order_error']); ?></div>
+    <?php endif; ?>
 
-                <?php if (!empty($order['order_pay_date'])): ?>
-                    <div class="payment-date-info">
-                        <strong>Payment Date:</strong> <?php echo date('d/m/Y', strtotime($order['order_pay_date'])); ?>
-                    </div>
-                <?php endif; ?>
+    <!-- Top Bar -->
+    <div class="od-top-bar">
+        <div class="od-order-id"><i class="fas fa-hashtag"></i> <?php echo $order_id; ?></div>
+        <div class="od-badges">
+            <span class="od-badge <?php echo getStatusBadge($orderStatus); ?>">
+                <i class="fas fa-circle" style="font-size:6px;"></i> <?php echo ucfirst($orderStatus); ?>
+            </span>
+            <span class="od-badge <?php echo getPaymentStatusBadge($orderPayStatus); ?>">
+                <i class="fas fa-<?php echo $orderPayStatus == 'paid' ? 'check-circle' : ($orderPayStatus == 'partial' ? 'clock' : 'times-circle'); ?>"></i>
+                <?php echo ucfirst($orderPayStatus); ?>
+            </span>
+            <span class="od-badge od-badge-outline">
+                <i class="fas fa-coins"></i> <?php echo strtoupper($currency); ?>
+            </span>
+            <span class="od-badge <?php
+                $condClasses = [0=>'cond-excellent', 1=>'cond-good', 2=>'cond-average', 3=>'cond-bad', 4=>'cond-new'];
+                echo $condClasses[$conditionVal] ?? 'cond-new';
+            ?>">
+                <i class="fas fa-star"></i> <?php echo $conditionLabel; ?>
+            </span>
+        </div>
+    </div>
 
+    <!-- Order Info -->
+    <div class="od-section">
+        <div class="od-section-title"><i class="fas fa-info-circle"></i> Order Information</div>
+        <div class="od-grid-4">
+            <div class="od-field">
+                <span class="od-field-label">Issue Date</span>
+                <span class="od-field-value"><i class="fas fa-clock" style="color:#6b7280;margin-right:4px;font-size:0.75rem;"></i><?php echo date('d M Y H:i:s', strtotime($order['created_at'])); ?></span>
+            </div>
+            <div class="od-field">
+                <span class="od-field-label">Due Date</span>
+                <span class="od-field-value"><i class="fas fa-calendar-check" style="color:#f59e0b;margin-right:4px;font-size:0.75rem;"></i><?php echo date('d M Y', strtotime($order['due_date'])); ?></span>
+            </div>
+            <div class="od-field">
+                <span class="od-field-label">Created By</span>
+                <span class="od-field-value"><i class="fas fa-user" style="color:#6b7280;margin-right:4px;font-size:0.75rem;"></i><?php echo !empty($order['user_name']) ? htmlspecialchars($order['user_name']) : '-'; ?></span>
             </div>
         </div>
+    </div>
 
-        <div class="billing-details">
-            <div class="billing-block">
-                <div class="billing-title">Billing From :</div>
-                <div class="billing-info">
-                    <div><?php echo htmlspecialchars($company['company_name']); ?></div>
-                    <div><?php echo nl2br(htmlspecialchars($company['address'])); ?></div>
-                    <div><?php echo htmlspecialchars($company['email']); ?></div>
-                    <div><?php echo htmlspecialchars($company['hotline']); ?></div>
-                </div>
+    <!-- Customer Info -->
+    <div class="od-section">
+        <div class="od-section-title"><i class="fas fa-user"></i> Customer Information</div>
+        <div class="od-customer-card">
+            <div class="od-customer-avatar">
+                <?php echo strtoupper(substr(htmlspecialchars($order['customer_name'] ?? 'U'), 0, 1)); ?>
             </div>
-            <div class="billing-block">
-                <div class="billing-title">Billing To :</div>
-                <div class="billing-info">
-                    <strong><?php echo htmlspecialchars($order['customer_name']); ?></strong><br>
-                    <?php echo nl2br(htmlspecialchars($customer_address)); ?><br>
-                    <?php if (!empty($order['customer_city'])): ?>
-                        City: <?php echo htmlspecialchars($order['customer_city']); ?><br>
+            <div class="od-customer-info">
+                <div class="od-customer-name"><?php echo htmlspecialchars($order['customer_name'] ?? 'N/A'); ?></div>
+                <div class="od-customer-detail">
+                    <?php if (!empty($order['customer_phone'])): ?>
+                        <div><i class="fas fa-phone"></i> <?php echo htmlspecialchars($order['customer_phone']); ?></div>
                     <?php endif; ?>
-                    
-                    <?php 
-                    // ==========================================
-                    // ✅ Display phone numbers from order_header (with fallback to customers table)
-                    // ==========================================
-                    ?>
-                    Phone Number 1: <?php echo htmlspecialchars($order['customer_phone']); ?>
                     <?php if (!empty($order['customer_phone_2'])): ?>
-                        <br><span class="phone-secondary">Phone Number 2: <?php echo htmlspecialchars($order['customer_phone_2']); ?></span>
+                        <div><i class="fas fa-phone-alt"></i> <?php echo htmlspecialchars($order['customer_phone_2']); ?></div>
                     <?php endif; ?>
                     <?php if (!empty($order['customer_email'])): ?>
-                        <br>Email: <?php echo htmlspecialchars($order['customer_email']); ?>
+                        <div><i class="fas fa-envelope"></i> <?php echo htmlspecialchars($order['customer_email']); ?></div>
+                    <?php endif; ?>
+                    <?php if (!empty($customer_address)): ?>
+                        <div><i class="fas fa-map-marker-alt"></i> <?php echo htmlspecialchars($customer_address); ?></div>
+                    <?php endif; ?>
+                    <?php if (!empty($order['customer_city'])): ?>
+                        <div><i class="fas fa-city"></i> <?php echo htmlspecialchars($order['customer_city']); ?></div>
                     <?php endif; ?>
                 </div>
             </div>
         </div>
+    </div>
 
-        <table class="product-table">
-            <thead>
-                <tr>
-                    <th width="5%">#</th>
-            <th width="<?php echo $has_any_discount ? '25%' : '30%'; ?>">PRODUCT</th>
-            <th width="<?php echo $has_any_discount ? '25%' : '30%'; ?>">DESCRIPTION</th>
-            <th width="8%" style="text-align: center;">QTY</th>
-            <th width="12%" style="text-align: right;">UNIT PRICE</th>
-                    <?php if ($has_any_discount): ?>
-                <th width="12%" style="text-align: right;">DISCOUNT</th>
-                    <?php endif; ?>
-            <th width="13%" style="text-align: right;">TOTAL</th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php 
-                $i = 1;
-                if (count($items) > 0):
-                    foreach ($items as $item):
-                // Get quantity from database
-                $quantity = isset($item['quantity']) ? intval($item['quantity']) : 1;
-                $unit_price = isset($item['unit_price']) ? floatval($item['unit_price']) : 0;
-                $item_discount = isset($item['discount']) ? floatval($item['discount']) : 0;
-                $total_price = isset($item['total_amount']) ? floatval($item['total_amount']) : 0;
-                
-                // Calculate total before discount for display
-                $total_before_discount = $unit_price * $quantity;
-                ?>
-                        <tr>
-                            <td><?php echo $i++; ?></td>
-                            <td><?php echo htmlspecialchars($item['product_name']); ?></td>
-                            <td><?php echo htmlspecialchars($item['product_description']); ?></td>
-                    <td style="text-align: center; font-weight: 600;">
-                        <?php echo $quantity; ?>
-                    </td>
-                    <td style="text-align: right;">
-                        <?php echo $currencySymbol . ' ' . number_format($unit_price, 2); ?>
-                    </td>
-                            <?php if ($has_any_discount): ?>
-                            <td style="text-align: right;">
-                                <?php 
-                                if ($item_discount > 0) {
-                                echo $currencySymbol . ' ' . number_format($item_discount, 2);
-                                } else {
-                                echo '-';
-                                }
-                                ?>
-                        </td>
-                    <?php endif; ?>
-                    <td style="text-align: right; font-weight: 600;">
-                        <?php echo $currencySymbol . ' ' . number_format($total_price, 2); ?>
-                            </td>
-                        </tr>
-                    <?php endforeach;
-                else: ?>
+    <!-- Order Items -->
+    <div class="od-section">
+        <div class="od-section-title"><i class="fas fa-box"></i> Order Items (<?php echo count($items); ?>)</div>
+        <?php if (count($items) > 0): ?>
+        <div style="overflow-x:auto;">
+            <table class="od-items-table">
+                <thead>
                     <tr>
-                        <td colspan="<?php echo $column_count; ?>" style="text-align: center;">No items found for this order</td>
+                        <th width="4%">#</th>
+                        <th>Product</th>
+                        <th>Description</th>
+                        <th class="text-center" width="7%">Qty</th>
+                        <th class="text-right" width="12%">Unit Price</th>
+                        <?php if ($has_any_discount): ?>
+                        <th class="text-right" width="10%">Discount</th>
+                        <?php endif; ?>
+                        <th class="text-right" width="12%">Total</th>
                     </tr>
-                <?php endif; ?>
-
-                <tr class="total-row">
-            <td colspan="<?php echo $has_any_discount ? '6' : '5'; ?>" style="text-align: right; border-right: none;">Sub Total :</td>
-                    <td class="total-value">
-                        <?php echo $currencySymbol . ' ' . number_format($subtotal_before_discounts, 2); ?>
-                    </td>
-                </tr>
-
-                <?php if ($has_any_discount): ?>
-                    <tr class="total-row">
-                <td colspan="6" style="text-align: right; border-right: none;">Total Discounts :</td>
-                        <td class="total-value">
-                            <?php echo $currencySymbol . ' ' . number_format($total_item_discounts, 2); ?>
-                        </td>
+                </thead>
+                <tbody>
+                    <?php $i = 1; foreach ($items as $item):
+                        $qty = intval($item['quantity'] ?? 1);
+                        $up = floatval($item['unit_price'] ?? 0);
+                        $disc = floatval($item['discount'] ?? 0);
+                        $tot = floatval($item['total_amount'] ?? 0);
+                    ?>
+                    <tr>
+                        <td><?php echo $i++; ?></td>
+                        <td class="fw-600"><?php echo htmlspecialchars($item['product_name']); ?></td>
+                        <td class="od-muted" style="font-size:0.75rem;"><?php echo htmlspecialchars($item['product_description'] ?? '-'); ?></td>
+                        <td class="text-center fw-600"><?php echo $qty; ?></td>
+                        <td class="text-right"><?php echo $currencySymbol . ' ' . number_format($up, 2); ?></td>
+                        <?php if ($has_any_discount): ?>
+                        <td class="text-right" style="color:<?php echo $disc > 0 ? '#059669' : '#9ca3af'; ?>;"><?php echo $disc > 0 ? $currencySymbol . ' ' . number_format($disc, 2) : '-'; ?></td>
+                        <?php endif; ?>
+                        <td class="text-right fw-600"><?php echo $currencySymbol . ' ' . number_format($tot, 2); ?></td>
                     </tr>
-                <?php endif; ?>
-
-                <?php if ($delivery_fee > 0): ?>
-                    <tr class="total-row delivery-fee-row">
-                <td colspan="<?php echo $has_any_discount ? '6' : '5'; ?>" style="text-align: right; border-right: none;">Delivery Fee :</td>
-                        <td class="total-value">
-                            <?php echo $currencySymbol . ' ' . number_format($delivery_fee, 2); ?>
-                        </td>
-                    </tr>
-                <?php endif; ?>
-
-                <tr class="total-row">
-            <td colspan="<?php echo $has_any_discount ? '6' : '5'; ?>" style="text-align: right; border-right: none;"><strong> Total :</strong></td>
-                    <td class="total-value">
-                <strong>
-                        <?php 
-                        // Calculate final total ensuring delivery fee is included
-                        $final_total = $subtotal_before_discounts - $total_item_discounts + $delivery_fee;
-                        echo $currencySymbol . ' ' . number_format($final_total, 2); 
-                        ?>
-                </strong>
-                    </td>
-                </tr>
-            </tbody>
-        </table>
-
-        <div class="notes">
-            <div class="note-title">Note:</div>
-            <p><?php echo !empty($order['notes']) ? nl2br(htmlspecialchars($order['notes'])) : 'Once the order has been verified by the accounts payable team and recorded, the only task left is to send it for approval before releasing the payment'; ?>
-            </p>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
         </div>
 
-        <?php if ($orderPayStatus != 'paid' && $orderPayStatus != 'partial'): ?>
-            <div class="payment-info">
-                <div class="payment-methods">
-                    <h5>Payment Methods</h5>
-                    <p>
-                        Account Name: F E IT SOLUTIONS PVT (LTD)<br>
-                        Account Number: 100810008655<br>
-                        Account Type: LKR Current Account<br>
-                        Bank Name: Nations Trust Bank PLC
-                    </p>
-                </div>
-                <div class="signature">
-                    <div class="signature-line">
-                        Authorized Signature
-                    </div>
-                </div>
+        <div class="od-totals" style="max-width:300px; margin-left:auto;">
+            <div class="od-total-row">
+                <span class="od-total-label">Subtotal</span>
+                <span class="od-total-value"><?php echo $currencySymbol . ' ' . number_format($subtotal_before_discounts, 2); ?></span>
             </div>
+            <?php if ($has_any_discount): ?>
+            <div class="od-total-row od-discount">
+                <span class="od-total-label">Discount</span>
+                <span class="od-total-value">- <?php echo $currencySymbol . ' ' . number_format($total_item_discounts, 2); ?></span>
+            </div>
+            <?php endif; ?>
+            <?php if ($delivery_fee > 0): ?>
+            <div class="od-total-row od-delivery">
+                <span class="od-total-label">Delivery Fee</span>
+                <span class="od-total-value">+ <?php echo $currencySymbol . ' ' . number_format($delivery_fee, 2); ?></span>
+            </div>
+            <?php endif; ?>
+            <div class="od-total-row od-grand-total">
+                <span class="od-total-label">Total</span>
+                <span class="od-total-value"><?php echo $currencySymbol . ' ' . number_format($final_total, 2); ?></span>
+            </div>
+        </div>
+        <?php else: ?>
+        <div class="od-empty-state">
+            <i class="fas fa-box-open"></i>
+            No items found for this order
+        </div>
         <?php endif; ?>
     </div>
 
-   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-        // COMMENTED OUT: Auto print functionality disabled
-        /*
-        <?php if ($autoPrint): ?>
-            // Auto print when page loads
-            window.onload = function () {
-                window.print();
-            }
-        <?php endif; ?>
-        */
+    <!-- Payment & Call Info -->
+    <div class="od-grid-2">
+        <!-- Payment -->
+        <div class="od-section">
+            <div class="od-section-title"><i class="fas fa-credit-card"></i> Payment Details</div>
+            <div class="od-field" style="margin-bottom:8px;">
+                <span class="od-field-label">Payment Status</span>
+                <span class="od-field-value"><span class="od-badge <?php echo getPaymentStatusBadge($orderPayStatus); ?>"><?php echo ucfirst($orderPayStatus); ?></span></span>
+            </div>
+            <?php if (!empty($order['payment_method'])): ?>
+            <div class="od-field" style="margin-bottom:8px;">
+                <span class="od-field-label">Payment Method</span>
+                <span class="od-field-value"><?php echo htmlspecialchars(ucwords(str_replace('_',' ',$order['payment_method']))); ?></span>
+            </div>
+            <?php endif; ?>
+            <?php if (!empty($order['amount_paid'])): ?>
+            <div class="od-field" style="margin-bottom:8px;">
+                <span class="od-field-label">Amount Paid</span>
+                <span class="od-field-value od-highlight"><?php echo $currencySymbol . ' ' . number_format(floatval($order['amount_paid']), 2); ?></span>
+            </div>
+            <?php endif; ?>
+            <?php if (!empty($order['order_pay_date'])): ?>
+            <div class="od-field" style="margin-bottom:8px;">
+                <span class="od-field-label">Payment Date</span>
+                <span class="od-field-value"><?php echo date('d M Y H:i', strtotime($order['order_pay_date'])); ?></span>
+            </div>
+            <?php endif; ?>
+            <?php if (!empty($order['paid_by_name'])): ?>
+            <div class="od-field" style="margin-bottom:8px;">
+                <span class="od-field-label">Processed By</span>
+                <span class="od-field-value"><?php echo htmlspecialchars($order['paid_by_name']); ?></span>
+            </div>
+            <?php endif; ?>
+            <?php if (!empty($order['payment_slip'])): ?>
+            <div class="od-field">
+                <span class="od-field-label">Payment Slip</span>
+                <span class="od-field-value"><a href="/OMS/dist/uploads/payment_slips/<?php echo urlencode($order['payment_slip']); ?>" target="_blank" style="color:#3b82f6;text-decoration:none;font-size:0.8rem;"><i class="fas fa-file-image"></i> View Slip</a></span>
+            </div>
+            <?php endif; ?>
+            <?php if (empty($order['payment_method']) && empty($order['amount_paid'])): ?>
+            <div class="od-empty-state" style="padding:12px;">
+                <i class="fas fa-minus-circle" style="font-size:1rem;"></i>
+                No payment recorded
+            </div>
+            <?php endif; ?>
+        </div>
 
-        // Function to view payment slip in new tab
-        function viewPaymentSlip(slipFileName) {
-            const slipUrl = '/OMS/dist/uploads/payment_slips/' + encodeURIComponent(slipFileName);
-            window.open(slipUrl, '_blank');
-        }
+        <!-- Call Status / Success Rate -->
+        <div class="od-section">
+            <div class="od-section-title"><i class="fas fa-headset"></i> Call & Success Rate</div>
+            <div class="od-field" style="margin-bottom:8px;">
+                <span class="od-field-label">Success Rate</span>
+                <span class="od-field-value"><span class="od-badge <?php
+                    $condClasses = [0=>'cond-excellent', 1=>'cond-good', 2=>'cond-average', 3=>'cond-bad', 4=>'cond-new'];
+                    echo $condClasses[$conditionVal] ?? 'cond-new';
+                ?>"><i class="fas fa-star" style="font-size:8px;"></i> <?php echo $conditionLabel; ?></span></span>
+            </div>
+            <div class="od-field" style="margin-bottom:8px;">
+                <span class="od-field-label">Call Status</span>
+                <span class="od-field-value"><span class="od-badge <?php echo getCallStatusBadge($order['call_log']); ?>"><?php echo getCallStatusText($order['call_log']); ?></span></span>
+            </div>
+            <?php if ($order['call_log'] == 1 && !empty($order['answer_reason'])): ?>
+            <div class="od-field" style="margin-bottom:8px;">
+                <span class="od-field-label">Answer Reason</span>
+                <span class="od-field-value od-muted"><?php echo htmlspecialchars($order['answer_reason']); ?></span>
+            </div>
+            <?php endif; ?>
+            <?php if ($order['call_log'] != 1 && !empty($order['no_answer_reason'])): ?>
+            <div class="od-field" style="margin-bottom:8px;">
+                <span class="od-field-label">No Answer Reason</span>
+                <span class="od-field-value od-muted"><?php echo htmlspecialchars($order['no_answer_reason']); ?></span>
+            </div>
+            <?php endif; ?>
+            <?php if (!empty($order['cancellation_reason'])): ?>
+            <div class="od-field">
+                <span class="od-field-label">Cancellation Reason</span>
+                <span class="od-field-value" style="color:#dc2626;"><?php echo htmlspecialchars($order['cancellation_reason']); ?></span>
+            </div>
+            <?php endif; ?>
+        </div>
+    </div>
 
-        // Handle Mark as Paid button click
-        document.addEventListener('DOMContentLoaded', function () {
-            const markAsPaidBtn = document.getElementById('markAsPaidBtn');
-            if (markAsPaidBtn) {
-                markAsPaidBtn.addEventListener('click', function () {
-                    // Create form data for the AJAX request
-                    const formData = new FormData();
-                    formData.append('order_id', '<?php echo $order_id; ?>');
-                    formData.append('pay_status', 'paid');
+    <!-- Notes -->
+    <?php if (!empty($order['notes'])): ?>
+    <div class="od-section">
+        <div class="od-section-title"><i class="fas fa-sticky-note"></i> Notes</div>
+        <div class="od-notes">
+            <div class="od-notes-title">Order Note</div>
+            <?php echo nl2br(htmlspecialchars($order['notes'])); ?>
+        </div>
+    </div>
+    <?php endif; ?>
+</div>
 
-                    // Send AJAX request
-                    fetch('update_order_status.php', {
-                        method: 'POST',
-                        body: formData
-                    })
-                        .then(response => response.json())
-                        .then(data => {
-                            if (data.success) {
-                                // Simply reload the current page to show updated status
-                                window.location.reload();
-                            } else {
-                                alert('Error updating payment status: ' + data.message);
-                            }
-                        })
-                        .catch(error => {
-                            console.error('Error:', error);
-                            alert('An error occurred while updating the payment status.');
-                        });
-                });
-            }
-        });
-        
-    </script>
-    <script>
-        // Auto redirect after 10 seconds
-        setTimeout(function() {
-            window.location.href = 'create_order.php';
-        }, 10000);
+<script>
+function viewPaymentSlip(slipFileName) {
+    const slipUrl = '/OMS/dist/uploads/payment_slips/' + encodeURIComponent(slipFileName);
+    window.open(slipUrl, '_blank');
+}
 
-  </script>
-        </body>
-
+</script>
+</body>
 </html>
-<?php
-$conn->close();
-?>
+<?php $conn->close(); ?>

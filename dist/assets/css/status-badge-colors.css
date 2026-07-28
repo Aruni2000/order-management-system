@@ -44,3 +44,42 @@
   background-color: #f3f4f6 !important;
   color: #4b5563 !important;
 }
+
+/* ====================================
+   COURIER STATUS BADGES
+   ==================================== */
+
+/* None (is_default=0) — gray neutral */
+.status-none {
+  background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%) !important;
+  color: #4b5563 !important;
+  border: 1px solid #d1d5db !important;
+}
+
+/* Default Courier (is_default=1) — gold/amber highlight */
+.status-default-courier {
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%) !important;
+  color: #92400e !important;
+  border: 1px solid #fcd34d !important;
+}
+
+/* API Parcel Courier (is_default=2) — blue technical */
+.status-api {
+  background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%) !important;
+  color: #1e40af !important;
+  border: 1px solid #93c5fd !important;
+}
+
+/* Existing API Parcel (is_default=3) — purple integration */
+.status-existing-api {
+  background: linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 100%) !important;
+  color: #6b21a8 !important;
+  border: 1px solid #c4b5fd !important;
+}
+
+/* Unknown — red danger fallback */
+.status-unknown {
+  background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%) !important;
+  color: #991b1b !important;
+  border: 1px solid #fca5a5 !important;
+}

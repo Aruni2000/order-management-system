@@ -59,15 +59,6 @@ if ($is_main_admin) {
     }
 }
 
-// Function to generate CSRF token
-// function generateCSRFToken() {
-//     if (!isset($_SESSION['csrf_token'])) {
-//         $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-//     }
-//     return $_SESSION['csrf_token'];
-// }
-
-
 ?>
 
 <!doctype html>
@@ -261,9 +252,6 @@ input[type="password"] {
             <div class="main-container">
                 <!-- Add User Form -->
                 <form method="POST" id="addUserForm" class="customer-form" novalidate>
-                    <!-- CSRF Token -->
-                    <!-- <input type="hidden" name="csrf_token" value="<?php //echo generateCSRFToken(); ?>">
-                     -->
                     <!-- User Details Section -->
                     <div class="form-section">
                         <div class="section-content">
@@ -274,7 +262,7 @@ input[type="password"] {
                                         <i class="fas fa-user"></i> Full Name<span class="required">*</span>
                                     </label>
                                     <input type="text" class="form-control" id="full_name" name="full_name"
-                                        placeholder="Enter user's full name" required>
+                                        placeholder="Enter Full Name" required>
                                     <div class="error-feedback" id="full_name-error"></div>
                                 </div>
 
@@ -283,7 +271,7 @@ input[type="password"] {
                                         <i class="fas fa-envelope"></i> Email Address<span class="required">*</span>
                                     </label>
                                     <input type="email" class="form-control" id="email" name="email"
-                                        placeholder="user@example.com" required>
+                                        placeholder="Enter Email Address" required>
                                     <div class="error-feedback" id="email-error"></div>
                                     <div class="email-suggestions" id="email-suggestions"></div>
                                 </div>
@@ -311,9 +299,9 @@ input[type="password"] {
                                         <i class="fas fa-mobile-alt"></i> Mobile Number<span class="required">*</span>
                                     </label>
                                     <input type="tel" class="form-control" id="mobile" name="mobile"
-                                        placeholder="0771234567" required>
+                                        placeholder="Enter Phone Number" required>
                                     <div class="error-feedback" id="mobile-error"></div>
-                                    <div class="phone-hint">Enter 10-digit Sri Lankan mobile number</div>
+                                    
                                 </div>
                             </div>
 
@@ -326,7 +314,7 @@ input[type="password"] {
                                     <input type="text" class="form-control" id="nic" name="nic"
                                         placeholder="123456789V or 123456789012" required>
                                     <div class="error-feedback" id="nic-error"></div>
-                                    <div class="nic-hint">Enter Sri Lankan NIC (9 digits + V or 12 digits)</div>
+                                    <div class="nic-hint"></div>
                                 </div>
 
                                 <div class="customer-form-group">
@@ -492,7 +480,7 @@ input[type="password"] {
                     $submitBtn.prop('disabled', false).html(originalText);
                     
                     if (response.success) {
-                        showSuccessNotification(response.message || 'User added successfully!');
+                        toastManager.success(response.message || 'User added successfully!');
                         showSuccessModal(response.message || 'User has been successfully added to the system.');
                         
                         // Optional: Reset form after success
@@ -503,7 +491,7 @@ input[type="password"] {
                             showFieldErrors(response.errors);
                         }
                         
-                        showErrorNotification(response.message || 'Failed to add user. Please try again.');
+                        toastManager.error(response.message || 'Failed to add user. Please try again.');
                     }
                 },
                 error: function(xhr, status, error) {
@@ -522,7 +510,7 @@ input[type="password"] {
                         errorMessage = 'No internet connection. Please check your connection.';
                     }
                     
-                    showErrorNotification(errorMessage);
+                    toastManager.error(errorMessage);
                     console.error('AJAX Error:', {
                         status: xhr.status,
                         statusText: xhr.statusText,
@@ -543,7 +531,7 @@ input[type="password"] {
         // Loading functions
         function showLoading() {
             $('#loadingOverlay').css('display', 'flex');
-            $('body').css('overflow', 'hidden');
+            $('body').css('overflow', 'clip');
         }
 
         function hideLoading() {
@@ -551,50 +539,6 @@ input[type="password"] {
             $('body').css('overflow', 'auto');
         }
         
-        // Notification functions
-        function showSuccessNotification(message) {
-            showNotification(message, 'success');
-        }
-        
-        function showErrorNotification(message) {
-            showNotification(message, 'danger');
-        }
-        
-        function showWarningNotification(message) {
-            showNotification(message, 'warning');
-        }
-        
-        function showNotification(message, type) {
-            const notificationId = 'notification_' + Date.now();
-            const iconClass = type === 'success' ? 'fas fa-check-circle' : 
-                            type === 'danger' ? 'fas fa-exclamation-circle' : 
-                            'fas fa-exclamation-triangle';
-            
-            const notification = `
-                <div class="alert alert-${type} alert-dismissible ajax-notification" id="${notificationId}" role="alert">
-                    <i class="${iconClass} me-2"></i>
-                    ${message}
-                    <button type="button" class="btn-close" onclick="hideNotification('${notificationId}')" aria-label="Close"></button>
-                </div>
-            `;
-            
-            $('body').append(notification);
-            
-            // Auto-hide after 5 seconds
-            setTimeout(() => {
-                hideNotification(notificationId);
-            }, 5000);
-        }
-        
-        function hideNotification(notificationId) {
-            const $notification = $('#' + notificationId);
-            if ($notification.length) {
-                $notification.addClass('hide');
-                setTimeout(() => {
-                    $notification.remove();
-                }, 300);
-            }
-        }
         
         // Form reset function
         function resetForm() {
@@ -842,7 +786,7 @@ input[type="password"] {
             const cleanMobile = mobile.replace(/\s+/g, '');
             const sriLankanMobileRegex = /^(0|94|\+94)?[1-9][0-9]{8}$/;
             if (!sriLankanMobileRegex.test(cleanMobile)) {
-                return { valid: false, message: 'Please enter a valid Sri Lankan mobile number (e.g., 0771234567)' };
+                return { valid: false, message: 'Please enter a valid Sri Lankan mobile number' };
             }
             return { valid: true, message: '' };
         }
@@ -1007,7 +951,7 @@ input[type="password"] {
             }
             
             $modal.show();
-            $('body').css('overflow', 'hidden');
+            $('body').css('overflow', 'clip');
         }
 
         function hideSuccessModal() {
@@ -1026,36 +970,6 @@ input[type="password"] {
             window.location.href = 'users.php';
         }
 
-        function showNotification(message, type) {
-    const notificationId = 'notification_' + Date.now();
-    // Map your types to Bootstrap alert classes
-    const alertClasses = {
-        'success': 'alert-success',
-        'danger': 'alert-danger',
-        'warning': 'alert-warning'
-    };
-    
-    const iconClass = type === 'success' ? 'fas fa-check-circle' : 
-                    type === 'danger' ? 'fas fa-exclamation-circle' : 
-                    'fas fa-exclamation-triangle';
-    
-    const notification = `
-        <div class="alert ${alertClasses[type]} alert-dismissible fade show ajax-notification" id="${notificationId}" role="alert">
-            <div class="d-flex align-items-center">
-                <i class="${iconClass} me-2"></i>
-                <div>${message}</div>
-            </div>
-            <button type="button" class="btn-close" onclick="hideNotification('${notificationId}')" aria-label="Close"></button>
-        </div>
-    `;
-    
-    $('body').append(notification);
-    
-    // Auto-hide after 5 seconds
-    setTimeout(() => {
-        hideNotification(notificationId);
-    }, 5000);
-}
     </script>
 
 </body>

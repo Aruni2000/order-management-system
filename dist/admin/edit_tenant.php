@@ -42,6 +42,9 @@ if ($user_role['role_id'] != 1) {
     exit();
 }
 
+// Determine if current user is a main admin
+$current_is_main_admin = isset($_SESSION['is_main_admin']) && $_SESSION['is_main_admin'] == 1;
+
 // Function to generate CSRF token
 function generateCSRFToken() {
     if (!isset($_SESSION['csrf_token'])) {
@@ -54,28 +57,45 @@ function generateCSRFToken() {
 $tenant_data = null;
 $errorMsg = "";
 
+$tenantId = null;
+$session_tenant_id = $_SESSION['tenant_id'] ?? null;
+
 if (isset($_GET['id']) && !empty($_GET['id'])) {
     $tenantId = (int)$_GET['id'];
     
-    // Fetch tenant data from database
-    $stmt = mysqli_prepare($conn, "SELECT * FROM tenants WHERE tenant_id = ?");
-    if ($stmt) {
-        mysqli_stmt_bind_param($stmt, "i", $tenantId);
-        mysqli_stmt_execute($stmt);
-        $result = mysqli_stmt_get_result($stmt);
-        $tenant_data = mysqli_fetch_assoc($result);
-        mysqli_stmt_close($stmt);
-        
-        if (!$tenant_data) {
-            header("Location: tenants.php?error=Tenant not found");
-            exit();
-        }
-    } else {
-        header("Location: tenants.php?error=Database error: " . mysqli_error($conn));
+    // Company admin can ONLY edit their own tenant
+    if (!$current_is_main_admin && $tenantId !== (int)$session_tenant_id) {
+        header("Location: /OMS/dist/dashboard/index.php");
+        exit();
+    }
+} elseif (!$current_is_main_admin && $session_tenant_id) {
+    // Company admin with no ?id param: auto-load their own tenant
+    $tenantId = (int)$session_tenant_id;
+} elseif ($current_is_main_admin) {
+    // Main admin must provide an id
+    header("Location: tenant_list.php?error=No tenant ID specified");
+    exit();
+} else {
+    // Fallback: not main admin and no session tenant
+    header("Location: /OMS/dist/dashboard/index.php");
+    exit();
+}
+
+// Fetch tenant data from database
+$stmt = mysqli_prepare($conn, "SELECT * FROM tenants WHERE tenant_id = ?");
+if ($stmt) {
+    mysqli_stmt_bind_param($stmt, "i", $tenantId);
+    mysqli_stmt_execute($stmt);
+    $result = mysqli_stmt_get_result($stmt);
+    $tenant_data = mysqli_fetch_assoc($result);
+    mysqli_stmt_close($stmt);
+
+    if (!$tenant_data) {
+        header("Location: tenant_list.php?error=Tenant not found");
         exit();
     }
 } else {
-    header("Location: tenants.php?error=No tenant ID specified");
+    header("Location: tenant_list.php?error=Database error: " . mysqli_error($conn));
     exit();
 }
 
@@ -223,9 +243,11 @@ if (isset($_GET['id']) && !empty($_GET['id'])) {
                     <div class="page-header-breadcrumb">
                         <ul class="breadcrumb">
                             <li class="breadcrumb-item">
-                                <a href="tenant_list.php">Tenants List</a>
+                                <a href="<?php echo $current_is_main_admin ? 'tenant_list.php' : '../dashboard/index.php'; ?>">
+                                    <?php echo $current_is_main_admin ? 'Tenants List' : 'Dashboard'; ?>
+                                </a>
                             </li>
-                            <li class="breadcrumb-item active">Edit Tenant</li>
+                            <li class="breadcrumb-item active">Company Settings</li>
                         </ul>
                     </div>
                 </div>
@@ -235,7 +257,7 @@ if (isset($_GET['id']) && !empty($_GET['id'])) {
             <!-- [ Main Content ] start -->
             <div class="main-container">
                 <!-- Edit Tenant Form -->
-                <form method="POST" id="editTenantForm" class="customer-form" novalidate>
+                <form method="POST" id="editTenantForm" class="customer-form" enctype="multipart/form-data" novalidate>
                     <!-- CSRF Token -->
                     <input type="hidden" name="csrf_token" value="<?php echo generateCSRFToken(); ?>">
                     <!-- Tenant ID -->
@@ -248,10 +270,10 @@ if (isset($_GET['id']) && !empty($_GET['id'])) {
                             <div class="form-row">
                                 <div class="customer-form-group">
                                     <label for="company_name" class="form-label">
-                                        <i class="fas fa-building"></i> Company Name<span class="required">*</span>
+                                        <i class="fas fa-building"></i> Company Name<span class="required">*</span><span class="small" style="font-size:10px;font-weight:normal;">(Max 15 characters)</span>
                                     </label>
                                     <input type="text" class="form-control" id="company_name" name="company_name"
-                                        placeholder="Enter company name" 
+                                        placeholder="Enter company name" maxlength="15"
                                         value="<?php echo htmlspecialchars($tenant_data['company_name'] ?? ''); ?>" required>
                                     <div class="error-feedback" id="company_name-error"></div>
                                 </div>
@@ -288,21 +310,31 @@ if (isset($_GET['id']) && !empty($_GET['id'])) {
                                         placeholder="0112345678" 
                                         value="<?php echo htmlspecialchars($tenant_data['phone'] ?? ''); ?>" required>
                                     <div class="error-feedback" id="phone-error"></div>
-                                    <div class="phone-hint">Enter Sri Lankan phone number</div>
                                 </div>
                             </div>
 
-                            <!-- Third Row: Status and Main Admin -->
+                            <!-- Address Row -->
+                            <div class="form-row single">
+                                <div class="customer-form-group">
+                                    <label for="address" class="form-label">
+                                        <i class="fas fa-map-marker-alt"></i> Company Address
+                                    </label>
+                                    <textarea class="form-control" id="address" name="address" rows="3"
+                                        placeholder="Enter company physical address"><?php echo htmlspecialchars($tenant_data['address'] ?? ''); ?></textarea>
+                                    <div class="error-feedback" id="address-error"></div>
+                                </div>
+                            </div>
+
+                            <!-- Delivery Fee & Main Admin Row -->
+                            <?php if ($current_is_main_admin): ?>
                             <div class="form-row">
                                 <div class="customer-form-group">
-                                    <label for="status" class="form-label">
-                                        <i class="fas fa-toggle-on"></i> Status<span class="required">*</span>
+                                    <label for="delivery_fee" class="form-label">
+                                        <i class="fas fa-truck"></i> Delivery Fee (LKR)
                                     </label>
-                                    <select class="form-select" id="status" name="status" required>
-                                        <option value="active" <?php echo (($tenant_data['status'] ?? '') === 'active') ? 'selected' : ''; ?>>Active</option>
-                                        <option value="inactive" <?php echo (($tenant_data['status'] ?? '') === 'inactive') ? 'selected' : ''; ?>>Inactive</option>
-                                    </select>
-                                    <div class="error-feedback" id="status-error"></div>
+                                    <input type="number" step="0.01" min="0" class="form-control" id="delivery_fee" name="delivery_fee"
+                                        placeholder="0.00" value="<?php echo htmlspecialchars($tenant_data['delivery_fee'] ?? '0.00'); ?>">
+                                    <div class="error-feedback" id="delivery_fee-error"></div>
                                 </div>
 
                                 <div class="customer-form-group">
@@ -314,7 +346,56 @@ if (isset($_GET['id']) && !empty($_GET['id'])) {
                                         <option value="1" <?php echo (($tenant_data['is_main_admin'] ?? 0) == 1) ? 'selected' : ''; ?>>Yes</option>
                                     </select>
                                     <div class="error-feedback" id="is_main_admin-error"></div>
-                                    <div class="phone-hint">Designate this tenant as main administrator</div>
+                                </div>
+                            </div>
+                            <?php else: ?>
+                            <div class="form-row single">
+                                <div class="customer-form-group">
+                                    <label for="delivery_fee" class="form-label">
+                                        <i class="fas fa-truck"></i> Delivery Fee (LKR)
+                                    </label>
+                                    <input type="number" step="0.01" min="0" class="form-control" id="delivery_fee" name="delivery_fee"
+                                        placeholder="0.00" value="<?php echo htmlspecialchars($tenant_data['delivery_fee'] ?? '0.00'); ?>">
+                                    <div class="error-feedback" id="delivery_fee-error"></div>
+                                </div>
+                            </div>
+                            <input type="hidden" name="is_main_admin" value="<?php echo (int)($tenant_data['is_main_admin'] ?? 0); ?>">
+                            <?php endif; ?>
+
+                            <!-- Logo & Favicon Upload Row -->
+                            <div class="form-row">
+                                <div class="customer-form-group">
+                                    <label for="logo" class="form-label">
+                                        <i class="fas fa-image"></i> Company Logo
+                                    </label>
+                                    <input type="file" class="form-control" id="logo" name="logo" accept=".jpg,.jpeg,.png,.gif">
+                                    <?php if (!empty($tenant_data['logo_url'])): ?>
+                                        <div style="margin-top: 8px; display: flex; align-items: center; gap: 10px;">
+                                            <img src="<?php echo htmlspecialchars($tenant_data['logo_url']); ?>" alt="Current Logo" style="max-width: 80px; max-height: 40px; border: 1px solid #ddd; border-radius: 4px;">
+                                            <label style="font-size: 12px; color: #6c757d;">
+                                                <input type="checkbox" name="remove_logo" value="1"> Remove logo
+                                            </label>
+                                        </div>
+                                    <?php endif; ?>
+                                    <div class="error-feedback" id="logo-error"></div>
+                                    <div class="phone-hint">Upload logo (JPG, PNG, GIF)</div>
+                                </div>
+
+                                <div class="customer-form-group">
+                                    <label for="fav_icon" class="form-label">
+                                        <i class="fas fa-bolt"></i> Favicon
+                                    </label>
+                                    <input type="file" class="form-control" id="fav_icon" name="fav_icon" accept=".ico,.jpg,.jpeg,.png">
+                                    <?php if (!empty($tenant_data['fav_icon_url'])): ?>
+                                        <div style="margin-top: 8px; display: flex; align-items: center; gap: 10px;">
+                                            <img src="<?php echo htmlspecialchars($tenant_data['fav_icon_url']); ?>" alt="Current Favicon" style="max-width: 32px; max-height: 32px; border: 1px solid #ddd; border-radius: 4px;">
+                                            <label style="font-size: 12px; color: #6c757d;">
+                                                <input type="checkbox" name="remove_favicon" value="1"> Remove favicon
+                                            </label>
+                                        </div>
+                                    <?php endif; ?>
+                                    <div class="error-feedback" id="fav_icon-error"></div>
+                                    <div class="phone-hint">Upload favicon (ICO, PNG, JPG)</div>
                                 </div>
                             </div>
                         </div>
@@ -325,8 +406,8 @@ if (isset($_GET['id']) && !empty($_GET['id'])) {
                         <button type="submit" class="btn btn-primary" id="submitBtn">
                             <i class="fas fa-save"></i> Update Tenant
                         </button>
-                        <button type="button" class="btn btn-secondary ms-2" id="cancelBtn" onclick="window.location.href='tenant_list.php'">
-                            <i class="fas fa-times"></i> Back to All Tenants
+                        <button type="button" class="btn btn-secondary ms-2" id="cancelBtn" onclick="window.location.href='<?php echo $current_is_main_admin ? 'tenant_list.php' : '../dashboard/index.php'; ?>'">
+                            <i class="fas fa-times"></i> <?php echo $current_is_main_admin ? 'Back to All Tenants' : 'Back to Dashboard'; ?>
                         </button>
                     </div>
                 </form>
@@ -351,6 +432,17 @@ if (isset($_GET['id']) && !empty($_GET['id'])) {
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
 
     <script>
+        // Store original values for change detection
+        const originalValues = {
+            company_name: '<?php echo addslashes($tenant_data['company_name'] ?? ''); ?>',
+            contact_person: '<?php echo addslashes($tenant_data['contact_person'] ?? ''); ?>',
+            email: '<?php echo addslashes($tenant_data['email'] ?? ''); ?>',
+            phone: '<?php echo addslashes($tenant_data['phone'] ?? ''); ?>',
+            address: '<?php echo addslashes($tenant_data['address'] ?? ''); ?>',
+            delivery_fee: '<?php echo ($tenant_data['delivery_fee'] ?? '0.00'); ?>',
+            is_main_admin: '<?php echo (int)($tenant_data['is_main_admin'] ?? 0); ?>'
+        };
+
         $(document).ready(function() {
             // Initialize form
             initializeForm();
@@ -361,6 +453,12 @@ if (isset($_GET['id']) && !empty($_GET['id'])) {
                 
                 // Clear previous validations
                 clearAllValidations();
+                
+                // Check for changes first
+                if (!hasFormChanged()) {
+                    toastManager.warning('No changes were made to the tenant.');
+                    return;
+                }
                 
                 // Validate form
                 if (validateForm()) {
@@ -405,17 +503,19 @@ if (isset($_GET['id']) && !empty($_GET['id'])) {
                     $submitBtn.prop('disabled', false).html(originalText);
                     
                     if (response.success) {
-                        showSuccessNotification(response.message || 'Tenant updated successfully!');
+                        toastManager.success(response.message || 'Tenant updated successfully!');
+                        updateOriginalValues();
                         
-                        // Redirect after 2 seconds
+                        // Redirect after 2 seconds (company admin goes to dashboard)
+                        var redirectUrl = <?php echo json_encode($current_is_main_admin ? 'tenant_list.php' : '../dashboard/index.php'); ?>;
                         setTimeout(function() {
-                            window.location.href = 'tenant_list.php';
+                            window.location.href = redirectUrl;
                         }, 2000);
                     } else {
                         if (response.errors) {
                             showFieldErrors(response.errors);
                         }
-                        showErrorNotification(response.message || 'Failed to update tenant. Please try again.');
+                        toastManager.error(response.message || 'Failed to update tenant. Please try again.');
                     }
                 },
                 error: function(xhr, status, error) {
@@ -434,7 +534,7 @@ if (isset($_GET['id']) && !empty($_GET['id'])) {
                         errorMessage = 'No internet connection. Please check your connection.';
                     }
                     
-                    showErrorNotification(errorMessage);
+                    toastManager.error(errorMessage);
                     console.error('AJAX Error:', {
                         status: xhr.status,
                         statusText: xhr.statusText,
@@ -452,10 +552,37 @@ if (isset($_GET['id']) && !empty($_GET['id'])) {
             });
         }
         
+        // Change detection functions
+        function hasFormChanged() {
+            return (
+                $('#company_name').val() !== originalValues.company_name ||
+                $('#contact_person').val() !== originalValues.contact_person ||
+                $('#email').val() !== originalValues.email ||
+                $('#phone').val() !== originalValues.phone ||
+                $('#address').val() !== originalValues.address ||
+                $('#delivery_fee').val() !== originalValues.delivery_fee ||
+                $('[name="is_main_admin"]').val() !== originalValues.is_main_admin ||
+                $('#logo').get(0).files.length > 0 ||
+                $('#fav_icon').get(0).files.length > 0 ||
+                $('input[name="remove_logo"]').is(':checked') ||
+                $('input[name="remove_favicon"]').is(':checked')
+            );
+        }
+        
+        function updateOriginalValues() {
+            originalValues.company_name = $('#company_name').val();
+            originalValues.contact_person = $('#contact_person').val();
+            originalValues.email = $('#email').val();
+            originalValues.phone = $('#phone').val();
+            originalValues.address = $('#address').val();
+            originalValues.delivery_fee = $('#delivery_fee').val();
+            originalValues.is_main_admin = $('[name="is_main_admin"]').val();
+        }
+        
         // Loading functions
         function showLoading() {
             $('#loadingOverlay').css('display', 'flex');
-            $('body').css('overflow', 'hidden');
+            $('body').css('overflow', 'clip');
         }
         
         function hideLoading() {
@@ -463,58 +590,6 @@ if (isset($_GET['id']) && !empty($_GET['id'])) {
             $('body').css('overflow', 'auto');
         }
         
-        // Notification functions
-        function showSuccessNotification(message) {
-            showNotification(message, 'success');
-        }
-        
-        function showErrorNotification(message) {
-            showNotification(message, 'danger');
-        }
-        
-        function showWarningNotification(message) {
-            showNotification(message, 'warning');
-        }
-        
-        function showNotification(message, type) {
-            const notificationId = 'notification_' + Date.now();
-            const alertClasses = {
-                'success': 'alert-success',
-                'danger': 'alert-danger',
-                'warning': 'alert-warning'
-            };
-            
-            const iconClass = type === 'success' ? 'fas fa-check-circle' : 
-                            type === 'danger' ? 'fas fa-exclamation-circle' : 
-                            'fas fa-exclamation-triangle';
-            
-            const notification = `
-                <div class="alert ${alertClasses[type]} alert-dismissible fade show ajax-notification" id="${notificationId}" role="alert">
-                    <div class="d-flex align-items-center">
-                        <i class="${iconClass} me-2"></i>
-                        <div>${message}</div>
-                    </div>
-                    <button type="button" class="btn-close" onclick="hideNotification('${notificationId}')" aria-label="Close"></button>
-                </div>
-            `;
-            
-            $('body').append(notification);
-            
-            // Auto-hide after 5 seconds
-            setTimeout(() => {
-                hideNotification(notificationId);
-            }, 5000);
-        }
-        
-        function hideNotification(notificationId) {
-            const $notification = $('#' + notificationId);
-            if ($notification.length) {
-                $notification.removeClass('show').addClass('hide');
-                setTimeout(() => {
-                    $notification.remove();
-                }, 300);
-            }
-        }
         
         // Clear all validations
         function clearAllValidations() {
@@ -623,8 +698,8 @@ if (isset($_GET['id']) && !empty($_GET['id'])) {
             if (name.trim().length < 2) {
                 return { valid: false, message: 'Company name must be at least 2 characters long' };
             }
-            if (name.length > 255) {
-                return { valid: false, message: 'Company name is too long (maximum 255 characters)' };
+            if (name.length > 15) {
+                return { valid: false, message: 'Company name is too long (maximum 15 characters)' };
             }
             return { valid: true, message: '' };
         }
