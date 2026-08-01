@@ -3,6 +3,17 @@
 .action-modal-body {
   padding: 20px 24px;
   background: #f8fafc;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+.api-modal > form {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 .action-modal-body .info-bar {
   margin-bottom: 20px;
@@ -160,6 +171,7 @@
   justify-content: center !important;
   padding: 14px 24px !important;
   gap: 16px !important;
+  flex-shrink: 0;
 }
 
 /* Action modal textarea */
@@ -178,6 +190,34 @@
   outline: none;
   border-color: #3b82f6;
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+@media screen and (max-width: 768px) {
+  .api-modal-overlay {
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 12px;
+  }
+
+  .api-modal {
+    margin: auto;
+    max-height: calc(100vh - 24px);
+    max-height: calc(100dvh - 24px);
+    border-radius: 16px;
+  }
+
+  .action-modal-body {
+    padding: 16px;
+  }
+
+  .action-modal-body + .api-modal-footer {
+    flex-shrink: 0;
+    padding: 14px 16px !important;
+    gap: 10px !important;
+  }
+
+  .api-modal-header h4 {
+    font-size: 1rem;
+  }
 }
 </style>
 

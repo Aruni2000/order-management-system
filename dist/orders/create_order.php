@@ -354,9 +354,24 @@ if ($is_main_admin === 1 && $role_id === 1) {
     }
 }
 .alert-container {
+    position: absolute;
+    top: 25px;
+    right: 20px;
+    z-index: 1000;
+    max-width: 400px;
     display: flex;
     flex-direction: column;
     gap: 10px;
+}
+
+@media (max-width: 768px) {
+    .alert-container {
+        position: static;
+        top: auto;
+        right: auto;
+        max-width: 100%;
+        margin-bottom: 20px;
+    }
 }
 
 .alert-container .alert {
@@ -479,31 +494,9 @@ if ($is_main_admin === 1 && $role_id === 1) {
                     </div>
                 </div>
             </div>
-          <!-- Tenant Selector Card -->
-<?php if ($is_main_admin === 1 && $role_id === 1): ?>
-<div class="tenant-selector-card">
-    <div class="tenant-selector-content">
-        <label class="tenant-selector-label">
-           <i class="feather icon-briefcase"></i>
-            Tenant:
-        </label>
-        <div class="tenant-selector-dropdown">
-            <select id="tenant_selector" onchange="window.location.href='create_order.php?tenant_id=' + this.value">
-                <?php foreach ($tenants as $tenant): ?>
-                    <option value="<?php echo $tenant['tenant_id']; ?>" 
-                            <?php echo ($tenant['tenant_id'] == $selected_tenant_id) ? 'selected' : ''; ?>>
-                        <?php echo htmlspecialchars($tenant['company_name']); ?>
-                    </option>
-                <?php endforeach; ?>
-            </select>
-        </div>
-    </div>
-</div>
-<?php endif; ?>
-<!-- REMOVED THE ELSE BLOCK COMPLETELY -->
 
       <!-- Alert Messages and Courier Status -->
-<div class="alert-container" style="position: absolute; top: 25px; right: 20px; z-index: 1000; max-width: 400px;">
+<div class="alert-container">
     <?php
     // Display session messages
     if (isset($_SESSION['order_success'])) {
@@ -592,6 +585,30 @@ if ($is_main_admin === 1 && $role_id === 1) {
     </div>
     <?php endif; ?>
 </div>
+
+          <!-- Tenant Selector Card -->
+<?php if ($is_main_admin === 1 && $role_id === 1): ?>
+<div class="tenant-selector-card">
+    <div class="tenant-selector-content">
+        <label class="tenant-selector-label">
+           <i class="feather icon-briefcase"></i>
+            Tenant:
+        </label>
+        <div class="tenant-selector-dropdown">
+            <select id="tenant_selector" onchange="window.location.href='create_order.php?tenant_id=' + this.value">
+                <?php foreach ($tenants as $tenant): ?>
+                    <option value="<?php echo $tenant['tenant_id']; ?>" 
+                            <?php echo ($tenant['tenant_id'] == $selected_tenant_id) ? 'selected' : ''; ?>>
+                        <?php echo htmlspecialchars($tenant['company_name']); ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
+<!-- REMOVED THE ELSE BLOCK COMPLETELY -->
+
 <!-- [ breadcrumb ] end -->
 
             <!-- [ Main Content ] start -->
@@ -1725,7 +1742,11 @@ window.CustomerModal = {
         clearSelectionBtn.className = 'btn btn-outline-secondary ml-2';
         clearSelectionBtn.innerHTML = '<i class="feather icon-x"></i> Clear Selection';
         clearSelectionBtn.style.marginLeft = '10px';
-        clearSelectionBtn.addEventListener('click', CustomerManager.clearFields);
+        clearSelectionBtn.style.border = '1px solid #6c757d';
+        clearSelectionBtn.addEventListener('click', function() {
+            CustomerManager.clearFields();
+            this.blur();
+        });
         selectBtn.parentNode.appendChild(clearSelectionBtn);
     },
 

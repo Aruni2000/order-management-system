@@ -59,7 +59,7 @@ if ($is_main_admin === 1 && $role_id === 1) {
 }
 
 // Base SQL for counting total records
-$countSql = "SELECT COUNT(*) as total FROM couriers c WHERE 1=1 $accessFilter";
+$countSql = "SELECT COUNT(*) as total FROM couriers c WHERE 1=1 $accessFilter AND c.status = 'active'";
 
 // Main query - Updated to include tenant information
 $sql = "SELECT c.co_id, c.courier_id, c.courier_name, c.phone_number, c.email, 
@@ -70,12 +70,12 @@ $sql = "SELECT c.co_id, c.courier_id, c.courier_name, c.phone_number, c.email,
                      END,
                      ', ', c.city) as full_address,
                c.address_line1, c.address_line2, c.city, c.is_default, c.has_api_new, 
-               c.has_api_existing, c.date_joined, c.notes, c.created_at, c.updated_at, 
+               c.has_api_existing, c.created_at, c.updated_at, 
                c.return_fee_value, c.tenant_id,
                t.company_name as tenant_name
         FROM couriers c
         LEFT JOIN tenants t ON c.tenant_id = t.tenant_id
-        WHERE 1=1 $accessFilter";
+        WHERE 1=1 $accessFilter AND c.status = 'active'";
 
 // Build search conditions
 $searchConditions = [];
@@ -133,7 +133,7 @@ if ($is_main_admin === 1 && $role_id === 1) {
 // Fetch all courier names for the dropdown filter
 $courierNamesQuery = "SELECT DISTINCT c.courier_name 
                       FROM couriers c 
-                      WHERE 1=1 $accessFilter 
+                      WHERE 1=1 $accessFilter AND c.status = 'active'
                       ORDER BY c.courier_name ASC";
 $courierNamesResult = $conn->query($courierNamesQuery);
 $courierNames = [];
@@ -452,7 +452,7 @@ function getStatusInfo($is_default) {
                                 <input type="hidden" name="csrf_token" value="demo_token">
 
                                 <!-- Flex container for API credentials -->
-                                <div style="display: flex; gap: 20px;">
+                                <div class="api-form-row" style="display: flex; gap: 20px;">
 
                                     <!-- Client ID -->
                                     <div class="form-group" style="flex: 1;">
@@ -499,7 +499,7 @@ function getStatusInfo($is_default) {
 
                                 <!-- Origin City and State (visible only for courier_id = 14) -->
                                 <div id="originFields" style="display: none; margin-top: 20px;">
-                                    <div style="display: flex; gap: 20px;">
+                                    <div class="api-form-row" style="display: flex; gap: 20px;">
                                         
                                         <!-- Origin City -->
                                         <div class="form-group" style="flex: 1;">

@@ -163,8 +163,8 @@ if (!($is_main_admin === 1 && $role_id === 1) && !empty($tenants)) {
             <div class="lead-upload-container">
                 <form enctype="multipart/form-data" id="uploadForm" name="uploadForm" method="POST" action="complete_mark_upload_submit.php">
                     <!-- Download CSV Temp late Section -->
-                    <div class="file-upload-section">
-                        <a href="/OMS/dist/templates/delivery_csv.php" class="choose-file-btn">
+                    <div class="file-upload-section template-download-section">
+                        <a href="/OMS/dist/templates/delivery_csv.php" class="choose-file-btn template-download-btn">
                             Download CSV Template
                         </a>
                         <div class="form-container">

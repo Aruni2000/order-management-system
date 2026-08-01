@@ -1647,7 +1647,11 @@ const FormValidator = {
             clearSelectionBtn.className = 'btn btn-outline-secondary ml-2';
             clearSelectionBtn.innerHTML = '<i class="feather icon-x"></i> Clear Selection';
             clearSelectionBtn.style.marginLeft = '10px';
-            clearSelectionBtn.addEventListener('click', CustomerManager.clearFields);
+            clearSelectionBtn.style.border = '1px solid #6c757d';
+            clearSelectionBtn.addEventListener('click', function() {
+                CustomerManager.clearFields();
+                this.blur();
+            });
             selectBtn.parentNode.appendChild(clearSelectionBtn);
         },
 

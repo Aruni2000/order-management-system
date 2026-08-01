@@ -146,7 +146,8 @@
 .table-wrapper {
   background: white;
   border-radius: 16px;
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
   border: 1px solid #e2e8f0;
   margin-bottom: 24px;
@@ -508,6 +509,13 @@
   
   .search-btn {
     justify-content: center;
+    flex: 0 0 auto;
+    align-self: stretch;
+  }
+}
+@media (max-width: 575.98px) {
+  .orders-table {
+    min-width: 620px;
   }
 }
 
@@ -521,6 +529,13 @@
   .action-btn {
     width: 36px;
     height: 36px;
+  }
+
+  /* Allow the pending-orders action buttons (up to 9 per row) to wrap
+     onto a second line instead of forcing a nested horizontal scroll. */
+  .action-buttons-group {
+    flex-wrap: wrap;
+    justify-content: center;
   }
   
   .status-badge {
@@ -849,6 +864,16 @@
 
 .modal-btn-secondary:hover {
   background: #e5e7eb;
+}
+
+.modal-btn-info {
+  background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);
+  color: white;
+}
+
+.modal-btn-info:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 25px -5px rgba(14, 165, 233, 0.4);
 }
 
 .modal-loading {

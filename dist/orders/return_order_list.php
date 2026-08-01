@@ -348,6 +348,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         font-size: 0.9em;
         color: #666;
     }
+
+    @media (max-width: 575.98px) {
+        .scanner-content {
+            padding: 20px;
+        }
+
+        .scan-btn {
+            width: 100%;
+        }
+    }
 </style>
 
 <body>

@@ -1,7 +1,7 @@
   <!-- [Head] start -->
     <!-- [Meta] -->
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=0, minimal-ui" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta
       name="description"
@@ -61,6 +61,8 @@
     <!-- [Template CSS Files] -->
     <link rel="stylesheet" href="../assets/css/style.css" id="main-style-link" />
     <link rel="stylesheet" href="../assets/css/message.css" id="main-style-link" />
+    <!-- [Global Responsive Styles] -->
+    <link rel="stylesheet" href="../assets/css/responsive.css" />
 
   </head>
   <!-- [Head] end -->

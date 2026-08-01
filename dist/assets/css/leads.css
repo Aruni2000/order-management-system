@@ -340,6 +340,12 @@ details ul {
 }
 
 /* Responsive Design */
+@media (max-width: 1023.98px) {
+    .form-container {
+        flex-wrap: wrap;
+    }
+}
+
 @media (max-width: 768px) {
     .form-container {
         flex-direction: column;
@@ -351,4 +357,3 @@ details ul {
         min-width: auto;
     }
 }
-

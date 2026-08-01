@@ -211,6 +211,7 @@ $fe_conn->close();
 <head>
     <title>Login | Order Management Admin Portal</title>
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
+    <link rel="stylesheet" href="../assets/css/login.css" id="main-style-link" />
     <script>
         // Force reload if page is loaded from back-forward cache
         window.addEventListener('pageshow', function(event) {
@@ -220,7 +221,6 @@ $fe_conn->close();
         });
     </script>
 </head>
-  <link rel="stylesheet" href="../assets/css/login.css" id="main-style-link" />
 
 <body>
     <!-- Loader -->

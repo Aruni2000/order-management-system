@@ -93,8 +93,7 @@ try {
                         has_api_new,
                         has_api_existing,
                         api_key,
-                        client_id,
-                        notes
+                        client_id
                       FROM couriers 
                       WHERE status = 'active' 
                       AND tenant_id = ? 
@@ -119,8 +118,7 @@ try {
                 'has_api_new' => (int)$courier['has_api_new'],
                 'has_api_existing' => (int)$courier['has_api_existing'],
                 'has_api_key' => !empty($courier['api_key']),
-                'has_client_id' => !empty($courier['client_id']),
-                'notes' => htmlspecialchars($courier['notes'] ?? '')
+                'has_client_id' => !empty($courier['client_id'])
             ];
         }
     }

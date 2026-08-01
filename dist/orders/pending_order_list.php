@@ -291,6 +291,11 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
     .actions {
         white-space: nowrap;
     }
+    @media (max-width: 480px) {
+        .actions {
+            white-space: normal;
+        }
+    }
     .status-badge.pay-status-paid,
     .status-badge.pay-status-unpaid {
     font-size: 0.65rem;

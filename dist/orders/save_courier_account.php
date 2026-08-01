@@ -170,8 +170,6 @@ $email = !empty($courier_data['email']) ? $courier_data['email'] : null;
 $address_line1 = $courier_data['address_line1'];
 $address_line2 = !empty($courier_data['address_line2']) ? $courier_data['address_line2'] : null;
 $city = $courier_data['city'];
-$notes = !empty($courier_data['notes']) ? $courier_data['notes'] : null;
-$date_joined = date('Y-m-d');
 $status = 'active';
 $is_default = 0; // Default to 0 (Not Default)
 
@@ -202,17 +200,15 @@ $insert_sql = "INSERT INTO couriers (
                 origin_city_name,
                 origin_state_name,
                 city, 
-                notes,
                 status, 
                 is_default, 
-                date_joined,
                 api_key,
                 client_id,
                 has_api_new,
                 has_api_existing,
                 return_fee_value,
                 created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0.00, NOW())";
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0.00, NOW())";
 
 $insert_stmt = $conn->prepare($insert_sql);
 
@@ -221,7 +217,7 @@ if (!$insert_stmt) {
 }
 
 $insert_stmt->bind_param(
-    "iissssssssssissiii",
+    "iisssssssssissii",
     $courier_id,
     $tenant_id,
     $courier_name,
@@ -232,10 +228,8 @@ $insert_stmt->bind_param(
     $origin_city_name,
     $origin_state_name,
     $city,
-    $notes,
     $status,
     $is_default,
-    $date_joined,
     $api_key,
     $client_id,
     $has_api_new,

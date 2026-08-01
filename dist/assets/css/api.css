@@ -100,26 +100,13 @@
             }
         }
 
-
-
-        /* Couriers.php code dropdwon style */
-
-          /* Fix table overflow issues */
-        .table-wrapper {
-            overflow: visible !important;
+        @media (min-width: 1024px) {
+            .table-wrapper {
+                overflow: visible !important;
+            }
         }
         
-        .orders-table {
-            position: relative;
-            overflow: visible !important;
-        }
-        
-        .orders-table tbody tr {
-            position: relative;
-            overflow: visible !important;
-        }
-        
-        .orders-table tbody tr td {
+        .orders-table td.actions {
             position: relative;
             overflow: visible !important;
         }

@@ -52,7 +52,7 @@ $tenantResult = mysqli_query($conn, $tenantQuery);
 // Fetch courier companies from database
 // Fetch courier companies from database
 // Fetch courier companies from database
-$courierQuery = "SELECT courier_id, courier_name, phone_number, email, address_line1, address_line2, city, notes 
+$courierQuery = "SELECT courier_id, courier_name, phone_number, email, address_line1, address_line2, city 
                  FROM courier_company 
                  WHERE status = 'active' 
                  ORDER BY courier_name";
@@ -271,12 +271,7 @@ if (!$courierResult) {
                                         <?php
                                         if ($courierResult && mysqli_num_rows($courierResult) > 0) {
                                             while ($courier = mysqli_fetch_assoc($courierResult)) {
-                                                echo "<option value='{$courier['courier_id']}' 
-                                                      data-phone='{$courier['phone_number']}' 
-                                                      data-email='{$courier['email']}'
-                                                      data-address1='{$courier['address_line1']}'
-                                                      data-address2='{$courier['address_line2']}'
-                                                      data-city='{$courier['city']}'>" 
+                                                echo "<option value='{$courier['courier_id']}'>" 
                                                       . htmlspecialchars($courier['courier_name']) . "</option>";
                                             }
                                         }

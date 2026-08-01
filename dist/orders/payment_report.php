@@ -625,7 +625,7 @@ $courierDisabled = ($is_main_admin == 1) && empty($tenant_id_filter);
                         </tr>
                         <?php endwhile; ?>
                         <tr class="total-row">
-                            <td colspan="3" style="text-align:right;">Totals</td>
+                            <td colspan="<?php echo ($is_main_admin == 1) ? '4' : '3'; ?>" style="text-align:right;">Totals</td>
                             <td><?= number_format($sumTotalAmount,2) ?></td>
                             <td><?= number_format($sumSubtotal,2) ?></td>
                             <td><?= number_format($sumDelivery,2) ?></td>

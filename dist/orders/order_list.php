@@ -352,18 +352,19 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
         flex-shrink: 0;
         /* Ensures they don't shrink on large screens */
     }
-
-    /* === Responsive Fix: Scrollable Horizontal Row with Decreased Size === */
-    @media (max-width: 600px) {
+    @media (max-width: 767.98px) {
         .sync-buttons-container {
-            /* right: 5x;  */
-            top: 100px;
+            position: static;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 8px;
+            margin-bottom: 16px;
         }
 
         .sync-buttons-container .bulk-dispatch-btn {
-            font-size: 9px;
-            padding: 4px 6px;
-            gap: 1px;
+            font-size: 12px;
+            padding: 6px 10px;
+            gap: 4px;
         }
     }
     </style>
@@ -799,19 +800,6 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                         onclick="openOrderModal('<?php echo isset($row['order_id']) ? htmlspecialchars($row['order_id']) : ''; ?>', '<?php echo isset($row['interface']) ? htmlspecialchars($row['interface']) : ''; ?>')">
                                         <i class="fas fa-eye"></i>
                                     </button>
-
-                                    <!-- Mark as Paid / Unmark as Paid -->
-                                    <?php if ($payStatus == 'unpaid'): ?>
-                                    <button class="action-btn paid-btn" title="Mark as Paid"
-                                        onclick="markAsPaid('<?php echo isset($row['order_id']) ? htmlspecialchars($row['order_id']) : ''; ?>')">
-                                        <i class="fas fa-dollar-sign"></i>
-                                    </button>
-                                    <?php elseif ($payStatus == 'paid'): ?>
-                                    <button class="action-btn cancel-btn" title="Unmark as Paid"
-                                        onclick="unmarkPaid('<?php echo isset($row['order_id']) ? htmlspecialchars($row['order_id']) : ''; ?>')">
-                                        <i class="fas fa-undo"></i>
-                                    </button>
-                                    <?php endif; ?>
 
                                     <!-- NEW PRINT BUTTON -->
                                     <button class="action-btn print-btn" title="Print Order"

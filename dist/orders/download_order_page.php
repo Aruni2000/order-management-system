@@ -407,6 +407,17 @@ $conditionLabel = $conditionLabels[$conditionVal] ?? 'New';
             .od-items-table { font-size: 0.75rem; }
             .od-items-table thead th, .od-items-table tbody td { padding: 6px; }
         }
+
+        @media (max-width: 575.98px) {
+            .od-wrapper { padding: 0 10px; }
+            .od-section { padding: 12px 14px; }
+            .od-top-bar { padding: 10px 12px; gap: 6px; }
+            .od-customer-detail { word-break: break-word; }
+            .od-items-table { min-width: 560px; }
+            .od-items-table thead th, .od-items-table tbody td { padding: 6px 8px; white-space: nowrap; }
+            .od-totals { max-width: none; }
+            .od-notes { padding: 8px 10px; }
+        }
     </style>
 </head>
 <body>
