@@ -482,6 +482,230 @@
 </div>
 
 <!-- ============================================= -->
+<!-- 8. ORDER CREATED SUCCESS MODAL                -->
+<!-- ============================================= -->
+<div id="orderSuccessModal" class="api-modal-overlay" style="display: none;">
+  <div class="api-modal" style="max-width: 480px;">
+    <div class="api-modal-header" style="background: linear-gradient(135deg, #28a745 0%, #1e7e34 100%);">
+      <h4>
+        <i class="fas fa-check-circle text-white"></i>
+        <span class="text-white">Order Created Successfully</span>
+      </h4>
+      <button type="button" class="close-btn" onclick="dismissOrderSuccessModal()">
+        <i class="fas fa-times"></i>
+      </button>
+    </div>
+    <div class="action-modal-body" style="display: flex; flex-direction: column; align-items: center; text-align: center; padding: 35px 25px;">
+      <div style="font-size: 3rem; color: #28a745; margin-bottom: 12px;">
+        <i class="fas fa-check-circle"></i>
+      </div>
+      <p style="font-size: 1.05rem; color: #495057; margin: 0 0 6px;">Your order has been created successfully.</p>
+      <p style="font-size: 0.95rem; color: #6c757d; margin: 0 0 22px;">Order ID: <strong id="successOrderId" style="color: #1565C0;">-</strong></p>
+    </div>
+    <div class="api-modal-footer" style="flex-wrap: wrap;">
+      <button type="button" class="btn btn-primary" onclick="viewCreatedOrder()">
+        <i class="fas fa-print"></i> View / Print Order
+      </button>
+      <button type="button" class="btn btn-secondary" onclick="createAnotherOrder()">
+        <i class="fas fa-plus"></i> Create Another
+      </button>
+      <button type="button" class="btn btn-secondary" onclick="goToAllOrders()" style="background: #6c757d;">
+        <i class="fas fa-list"></i> Done
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================= -->
+<!-- 9. COURIER API CONFIGURATION MODAL            -->
+<!-- ============================================= -->
+<div id="apiModal" class="api-modal-overlay" style="display: none;">
+  <div class="api-modal">
+    <div class="api-modal-header">
+      <h4>
+        <i class="fas fa-cog text-white"></i>
+        <span id="modalTitle" class="text-white">Configure API Settings</span>
+      </h4>
+      <button type="button" class="close-btn" onclick="closeApiModal()">
+        <i class="fas fa-times"></i>
+      </button>
+    </div>
+    <form id="apiSettingsForm" method="POST">
+      <div class="action-modal-body">
+        <input type="hidden" id="courier_id" name="co_id" value="">
+        <input type="hidden" name="csrf_token" value="demo_token">
+
+        <div class="api-form-row" style="display: flex; gap: 20px;">
+          <div class="form-group" style="flex: 1;">
+            <label for="client_id" class="form-label">
+              <i class="fas fa-id-badge"></i>
+              Client ID
+            </label>
+            <input type="text" class="form-control" id="client_id" name="client_id" placeholder="Enter your Client ID">
+            <div class="error-feedback" id="client_id-error"></div>
+            <div class="form-hint">
+              <i class="fas fa-info-circle"></i>
+              Unique identifier provided by the courier service
+            </div>
+          </div>
+
+          <div class="form-group" style="flex: 1;">
+            <label for="api_key" class="form-label">
+              <i class="fas fa-key"></i>
+              API Key<span class="required">*</span>
+            </label>
+            <div class="password-input-group">
+              <input type="password" class="form-control" id="api_key" name="api_key" placeholder="Enter your API Key" required>
+              <button type="button" class="password-toggle" id="toggleApiKey">
+                <i class="fas fa-eye"></i>
+              </button>
+            </div>
+            <div class="error-feedback" id="api_key-error"></div>
+            <div class="form-hint">
+              <i class="fas fa-shield-alt"></i>
+              Secret key for API authentication - keep this secure
+            </div>
+          </div>
+        </div>
+
+        <div id="originFields" style="display: none; margin-top: 20px;">
+          <div class="api-form-row" style="display: flex; gap: 20px;">
+            <div class="form-group" style="flex: 1;">
+              <label for="origin_city_name" class="form-label">
+                <i class="fas fa-city"></i>
+                Origin City
+              </label>
+              <input type="text" class="form-control" id="origin_city_name" name="origin_city_name" placeholder="Enter origin city">
+              <div class="error-feedback" id="origin_city_error"></div>
+              <div class="form-hint">
+                <i class="fas fa-info-circle"></i>
+                Enter the courier's main city of origin or pickup location
+              </div>
+            </div>
+
+            <div class="form-group" style="flex: 1;">
+              <label for="origin_state_name" class="form-label">
+                <i class="fas fa-map-marked-alt"></i>
+                Origin State
+              </label>
+              <input type="text" class="form-control" id="origin_state_name" name="origin_state_name" placeholder="Enter origin state">
+              <div class="error-feedback" id="origin_state_error"></div>
+              <div class="form-hint">
+                <i class="fas fa-info-circle"></i>
+                Enter the courier's origin state or region name
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="api-modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeApiModal()">
+          <i class="fas fa-times"></i>
+          Cancel
+        </button>
+        <button type="submit" class="btn btn-primary" id="saveApiBtn">
+          <i class="fas fa-save"></i>
+          Save API Settings
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ============================================= -->
+<!-- 10. DOWNLOAD WAYBILLS MODAL                   -->
+<!-- ============================================= -->
+<div id="waybillsModal" class="api-modal-overlay" style="display: none;">
+  <div class="api-modal">
+    <div class="api-modal-header">
+      <h4>
+        <i class="fas fa-download text-white"></i>
+        <span id="waybillsModalTitle" class="text-white">Download Waybills - Koombiyo</span>
+      </h4>
+      <button type="button" class="close-btn" onclick="closeWaybillsModal()">
+        <i class="fas fa-times"></i>
+      </button>
+    </div>
+    <form id="waybillsDownloadForm" method="POST" action="/OMS/dist/api/koombiyo_get_waybills.php">
+      <div class="action-modal-body">
+        <input type="hidden" id="waybills_courier_id" name="courier_id" value="">
+        <input type="hidden" name="csrf_token" value="demo_token">
+
+        <div class="form-group">
+          <label for="waybills_count" class="form-label">
+            <i class="fas fa-sort-numeric-up"></i>
+            Number of Waybills
+          </label>
+          <input type="number" class="form-control" id="waybills_count" name="waybills_count" placeholder="Enter number of waybills" min="1" max="100" step="1" required>
+          <div class="error-feedback" id="waybills_count-error"></div>
+          <div class="form-hint">
+            <i class="fas fa-info-circle"></i>
+            Maximum waybills count: 100 (Enter value between 1-100)
+          </div>
+        </div>
+      </div>
+
+      <div class="api-modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeWaybillsModal()">
+          <i class="fas fa-times"></i>
+          Cancel
+        </button>
+        <button type="submit" class="btn btn-primary" id="downloadWaybillsBtn">
+          <i class="fas fa-download"></i>
+          Download Waybills
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ============================================= -->
+<!-- 11. RETURN FEE MODAL                          -->
+<!-- ============================================= -->
+<div id="returnFeeModal" class="api-modal-overlay" style="display: none;">
+  <div class="api-modal">
+    <div class="api-modal-header">
+      <h4>
+        <i class="fas fa-dollar-sign text-white"></i>
+        <span id="returnFeeModalTitle" class="text-white">Set Return Fee</span>
+      </h4>
+      <button type="button" class="close-btn" onclick="closeReturnFeeModal()">
+        <i class="fas fa-times"></i>
+      </button>
+    </div>
+    <form id="returnFeeForm" method="POST" action="update_return_fee.php">
+      <div class="action-modal-body">
+        <input type="hidden" id="returnFeeCourierId" name="co_id" value="">
+        <input type="hidden" name="csrf_token" value="demo_token">
+
+        <div class="form-group">
+          <label for="returnFeeValue" class="form-label">
+            <i class="fas fa-percentage"></i>
+            Return Fee Value
+          </label>
+          <input type="number" class="form-control" id="returnFeeValue" name="return_fee_value" placeholder="Enter return fee (0 = no fee)" step="0.01" min="0" required>
+          <div class="error-feedback" id="return_fee_value-error"></div>
+          <div class="form-hint">
+            <i class="fas fa-info-circle"></i>
+            Enter a percentage. Enter 0 for no fee.
+          </div>
+        </div>
+      </div>
+
+      <div class="api-modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeReturnFeeModal()">
+          <i class="fas fa-times"></i> Cancel
+        </button>
+        <button type="submit" class="btn btn-primary" id="saveReturnFeeBtn">
+          <i class="fas fa-save"></i> Save Fee
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ============================================= -->
 <!-- GLOBAL MODAL CLOSE HELPER                     -->
 <!-- ============================================= -->
 <script>

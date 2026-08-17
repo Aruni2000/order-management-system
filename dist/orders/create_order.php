@@ -938,6 +938,67 @@ if ($is_main_admin === 1 && $role_id === 1) {
         window.location.href = '?tenant_id=' + tenantId;
     }
 
+    // ========== ORDER SUCCESS MODAL ==========
+    let lastCreatedOrderId = null;
+    let lastCreatedTenantId = null;
+    let orderSuccessShown = false;
+
+    function showOrderSuccessModal(orderId) {
+        lastCreatedOrderId = orderId;
+        document.getElementById('successOrderId').textContent = orderId;
+        const modal = document.getElementById('orderSuccessModal');
+        if (modal) {
+            modal.style.display = 'flex';
+            orderSuccessShown = true;
+            document.body.style.overflow = 'hidden';
+        }
+    }
+
+    function closeOrderSuccessModal() {
+        const modal = document.getElementById('orderSuccessModal');
+        if (modal) modal.style.display = 'none';
+        orderSuccessShown = false;
+        document.body.style.overflow = '';
+    }
+
+    function dismissOrderSuccessModal() {
+        closeOrderSuccessModal();
+        const tenantInput = document.querySelector('input[name="tenant_id"]');
+        const tenant = lastCreatedTenantId || (tenantInput ? tenantInput.value : '') || '';
+        window.location.href = 'create_order.php?tenant_id=' + encodeURIComponent(tenant);
+    }
+
+    // Dismiss (close + return to a fresh create-order form) on backdrop click / Escape
+    document.addEventListener('click', function(event) {
+        const modal = document.getElementById('orderSuccessModal');
+        if (orderSuccessShown && modal && event.target === modal) {
+            dismissOrderSuccessModal();
+        }
+    });
+
+    document.addEventListener('keydown', function(event) {
+        if (event.key === 'Escape' && orderSuccessShown) {
+            dismissOrderSuccessModal();
+        }
+    });
+
+    function viewCreatedOrder() {
+        if (lastCreatedOrderId) {
+            window.open('download_order.php?id=' + lastCreatedOrderId, '_blank');
+        }
+    }
+
+    function createAnotherOrder() {
+        closeOrderSuccessModal();
+        const tenantInput = document.querySelector('input[name="tenant_id"]');
+        const tenant = lastCreatedTenantId || (tenantInput ? tenantInput.value : '') || '';
+        window.location.href = 'create_order.php?tenant_id=' + encodeURIComponent(tenant);
+    }
+
+    function goToAllOrders() {
+        window.location.href = 'all_orders.php';
+    }
+
 document.addEventListener('DOMContentLoaded', function() {
     // ========== GLOBAL VARIABLES ==========
     let deliveryFee = <?php echo $deliveryFee; ?>;
@@ -2047,9 +2108,6 @@ window.CustomerModal = {
                 const originalText = submitButton.innerHTML;
                 submitButton.innerHTML = '<i class="feather icon-loader"></i> Creating Order...';
 
-                // Open new blank tab immediately (user gesture context to bypass popup blocker)
-                const newTab = window.open('about:blank', '_blank');
-
                 const form = document.getElementById('orderForm');
                 const formData = new FormData(form);
                 formData.append('ajax', '1');
@@ -2061,19 +2119,15 @@ window.CustomerModal = {
                 .then(response => response.json())
                 .then(data => {
                     if (data.status === 'success') {
-                        // Redirect the new tab to download_order.php
-                        newTab.location.href = 'download_order.php?id=' + data.order_id;
-                        // Reload/redirect the current page to show the success message
-                        window.location.href = 'create_order.php?tenant_id=' + formData.get('tenant_id');
+                        lastCreatedTenantId = formData.get('tenant_id');
+                        showOrderSuccessModal(data.order_id);
                     } else {
-                        newTab.close();
                         toastManager.error(data.message || 'Error creating order');
                         submitButton.disabled = false;
                         submitButton.innerHTML = originalText;
                     }
                 })
                 .catch(error => {
-                    newTab.close();
                     console.error('Error:', error);
                     toastManager.error('An unexpected error occurred.');
                     submitButton.disabled = false;

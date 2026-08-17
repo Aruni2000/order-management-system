@@ -1827,7 +1827,6 @@ $updateOrderStmt->bind_param("iisi", $co_id, $default_courier_id, $tracking_numb
         if ($tracking_assigned) {
             $success_message = "Order #" . $order_id . " created successfully with tracking number assigned!";
             if (isset($_POST['ajax'])) {
-                $_SESSION['order_success'] = $success_message;
                 header('Content-Type: application/json');
                 echo json_encode([
                     'status' => 'success',
@@ -1841,7 +1840,15 @@ $updateOrderStmt->bind_param("iisi", $co_id, $default_courier_id, $tracking_numb
             $success_message = "Order #" . $order_id . " created successfully!";
             
             if (!empty($courier_warning)) {
-                // Set session messages
+                if (isset($_POST['ajax'])) {
+                    header('Content-Type: application/json');
+                    echo json_encode([
+                        'status' => 'success',
+                        'order_id' => $order_id,
+                        'message' => $success_message
+                    ]);
+                    exit();
+                }
                 $_SESSION['order_success'] = $success_message;
                 $_SESSION['order_warning'] = $courier_warning;
                 
@@ -1854,16 +1861,6 @@ $updateOrderStmt->bind_param("iisi", $co_id, $default_courier_id, $tracking_numb
                     $_SESSION['order_info'] = "Courier API client configuration needs to be updated. Contact system administrator.";
                 }
                 
-                if (isset($_POST['ajax'])) {
-                    header('Content-Type: application/json');
-                    echo json_encode([
-                        'status' => 'success',
-                        'order_id' => $order_id,
-                        'message' => $success_message
-                    ]);
-                    exit();
-                }
-                
                 // Clear any output buffers before redirect
                 while (ob_get_level()) {
                     ob_end_clean();
@@ -1873,7 +1870,6 @@ $updateOrderStmt->bind_param("iisi", $co_id, $default_courier_id, $tracking_numb
                 exit();
             } else {
                 if (isset($_POST['ajax'])) {
-                    $_SESSION['order_success'] = $success_message;
                     header('Content-Type: application/json');
                     echo json_encode([
                         'status' => 'success',
