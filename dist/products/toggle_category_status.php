@@ -109,9 +109,9 @@ try {
         // Optional: User logging (if user_logs table exists and we want to track this)
         // For now, mirroring product toggle logic
         $action_type = $new_status === 'active' ? 'category_activated' : 'category_deactivated';
-        $details = "Category ID " . $category_id . " " . ($new_status === 'active' ? 'activated' : 'deactivated');
+        $details = ($new_status === 'active' ? 'Activated' : 'Deactivated') . " Category '{$category['name']}'";
         
-        $logSql = "INSERT INTO user_logs (user_id, action_type, inquiry_id, details) VALUES (?, ?, ?, ?)";
+        $logSql = "INSERT INTO user_logs (user_id, action_type, inquiry_id, details, created_at) VALUES (?, ?, ?, ?, NOW())";
         $logStmt = $conn->prepare($logSql);
         
         if ($logStmt) {

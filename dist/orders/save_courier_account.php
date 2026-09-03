@@ -242,6 +242,16 @@ $insert_stmt->bind_param(
 
         $new_co_id = $conn->insert_id;
 
+        // Log user action
+        $logSql = "INSERT INTO user_logs (user_id, action_type, inquiry_id, details, created_at) VALUES (?, 'courier_account_create', ?, ?, NOW())";
+        $logStmt = $conn->prepare($logSql);
+        if ($logStmt) {
+            $logDetails = "Created Courier Account - Courier: {$courier_name}, Tenant ID: {$tenant_id}, CO ID: {$new_co_id}";
+            $logStmt->bind_param("iis", $user_id, $new_co_id, $logDetails);
+            $logStmt->execute();
+            $logStmt->close();
+        }
+
         // Commit transaction
         $conn->commit();
 

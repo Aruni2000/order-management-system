@@ -102,9 +102,9 @@ try {
         
         // Insert user log
         $action_type = $new_status === 'Active' ? 'customer_activated' : 'customer_deactivated';
-        $details = "Customer ID " . $customer_id . " " . ($new_status === 'Active' ? 'activated' : 'deactivated');
+        $details = ($new_status === 'Active' ? 'Activated' : 'Deactivated') . " Customer '" . $customer['name'] . "'";
         
-        $log_sql = "INSERT INTO user_logs (user_id, action_type, inquiry_id, details) VALUES (?, ?, ?, ?)";
+        $log_sql = "INSERT INTO user_logs (user_id, action_type, inquiry_id, details, created_at) VALUES (?, ?, ?, ?, NOW())";
         $log_stmt = $conn->prepare($log_sql);
         
         if (!$log_stmt) {

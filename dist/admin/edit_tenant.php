@@ -107,75 +107,57 @@ if ($stmt) {
 
 <head>
     <!-- TITLE -->
-    <title>Order Management Admin Portal - Edit Tenant</title>
+    <title>Edit Tenant | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
 
     <?php
     include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php');
     ?>
     
     <!-- [Template CSS Files] -->
-    <link rel="stylesheet" href="../assets/css/style.css" id="main-style-link" />
-    <link rel="stylesheet" href="../assets/css/customers.css" id="main-style-link" />
     
-    <!-- Custom CSS for AJAX notifications -->
+    <!-- Custom CSS for form UI (matching branding.php style) -->
    <style>
-.ajax-notification {
-    position: fixed;
-    top: 20px;
-    right: 20px;
-    z-index: 9999;
-    max-width: 400px;
+/* Form UI Styles - Matching Branding.php */
+.form-control {
+    border: 1px solid #ccc;
+    padding: 8px 12px;
+    border-radius: 4px;
+    width: 100%;
+    box-sizing: border-box;
+}
+.form-group {
+    margin-bottom: 20px;
+}
+.form-row {
+    display: flex;
+    gap: 20px;
     margin-bottom: 10px;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.15);
-    border-radius: 8px;
-    animation: slideInRight 0.3s ease-out;
-    border: 1px solid transparent;
-    padding: 1rem 1.5rem;
-    border-left: 4px solid;
 }
-
-/* Enhanced Bootstrap alert colors with gradients and left border */
+.form-column {
+    flex: 1;
+}
+.file-preview {
+    max-width: 100px;
+    height: auto;
+    border: 1px solid #eee;
+    margin-top: 10px;
+}
+.alert {
+    padding: 15px;
+    margin-bottom: 20px;
+    border-radius: 4px;
+}
 .alert-success {
-    color: #0f5132;
-    background: linear-gradient(135deg, #f8f9fa 0%, #d1e7dd 100%);
-    border-left-color: #28a745;
+    color: #155724;
+    background-color: #d4edda;
+    border-color: #c3e6cb;
 }
-
 .alert-danger {
-    color: #842029;
-    background: linear-gradient(135deg, #f8f9fa 0%, #f8d7da 100%);
-    border-left-color: #dc3545;
+    color: #721c24;
+    background-color: #f8d7da;
+    border-color: #f5c6cb;
 }
 
-.alert-warning {
-    color: #664d03;
-    background: linear-gradient(135deg, #f8f9fa 0%, #fff3cd 100%);
-    border-left-color: #ffc107;
-}
-
-.alert-info {
-    color: #0c5460;
-    background: linear-gradient(135deg, #f8f9fa 0%, #d1ecf1 100%);
-    border-left-color: #17a2b8;
-}
-
-.alert .btn-close {
-    padding: 0.5rem 0.5rem;
-    position: absolute;
-    top: 0;
-    right: 0;
-}
-
-@keyframes slideInRight {
-    from {
-        transform: translateX(100%);
-        opacity: 0;
-    }
-    to {
-        transform: translateX(0);
-        opacity: 1;
-    }
-}
 .loading-overlay {
     display: none;
     position: fixed;
@@ -210,6 +192,57 @@ if ($stmt) {
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
 }
+
+.email-suggestions {
+    font-size: 0.875rem;
+    color: #0d6efd;
+    margin-top: 0.25rem;
+}
+
+.email-suggestions a {
+    color: #0d6efd;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+/* Form check styles for remove logo/favicon checkboxes */
+.form-check {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+.form-check-input {
+    width: auto;
+    height: auto;
+    margin: 0;
+    cursor: pointer;
+}
+.form-check-label {
+    margin: 0;
+    cursor: pointer;
+}
+
+/* Mobile responsive fixes */
+@media screen and (max-width: 767.98px) {
+    .form-row {
+        flex-direction: column;
+        gap: 0;
+    }
+
+    .form-actions {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 10px;
+    }
+
+    .form-actions .btn {
+        width: 100%;
+        justify-content: center;
+        min-height: 44px;
+    }
+}
 </style>
 </head>
 
@@ -234,185 +267,155 @@ if ($stmt) {
     <!-- [ Main Content ] start -->
     <div class="pc-container">
         <div class="pc-content">
-            <!-- [ breadcrumb ] start -->
-            <div class="page-header">
-                <div class="page-block">
-                    <div class="page-header-title">
-                        <h5 class="mb-0 font-medium">Edit Tenant</h5>
-                    </div>
-                    <div class="page-header-breadcrumb">
-                        <ul class="breadcrumb">
-                            <li class="breadcrumb-item">
-                                <a href="<?php echo $current_is_main_admin ? 'tenant_list.php' : '../dashboard/index.php'; ?>">
-                                    <?php echo $current_is_main_admin ? 'Tenants List' : 'Dashboard'; ?>
-                                </a>
-                            </li>
-                            <li class="breadcrumb-item active">Company Settings</li>
-                        </ul>
+            <div class="row">
+                <div class="col-xl-12">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5>Edit Tenant</h5>
+                        </div>
+                        <div class="card-body">
+
+                            <!-- Edit Tenant Form -->
+                            <form method="POST" id="editTenantForm" enctype="multipart/form-data" novalidate>
+                                <!-- CSRF Token -->
+                                <input type="hidden" name="csrf_token" value="<?php echo generateCSRFToken(); ?>">
+                                <!-- Tenant ID -->
+                                <input type="hidden" name="tenant_id" value="<?php echo $tenant_data['tenant_id']; ?>">
+
+                                <!-- Company Name -->
+                                <div class="form-row">
+                                    <div class="form-column">
+                                        <div class="form-group">
+                                            <label for="company_name" class="form-label">Company Name *</label>
+                                            <input type="text" class="form-control" id="company_name" name="company_name" 
+                                                   placeholder="Enter company name" value="<?php echo htmlspecialchars($tenant_data['company_name'] ?? ''); ?>" required>
+                                            <div class="error-feedback" id="company_name-error"></div>
+                                        </div>
+                                    </div>
+                                    <!-- Contact Person -->
+                                    <div class="form-column">
+                                        <div class="form-group">
+                                            <label for="contact_person" class="form-label">Contact Person *</label>
+                                            <input type="text" class="form-control" id="contact_person" name="contact_person"
+                                                   placeholder="Enter contact person name" value="<?php echo htmlspecialchars($tenant_data['contact_person'] ?? ''); ?>" required>
+                                            <div class="error-feedback" id="contact_person-error"></div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Email -->
+                                <div class="form-row">
+                                    <div class="form-column">
+                                        <div class="form-group">
+                                            <label for="email" class="form-label">Email Address</label>
+                                            <input type="email" class="form-control" id="email" name="email"
+                                                   placeholder="Enter email address" value="<?php echo htmlspecialchars($tenant_data['email'] ?? ''); ?>">
+                                            <div class="error-feedback" id="email-error"></div>
+                                        </div>
+                                    </div>
+                                    <!-- Phone -->
+                                    <div class="form-column">
+                                        <div class="form-group">
+                                            <label for="phone" class="form-label">Phone Number *</label>
+                                            <input type="tel" class="form-control" id="phone" name="phone"
+                                                   placeholder="Enter phone number" value="<?php echo htmlspecialchars($tenant_data['phone'] ?? ''); ?>" required>
+                                            <div class="error-feedback" id="phone-error"></div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Address -->
+                                <div class="form-group">
+                                    <label for="address" class="form-label">Company Address *</label>
+                                    <textarea class="form-control" id="address" name="address" rows="3" placeholder="Enter full address" required><?php echo htmlspecialchars($tenant_data['address'] ?? ''); ?></textarea>
+                                    <div class="error-feedback" id="address-error"></div>
+                                </div>
+
+                                <?php if ($current_is_main_admin): ?>
+                                <div class="form-row">
+                                    <!-- Delivery Fee -->
+                                    <div class="form-column">
+                                        <div class="form-group">
+                                            <label for="delivery_fee" class="form-label">Delivery Fee (LKR)</label>
+                                            <input type="number" step="0.01" class="form-control" id="delivery_fee" name="delivery_fee"
+                                                   placeholder="0.00" value="<?php echo htmlspecialchars($tenant_data['delivery_fee'] ?? '0.00'); ?>">
+                                            <div class="error-feedback" id="delivery_fee-error"></div>
+                                        </div>
+                                    </div>
+                                    <!-- Main Admin -->
+                                    <div class="form-column">
+                                        <div class="form-group">
+                                            <label for="is_main_admin" class="form-label">Main Admin *</label>
+                                            <select class="form-select form-control" id="is_main_admin" name="is_main_admin" required>
+                                                <option value="0" <?php echo (($tenant_data['is_main_admin'] ?? 0) == 0) ? 'selected' : ''; ?>>No</option>
+                                                <option value="1" <?php echo (($tenant_data['is_main_admin'] ?? 0) == 1) ? 'selected' : ''; ?>>Yes</option>
+                                            </select>
+                                            <div class="error-feedback" id="is_main_admin-error"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <?php else: ?>
+                                <div class="form-group">
+                                    <label for="delivery_fee" class="form-label">Delivery Fee (LKR)</label>
+                                    <input type="number" step="0.01" class="form-control" id="delivery_fee" name="delivery_fee"
+                                           placeholder="0.00" value="<?php echo htmlspecialchars($tenant_data['delivery_fee'] ?? '0.00'); ?>">
+                                    <div class="error-feedback" id="delivery_fee-error"></div>
+                                </div>
+                                <input type="hidden" name="is_main_admin" value="<?php echo (int)($tenant_data['is_main_admin'] ?? 0); ?>">
+                                <?php endif; ?>
+
+                                <h6 class="mb-3 mt-4">Logos and Icons</h6>
+
+                                <div class="form-row">
+                                    <!-- Logo Upload -->
+                                    <div class="form-column">
+                                        <div class="form-group">
+                                            <label for="logo" class="form-label">Main Logo (JPEG, PNG, GIF)</label>
+                                            <input type="file" class="form-control" id="logo" name="logo" accept=".jpg,.jpeg,.png,.gif">
+                                            <?php if (!empty($tenant_data['logo_url'])): ?>
+                                                <p class="mt-2">Current Logo:</p>
+                                                <img src="<?php echo htmlspecialchars($tenant_data['logo_url']); ?>" alt="Current Logo" class="file-preview">
+                                                <div class="form-check mt-2">
+                                                    <input type="checkbox" class="form-check-input" id="remove_logo" name="remove_logo" value="1">
+                                                    <label class="form-check-label text-danger" for="remove_logo">Remove current logo</label>
+                                                </div>
+                                            <?php endif; ?>
+                                            <div class="error-feedback" id="logo-error"></div>
+                                        </div>
+                                    </div>
+                                    <!-- Favicon Upload -->
+                                    <div class="form-column">
+                                        <div class="form-group">
+                                            <label for="fav_icon" class="form-label">Fav Icon (ICO, PNG, JPG)</label>
+                                            <input type="file" class="form-control" id="fav_icon" name="fav_icon" accept=".ico,.jpg,.jpeg,.png">
+                                            <?php if (!empty($tenant_data['fav_icon_url'])): ?>
+                                                <p class="mt-2">Current Favicon:</p>
+                                                <img src="<?php echo htmlspecialchars($tenant_data['fav_icon_url']); ?>" alt="Current Favicon" class="file-preview">
+                                                <div class="form-check mt-2">
+                                                    <input type="checkbox" class="form-check-input" id="remove_favicon" name="remove_favicon" value="1">
+                                                    <label class="form-check-label text-danger" for="remove_favicon">Remove current favicon</label>
+                                                </div>
+                                            <?php endif; ?>
+                                            <div class="error-feedback" id="fav_icon-error"></div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Submit Buttons -->
+                                <div class="d-flex justify-content-end mt-4 form-actions">
+                                    <button type="submit" class="btn btn-primary" id="submitBtn">
+                                        Update Tenant
+                                    </button>
+                                    <button type="button" class="btn btn-secondary ms-2" id="cancelBtn" onclick="window.location.href='<?php echo $current_is_main_admin ? 'tenant_list.php' : '../dashboard/index.php'; ?>'">
+                                        <?php echo $current_is_main_admin ? 'Back to All Tenants' : 'Back to Dashboard'; ?>
+                                    </button>
+                                </div>
+                            </form>
+
+                        </div>
                     </div>
                 </div>
             </div>
-            <!-- [ breadcrumb ] end -->
-
-            <!-- [ Main Content ] start -->
-            <div class="main-container">
-                <!-- Edit Tenant Form -->
-                <form method="POST" id="editTenantForm" class="customer-form" enctype="multipart/form-data" novalidate>
-                    <!-- CSRF Token -->
-                    <input type="hidden" name="csrf_token" value="<?php echo generateCSRFToken(); ?>">
-                    <!-- Tenant ID -->
-                    <input type="hidden" name="tenant_id" value="<?php echo $tenant_data['tenant_id']; ?>">
-                    
-                    <!-- Tenant Details Section -->
-                    <div class="form-section">
-                        <div class="section-content">
-                            <!-- First Row: Company Name and Contact Person -->
-                            <div class="form-row">
-                                <div class="customer-form-group">
-                                    <label for="company_name" class="form-label">
-                                        <i class="fas fa-building"></i> Company Name<span class="required">*</span><span class="small" style="font-size:10px;font-weight:normal;">(Max 15 characters)</span>
-                                    </label>
-                                    <input type="text" class="form-control" id="company_name" name="company_name"
-                                        placeholder="Enter company name" maxlength="15"
-                                        value="<?php echo htmlspecialchars($tenant_data['company_name'] ?? ''); ?>" required>
-                                    <div class="error-feedback" id="company_name-error"></div>
-                                </div>
-
-                                <div class="customer-form-group">
-                                    <label for="contact_person" class="form-label">
-                                        <i class="fas fa-user"></i> Contact Person<span class="required">*</span>
-                                    </label>
-                                    <input type="text" class="form-control" id="contact_person" name="contact_person"
-                                        placeholder="Enter contact person name" 
-                                        value="<?php echo htmlspecialchars($tenant_data['contact_person'] ?? ''); ?>" required>
-                                    <div class="error-feedback" id="contact_person-error"></div>
-                                </div>
-                            </div>
-
-                            <!-- Second Row: Email and Phone -->
-                            <div class="form-row">
-                                <div class="customer-form-group">
-                                    <label for="email" class="form-label">
-                                        <i class="fas fa-envelope"></i> Email Address<span class="required">*</span>
-                                    </label>
-                                    <input type="email" class="form-control" id="email" name="email"
-                                        placeholder="company@example.com" 
-                                        value="<?php echo htmlspecialchars($tenant_data['email'] ?? ''); ?>" required>
-                                    <div class="error-feedback" id="email-error"></div>
-                                    <div class="email-suggestions" id="email-suggestions"></div>
-                                </div>
-
-                                <div class="customer-form-group">
-                                    <label for="phone" class="form-label">
-                                        <i class="fas fa-phone"></i> Phone Number<span class="required">*</span>
-                                    </label>
-                                    <input type="tel" class="form-control" id="phone" name="phone"
-                                        placeholder="0112345678" 
-                                        value="<?php echo htmlspecialchars($tenant_data['phone'] ?? ''); ?>" required>
-                                    <div class="error-feedback" id="phone-error"></div>
-                                </div>
-                            </div>
-
-                            <!-- Address Row -->
-                            <div class="form-row single">
-                                <div class="customer-form-group">
-                                    <label for="address" class="form-label">
-                                        <i class="fas fa-map-marker-alt"></i> Company Address
-                                    </label>
-                                    <textarea class="form-control" id="address" name="address" rows="3"
-                                        placeholder="Enter company physical address"><?php echo htmlspecialchars($tenant_data['address'] ?? ''); ?></textarea>
-                                    <div class="error-feedback" id="address-error"></div>
-                                </div>
-                            </div>
-
-                            <!-- Delivery Fee & Main Admin Row -->
-                            <?php if ($current_is_main_admin): ?>
-                            <div class="form-row">
-                                <div class="customer-form-group">
-                                    <label for="delivery_fee" class="form-label">
-                                        <i class="fas fa-truck"></i> Delivery Fee (LKR)
-                                    </label>
-                                    <input type="number" step="0.01" min="0" class="form-control" id="delivery_fee" name="delivery_fee"
-                                        placeholder="0.00" value="<?php echo htmlspecialchars($tenant_data['delivery_fee'] ?? '0.00'); ?>">
-                                    <div class="error-feedback" id="delivery_fee-error"></div>
-                                </div>
-
-                                <div class="customer-form-group">
-                                    <label for="is_main_admin" class="form-label">
-                                        <i class="fas fa-crown"></i> Main Admin<span class="required">*</span>
-                                    </label>
-                                    <select class="form-select" id="is_main_admin" name="is_main_admin" required>
-                                        <option value="0" <?php echo (($tenant_data['is_main_admin'] ?? 0) == 0) ? 'selected' : ''; ?>>No</option>
-                                        <option value="1" <?php echo (($tenant_data['is_main_admin'] ?? 0) == 1) ? 'selected' : ''; ?>>Yes</option>
-                                    </select>
-                                    <div class="error-feedback" id="is_main_admin-error"></div>
-                                </div>
-                            </div>
-                            <?php else: ?>
-                            <div class="form-row single">
-                                <div class="customer-form-group">
-                                    <label for="delivery_fee" class="form-label">
-                                        <i class="fas fa-truck"></i> Delivery Fee (LKR)
-                                    </label>
-                                    <input type="number" step="0.01" min="0" class="form-control" id="delivery_fee" name="delivery_fee"
-                                        placeholder="0.00" value="<?php echo htmlspecialchars($tenant_data['delivery_fee'] ?? '0.00'); ?>">
-                                    <div class="error-feedback" id="delivery_fee-error"></div>
-                                </div>
-                            </div>
-                            <input type="hidden" name="is_main_admin" value="<?php echo (int)($tenant_data['is_main_admin'] ?? 0); ?>">
-                            <?php endif; ?>
-
-                            <!-- Logo & Favicon Upload Row -->
-                            <div class="form-row">
-                                <div class="customer-form-group">
-                                    <label for="logo" class="form-label">
-                                        <i class="fas fa-image"></i> Company Logo
-                                    </label>
-                                    <input type="file" class="form-control" id="logo" name="logo" accept=".jpg,.jpeg,.png,.gif">
-                                    <?php if (!empty($tenant_data['logo_url'])): ?>
-                                        <div style="margin-top: 8px; display: flex; align-items: center; gap: 10px;">
-                                            <img src="<?php echo htmlspecialchars($tenant_data['logo_url']); ?>" alt="Current Logo" style="max-width: 80px; max-height: 40px; border: 1px solid #ddd; border-radius: 4px;">
-                                            <label style="font-size: 12px; color: #6c757d;">
-                                                <input type="checkbox" name="remove_logo" value="1"> Remove logo
-                                            </label>
-                                        </div>
-                                    <?php endif; ?>
-                                    <div class="error-feedback" id="logo-error"></div>
-                                    <div class="phone-hint">Upload logo (JPG, PNG, GIF)</div>
-                                </div>
-
-                                <div class="customer-form-group">
-                                    <label for="fav_icon" class="form-label">
-                                        <i class="fas fa-bolt"></i> Favicon
-                                    </label>
-                                    <input type="file" class="form-control" id="fav_icon" name="fav_icon" accept=".ico,.jpg,.jpeg,.png">
-                                    <?php if (!empty($tenant_data['fav_icon_url'])): ?>
-                                        <div style="margin-top: 8px; display: flex; align-items: center; gap: 10px;">
-                                            <img src="<?php echo htmlspecialchars($tenant_data['fav_icon_url']); ?>" alt="Current Favicon" style="max-width: 32px; max-height: 32px; border: 1px solid #ddd; border-radius: 4px;">
-                                            <label style="font-size: 12px; color: #6c757d;">
-                                                <input type="checkbox" name="remove_favicon" value="1"> Remove favicon
-                                            </label>
-                                        </div>
-                                    <?php endif; ?>
-                                    <div class="error-feedback" id="fav_icon-error"></div>
-                                    <div class="phone-hint">Upload favicon (ICO, PNG, JPG)</div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Submit Buttons -->
-                    <div class="submit-container">
-                        <button type="submit" class="btn btn-primary" id="submitBtn">
-                            <i class="fas fa-save"></i> Update Tenant
-                        </button>
-                        <button type="button" class="btn btn-secondary ms-2" id="cancelBtn" onclick="window.location.href='<?php echo $current_is_main_admin ? 'tenant_list.php' : '../dashboard/index.php'; ?>'">
-                            <i class="fas fa-times"></i> <?php echo $current_is_main_admin ? 'Back to All Tenants' : 'Back to Dashboard'; ?>
-                        </button>
-                    </div>
-                </form>
-            </div>
-            <!-- [ Main Content ] end -->
         </div>
     </div>
 
@@ -504,13 +507,10 @@ if ($stmt) {
                     
                     if (response.success) {
                         toastManager.success(response.message || 'Tenant updated successfully!');
-                        updateOriginalValues();
-                        
-                        // Redirect after 2 seconds (company admin goes to dashboard)
-                        var redirectUrl = <?php echo json_encode($current_is_main_admin ? 'tenant_list.php' : '../dashboard/index.php'); ?>;
+                        // Reload after a short delay so the user sees the toast
                         setTimeout(function() {
-                            window.location.href = redirectUrl;
-                        }, 2000);
+                            location.reload();
+                        }, 1000);
                     } else {
                         if (response.errors) {
                             showFieldErrors(response.errors);
@@ -649,7 +649,13 @@ if ($stmt) {
             });
             
             $('#email').on('blur', function() {
-                const validation = validateEmail($(this).val());
+                const val = $(this).val();
+                if (val.trim() === '') {
+                    clearValidation('email');
+                    $('#email-suggestions').html('');
+                    return;
+                }
+                const validation = validateEmail(val);
                 if (!validation.valid) {
                     showError('email', validation.message);
                 } else {
@@ -657,14 +663,23 @@ if ($stmt) {
                 }
                 
                 // Show email suggestions
-                const suggestion = suggestEmail($(this).val());
-                if (suggestion && suggestion !== $(this).val().toLowerCase()) {
+                const suggestion = suggestEmail(val);
+                if (suggestion && suggestion !== val.toLowerCase()) {
                     $('#email-suggestions').html(`Did you mean <a href="#" onclick="$('#email').val('${suggestion}'); $('#email-suggestions').html(''); $('#email').focus(); return false;">${suggestion}</a>?`);
                 } else {
                     $('#email-suggestions').html('');
                 }
             });
             
+            $('#address').on('blur', function() {
+                const validation = validateAddress($(this).val());
+                if (!validation.valid) {
+                    showError('address', validation.message);
+                } else {
+                    showSuccess('address');
+                }
+            });
+
             $('#phone').on('blur', function() {
                 const validation = validatePhone($(this).val());
                 if (!validation.valid) {
@@ -698,9 +713,7 @@ if ($stmt) {
             if (name.trim().length < 2) {
                 return { valid: false, message: 'Company name must be at least 2 characters long' };
             }
-            if (name.length > 15) {
-                return { valid: false, message: 'Company name is too long (maximum 15 characters)' };
-            }
+
             return { valid: true, message: '' };
         }
 
@@ -722,7 +735,7 @@ if ($stmt) {
 
         function validateEmail(email) {
             if (email.trim() === '') {
-                return { valid: false, message: 'Email address is required' };
+                return { valid: true, message: '' };
             }
             if (email.length > 100) {
                 return { valid: false, message: 'Email address is too long (maximum 100 characters)' };
@@ -730,6 +743,13 @@ if ($stmt) {
             const emailRegex = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
             if (!emailRegex.test(email)) {
                 return { valid: false, message: 'Please enter a valid email address' };
+            }
+            return { valid: true, message: '' };
+        }
+
+        function validateAddress(address) {
+            if (address.trim() === '') {
+                return { valid: false, message: 'Company address is required' };
             }
             return { valid: true, message: '' };
         }
@@ -822,9 +842,21 @@ if ($stmt) {
             const validations = [
                 { field: 'company_name', validator: validateCompanyName, value: companyName },
                 { field: 'contact_person', validator: validateContactPerson, value: contactPerson },
-                { field: 'email', validator: validateEmail, value: email },
-                { field: 'phone', validator: validatePhone, value: phone }
+                { field: 'phone', validator: validatePhone, value: phone },
+                { field: 'address', validator: validateAddress, value: $('#address').val() }
             ];
+
+            if (email.trim() !== '') {
+                const emailResult = validateEmail(email);
+                if (!emailResult.valid) {
+                    showError('email', emailResult.message);
+                    isValid = false;
+                } else {
+                    showSuccess('email');
+                }
+            } else {
+                clearValidation('email');
+            }
             
             validations.forEach(function(validation) {
                 const result = validation.validator(validation.value);

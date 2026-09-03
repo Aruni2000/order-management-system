@@ -275,7 +275,7 @@ $conditionLabel = $conditionLabels[$conditionVal] ?? 'New';
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Order #<?php echo $order_id; ?></title>
+    <title>Order #<?php echo $order_id; ?> | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
     <link rel="stylesheet" href="../assets/css/orders.css" />
     <style>
         .od-wrapper { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 0; }
@@ -463,7 +463,7 @@ $conditionLabel = $conditionLabels[$conditionVal] ?? 'New';
         <div class="od-grid-4">
             <div class="od-field">
                 <span class="od-field-label">Issue Date</span>
-                <span class="od-field-value"><i class="fas fa-clock" style="color:#6b7280;margin-right:4px;font-size:0.75rem;"></i><?php echo date('d M Y H:i:s', strtotime($order['created_at'])); ?></span>
+                <span class="od-field-value"><i class="fas fa-clock" style="color:#6b7280;margin-right:4px;font-size:0.75rem;"></i><?php echo date('d M Y h:i:s A', strtotime($order['created_at'])); ?></span>
             </div>
             <div class="od-field">
                 <span class="od-field-label">Due Date</span>
@@ -602,7 +602,7 @@ $conditionLabel = $conditionLabels[$conditionVal] ?? 'New';
             <?php if (!empty($order['order_pay_date'])): ?>
             <div class="od-field" style="margin-bottom:8px;">
                 <span class="od-field-label">Payment Date</span>
-                <span class="od-field-value"><?php echo date('d M Y H:i', strtotime($order['order_pay_date'])); ?></span>
+                <span class="od-field-value"><?php echo date('d M Y h:i:s A', strtotime($order['order_pay_date'])); ?></span>
             </div>
             <?php endif; ?>
             <?php if (!empty($order['paid_by_name'])): ?>

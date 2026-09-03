@@ -234,11 +234,11 @@ try {
                 $update_items_stmt->close();
                 
                 // Log action
-                $log_message = "Bulk dispatch order ({$order_id}) with tracking ({$tracking_number}) and co_id ({$courier_co_id}) for tenant ({$tenant_id})";
+                $log_message = "Dispatched Order #{$order_id} via Bulk - Tracking: $tracking_number";
                 $user_log_sql = "INSERT INTO user_logs (user_id, action_type, inquiry_id, details, created_at) 
-                                VALUES (?, 'bulk_order_dispatch', ?, ?, NOW())";
+                                VALUES (?, 'bulk_dispatch', ?, ?, NOW())";
                 $user_log_stmt = $conn->prepare($user_log_sql);
-                $user_log_stmt->bind_param("iss", $user_id, $order_id, $log_message);
+                $user_log_stmt->bind_param("iis", $user_id, $order_id, $log_message);
                 $user_log_stmt->execute();
                 $user_log_stmt->close();
                 

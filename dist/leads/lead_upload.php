@@ -21,7 +21,7 @@ $transactionStarted = false;
 
 // Function to log user actions
 function logUserAction($conn, $user_id, $action_type, $inquiry_id, $details) {
-    $logSql = "INSERT INTO user_logs (user_id, action_type, inquiry_id, details) VALUES (?, ?, ?, ?)";
+    $logSql = "INSERT INTO user_logs (user_id, action_type, inquiry_id, details, created_at) VALUES (?, ?, ?, ?, NOW())";
     $logStmt = $conn->prepare($logSql);
     if ($logStmt) {
         $logStmt->bind_param("isis", $user_id, $action_type, $inquiry_id, $details);
@@ -70,9 +70,11 @@ $loggedInTenantId = $_SESSION['tenant_id'];
 // Handle tenant selection for main admin
 $selectedTenantId = null;
 if ($isMainAdmin == 1 && $role_id === 1) {
-    if (isset($_POST['selected_tenant'])) {
+    if (isset($_POST['selected_tenant']) && !isset($_POST['users'])) {
         $selectedTenantId = (int)$_POST['selected_tenant'];
         $_SESSION['upload_selected_tenant'] = $selectedTenantId;
+        header("Location: " . $_SERVER['PHP_SELF']);
+        exit();
     } elseif (isset($_SESSION['upload_selected_tenant'])) {
         $selectedTenantId = $_SESSION['upload_selected_tenant'];
     }
@@ -257,6 +259,7 @@ if ($_POST && isset($_FILES['csv_file']) && isset($_POST['users'])) {
         while (($row = fgetcsv($handle)) !== FALSE) {
             $rowNumber++;
             
+            $conn->query("SAVEPOINT row_sp");
             try {
                 // Skip empty rows
                 if (empty(array_filter($row))) {
@@ -510,10 +513,41 @@ if ($_POST && isset($_FILES['csv_file']) && isset($_POST['users'])) {
                 
                 $itemStmt->close();
                 
+                // Check and deduct stock
+                if (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1) {
+                    $updateStockSql = "UPDATE products SET stock_quantity = stock_quantity - ? WHERE id = ? AND stock_quantity >= ?";
+                    $stockUpdateStmt = $conn->prepare($updateStockSql);
+                    if (!$stockUpdateStmt) {
+                        throw new Exception("Failed to prepare stock update query: " . $conn->error);
+                    }
+                    $stockUpdateStmt->bind_param("iii", $quantityInt, $productId, $quantityInt);
+                    
+                    if (!$stockUpdateStmt->execute()) {
+                        throw new Exception("Failed to update stock for product code: " . $productCode);
+                    }
+                    
+                    if ($stockUpdateStmt->affected_rows === 0) {
+                        // Fetch product name
+                        $getNameSql = "SELECT name FROM products WHERE id = ?";
+                        $nameStmt = $conn->prepare($getNameSql);
+                        $nameStmt->bind_param("i", $productId);
+                        $nameStmt->execute();
+                        $productResult = $nameStmt->get_result();
+                        $productName = $productCode; // Fallback
+                        if ($productResult && $productRow = $productResult->fetch_assoc()) {
+                            $productName = $productRow['name'];
+                        }
+                        $nameStmt->close();
+                        throw new Exception("Insufficient stock for product: " . $productName . " (Code: " . $productCode . ")");
+                    }
+                    $stockUpdateStmt->close();
+                }
+
                 $successfulOrderIds[] = $orderId;
                 $successCount++;
                 
             } catch (Exception $e) {
+                $conn->query("ROLLBACK TO SAVEPOINT row_sp");
                 $errorCount++;
                 $errorMessage = $e->getMessage();
                 $errorMessages[] = "Row $rowNumber: " . $errorMessage;
@@ -617,7 +651,7 @@ if ($selectedTenantId) {
 // Fetch active products for dropdown based on selected tenant
 $products = [];
 if ($selectedTenantId) {
-    $productsSql = "SELECT id, name, product_code, lkr_price FROM products WHERE status = 'active' ORDER BY name ASC";
+    $productsSql = "SELECT id, name, product_code, lkr_price, stock_quantity FROM products WHERE status = 'active' ORDER BY name ASC";
     $productsStmt = $conn->prepare($productsSql);
     if ($productsStmt) {
         $productsStmt->execute();
@@ -636,13 +670,11 @@ if ($selectedTenantId) {
 <html lang="en" data-pc-preset="preset-1" data-pc-sidebar-caption="true" data-pc-direction="ltr" dir="ltr" data-pc-theme="light">
 
 <head>
-    <title>Order Management Admin Portal - Lead Upload</title>
+    <title>Lead Upload | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
     
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
     
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css">
-    <link rel="stylesheet" href="../assets/css/style.css" id="main-style-link" />
-    <link rel="stylesheet" href="../assets/css/leads.css" id="main-style-link" />
+    <link rel="stylesheet" href="../assets/css/leads.css" />
 </head>
 
 <style>
@@ -973,7 +1005,7 @@ if ($selectedTenantId) {
                     <div class="page-header-title">
                         <h5 class="mb-0 font-medium">
                             Lead Management
-                            <i class="fas fa-info-circle text-primary" style="cursor: pointer; font-size: 16px; margin-left: 8px;" onclick="openInfoModal()" title="How to use this page"></i>
+                            <i class="fas fa-info-circle text-primary" style="cursor: pointer; font-size: 16px; margin-left: 8px; color: #3b82f6;" onclick="openInfoModal()" title="How to use this page"></i>
                         </h5>
                     </div>
                 </div>
@@ -1097,6 +1129,9 @@ if ($selectedTenantId) {
                                         <?php foreach ($products as $prod): ?>
                                             <div class="product-option" data-id="<?php echo $prod['id']; ?>" data-name="<?php echo htmlspecialchars($prod['name']); ?>" data-code="<?php echo htmlspecialchars($prod['product_code']); ?>" style="padding: 10px; cursor: pointer; border-bottom: 1px solid #f0f0f0;">
                                                 <strong><?php echo htmlspecialchars($prod['name']); ?></strong> (<?php echo htmlspecialchars($prod['product_code']); ?>)
+                                                <?php if (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1): ?>
+                                                    <span style="color: #6c757d; font-size: 0.9em;"> - Stock: <?php echo $prod['stock_quantity']; ?></span>
+                                                <?php endif; ?>
                                             </div>
                                         <?php endforeach; ?>
                                         <div id="no_products_found" style="display: none; padding: 10px; color: #999; text-align: center;">No products found</div>

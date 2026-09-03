@@ -3,21 +3,22 @@
             position: fixed;
             top: 20px;
             right: 20px;
-            z-index: 999999;
-            max-width: 380px;
+            z-index: 9999;
+            max-width: 400px;
         }
 
         .toast {
             background: #fff;
             border-radius: 8px;
-            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
             margin-bottom: 10px;
-            padding: 12px 16px;
+            padding: 16px 20px;
             border-left: 4px solid;
-            transform: translateX(120%);
+            transform: translateX(400px);
             opacity: 0;
-            transition: transform 0.35s ease, opacity 0.35s ease;
-            font-size: 13px;
+            transition: all 0.3s ease-in-out;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-size: 14px;
             line-height: 1.4;
         }
 
@@ -27,65 +28,75 @@
         }
 
         .toast.success {
-            border-left-color: #16a34a;
+            border-left-color: #28a745;
+            background: linear-gradient(135deg, #f8f9fa 0%, #e8f5e8 100%);
         }
 
         .toast.error {
-            border-left-color: #dc2626;
+            border-left-color: #dc3545;
+            background: linear-gradient(135deg, #f8f9fa 0%, #fdeaea 100%);
         }
 
         .toast.warning {
-            border-left-color: #d97706;
+            border-left-color: #ffc107;
+            background: linear-gradient(135deg, #f8f9fa 0%, #fff3cd 100%);
         }
 
         .toast.info {
-            border-left-color: #0891b2;
+            border-left-color: #17a2b8;
+            background: linear-gradient(135deg, #f8f9fa 0%, #d1ecf1 100%);
         }
 
         .toast-header {
             display: flex;
             align-items: center;
-            gap: 8px;
-            margin-bottom: 4px;
+            margin-bottom: 8px;
             font-weight: 600;
-            font-size: 13px;
         }
 
         .toast-icon {
-            font-size: 15px;
+            margin-right: 8px;
+            font-size: 16px;
         }
 
-        .toast.success .toast-icon { color: #16a34a; }
-        .toast.error .toast-icon { color: #dc2626; }
-        .toast.warning .toast-icon { color: #d97706; }
-        .toast.info .toast-icon { color: #0891b2; }
+        .toast.success .toast-icon {
+            color: #28a745;
+        }
+
+        .toast.error .toast-icon {
+            color: #dc3545;
+        }
+
+        .toast.warning .toast-icon {
+            color: #ffc107;
+        }
+
+        .toast.info .toast-icon {
+            color: #17a2b8;
+        }
 
         .toast-close {
             margin-left: auto;
             background: none;
             border: none;
-            font-size: 16px;
+            font-size: 18px;
             cursor: pointer;
-            color: #9ca3af;
+            color: #6c757d;
             padding: 0;
             width: 20px;
             height: 20px;
             display: flex;
             align-items: center;
             justify-content: center;
-            border-radius: 4px;
-            transition: background 0.15s, color 0.15s;
         }
 
         .toast-close:hover {
-            background: #f3f4f6;
-            color: #4b5563;
+            color: #495057;
         }
 
         .toast-body {
-            color: #4b5563;
+            color: #495057;
             word-wrap: break-word;
-            font-size: 13px;
         }
 
         /* Loading overlay for status changes */
@@ -126,6 +137,13 @@
         @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
+        }
+
+        .btn .spinner, .inline-spinner {
+            border: 2px solid rgba(255,255,255,0.3);
+            border-top: 2px solid currentColor;
+            display: inline-block;
+            vertical-align: text-bottom;
         }
 
         /* Disable dropdown during loading */
@@ -200,22 +218,6 @@
         }
 
         /* Courier Status Badge Styles */
-.status-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    padding: 4px 8px;
-    border-radius: 12px;
-    font-size: 11px;
-    font-weight: 500;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    white-space: nowrap;
-}
-
-.status-badge i {
-    font-size: 10px;
-}
 
 /* None Status */
 .status-none {
@@ -252,18 +254,7 @@
     border: 1px solid #f5c6cb;
 }
 
-/* Hover effects for interactive badges */
-.status-badge:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    transition: all 0.2s ease;
-}
-
-/* Optional: Darker variants for better contrast */
-.status-badge.dark {
-    font-weight: 600;
-}
-
+/* Darker variants */
 .status-none.dark {
     background-color: #e9ecef;
     color: #495057;
@@ -328,7 +319,7 @@
             left: 0;
             width: 100vw;
             height: 100vh;
-            background: rgba(0, 0, 0, 0.5);
+            background: rgba(0, 0, 0, 0.75);
             backdrop-filter: blur(4px);
             -webkit-backdrop-filter: blur(4px);
             z-index: 9999;
@@ -554,7 +545,7 @@
         /* Modal Footer */
         .api-modal-footer {
             display: flex;
-            justify-content: center;
+            justify-content: flex-end;
             align-items: center;
             gap: 10px;
             padding: 8px 24px;
@@ -659,7 +650,10 @@
 }
 
 /* ===== ALERT STYLES (merged from alert.css) ===== */
-.alert {
+/* Scoped to .alert-container (toast alerts on create/edit order pages) so the
+   compact flex layout doesn't leak onto full-width page alerts elsewhere
+   (e.g. lead_upload's Import Results alert). */
+.alert-container .alert {
     width: fit-content;
     padding: 5px 8px;
     margin-bottom: 8px;
@@ -671,19 +665,19 @@
     justify-content: space-between;
 }
 
-.alert-success {
+.alert-container .alert-success {
     color: #155724;
     background-color: #d4edda;
     border-color: #c3e6cb;
 }
 
-.alert-error, .alert-danger {
+.alert-container .alert-error, .alert-container .alert-danger {
     color: #721c24;
     background-color: #f8d7da;
     border-color: #f5c6cb;
 }
 
-.alert-warning {
+.alert-container .alert-warning {
     color: #856404;
     background-color: #fff3cd;
     border-color: #ffeaa7;
@@ -730,7 +724,17 @@
     margin-right: 8px;
 }
 
-.status-active { background-color: #28a745; }
-.status-warning { background-color: #ffc107; }
-.status-error { background-color: #dc3545; }
-.status-api { background-color: #17a2b8; }
+.status-indicator.status-active { background-color: #28a745; }
+.status-indicator.status-warning { background-color: #ffc107; }
+.status-indicator.status-error { background-color: #dc3545; }
+.status-indicator.status-api { background-color: #17a2b8; }
+
+/* User Count Badge (positions.php) */
+.badge-user-count {
+    background: #e8f4fd !important;
+    color: #0d6efd !important;
+    padding: 2px 8px !important;
+    border-radius: 4px !important;
+    font-size: 12px !important;
+    font-weight: 500 !important;
+}

@@ -54,6 +54,11 @@ try {
     $lkr_price = sanitizeInput($_POST['lkr_price'] ?? '');
     $product_code = sanitizeInput($_POST['product_code'] ?? '');
     $description = sanitizeInput($_POST['description'] ?? '');
+    
+    // Default values for stock if inventory management is disabled
+    $allow_inventory = isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1;
+    $stock_quantity = $allow_inventory ? intval($_POST['stock_quantity'] ?? 0) : 0;
+    $low_stock_threshold = $allow_inventory ? intval($_POST['low_stock_threshold'] ?? 0) : 0;
     $category_id = intval($_POST['category_id'] ?? 0);
 
     // -------------------------------------------------------------------------
@@ -100,8 +105,8 @@ try {
     }
 
     // Prepare insert query
-    $insertQuery = "INSERT INTO products (name, description, lkr_price, status, product_code, category_id) 
-                    VALUES (?, ?, ?, ?, ?, ?)";
+    $insertQuery = "INSERT INTO products (name, description, lkr_price, status, product_code, stock_quantity, low_stock_threshold, category_id) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
     $insertStmt = $conn->prepare($insertQuery);
 
     if (!$insertStmt) {
@@ -109,7 +114,7 @@ try {
     }
 
     // Bind parameters
-    $insertStmt->bind_param("ssdssi", $name, $description, $lkr_price, $status, $product_code, $category_id);
+    $insertStmt->bind_param("ssdssiii", $name, $description, $lkr_price, $status, $product_code, $stock_quantity, $low_stock_threshold, $category_id);
 
     // Execute the query
     if ($insertStmt->execute()) {
@@ -119,10 +124,22 @@ try {
         if (isset($_SESSION['user_id'])) {
             $user_id = $_SESSION['user_id'];
             $action_type = 'product_create';
-            $details = "New product created - Name: {$name}, Code: {$product_code}, Price: LKR {$lkr_price}, Status: {$status}Category ID: {$category_id}";
+            // Fetch category name
+            $catName = '';
+            $catStmt = $conn->prepare("SELECT name FROM categories WHERE id = ?");
+            if ($catStmt) {
+                $catStmt->bind_param("i", $category_id);
+                $catStmt->execute();
+                $catResult = $catStmt->get_result();
+                if ($catResult && $catRow = $catResult->fetch_assoc()) {
+                    $catName = $catRow['name'];
+                }
+                $catStmt->close();
+            }
+            $details = "Created Product - Name: {$name}, Code: {$product_code}, Price: LKR {$lkr_price}, Status: {$status}, Stock: {$stock_quantity}, Stock Warning Level: {$low_stock_threshold}, Category: '{$catName}'";
 
-            $logQuery = "INSERT INTO user_logs (user_id, action_type, inquiry_id, details) 
-                         VALUES (?, ?, ?, ?)";
+            $logQuery = "INSERT INTO user_logs (user_id, action_type, inquiry_id, details, created_at) 
+                         VALUES (?, ?, ?, ?, NOW())";
             $logStmt = $conn->prepare($logQuery);
 
             if ($logStmt) {

@@ -172,14 +172,12 @@ $userInfo = $userInfoResult->fetch_assoc();
 <html lang="en" data-pc-preset="preset-1" data-pc-sidebar-caption="true" data-pc-direction="ltr" dir="ltr" data-pc-theme="light">
 
 <head>
-    <title>My Assigned Leads</title>
+    <title>My Assigned Leads | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
     
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
     
     <!-- Stylesheets -->
-    <link rel="stylesheet" href="../assets/css/style.css" id="main-style-link" />
-    <link rel="stylesheet" href="../assets/css/orders.css" id="main-style-link" />
-    <link rel="stylesheet" href="../assets/css/status-badge-colors.css" id="main-style-link" />
+    <link rel="stylesheet" href="../assets/css/orders.css" />
     <style>
 .print-btn {
     background-color: #28a745;
@@ -203,11 +201,6 @@ $userInfo = $userInfoResult->fetch_assoc();
 
 .actions {
     white-space: nowrap;
-}
-
-.pay-status-paid, .pay-status-unpaid {
-    font-size: 0.65rem;
-    padding: 2px 8px;
 }
 
 .user-info-banner {

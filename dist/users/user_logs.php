@@ -157,6 +157,73 @@ if ($action_types_result && $action_types_result->num_rows > 0) {
         }
     }
 
+// Function to format action type for human-readable display
+function formatActionType($actionType) {
+    if (empty($actionType)) return '';
+    
+    // Replace underscores with spaces and capitalize each word
+    $formatted = ucwords(str_replace('_', ' ', $actionType));
+    
+    return $formatted;
+}
+
+// Function to get entity prefix based on action type
+function getInquiryPrefix($actionType) {
+    $action = strtolower($actionType);
+    
+    // Order-related actions
+    if (preg_match('/^(order_|payment_|bulk_|condition_|update_call_status|complete_mark|return_csv|create_order|updated order)/', $action)) {
+        return 'ORD';
+    }
+    
+    // Product actions
+    if (strpos($action, 'product_') === 0 || $action === 'stock_update') {
+        return 'PRD';
+    }
+    
+    // Category actions
+    if (strpos($action, 'category_') === 0) {
+        return 'CAT';
+    }
+    
+    // User actions
+    if (strpos($action, 'user_') === 0) {
+        return 'USR';
+    }
+    
+    // Customer actions
+    if (strpos($action, 'customer_') === 0) {
+        return 'CUS';
+    }
+    
+    // Position actions
+    if (strpos($action, 'position_') === 0) {
+        return 'POS';
+    }
+    
+    // Courier actions
+    if (strpos($action, 'courier_') === 0 || $action === 'api_update') {
+        return 'COU';
+    }
+    
+    // Branding actions
+    if (strpos($action, 'branding_') === 0) {
+        return 'BRD';
+    }
+    
+    // Lead actions
+    if (strpos($action, 'lead_') === 0) {
+        return 'LED';
+    }
+    
+    // Tenant actions
+    if (strpos($action, 'tenant_') === 0) {
+        return 'TNT';
+    }
+    
+    return 'REF';
+}
+
 // Function to format details JSON
 function formatLogDetails($details) {
     if (empty($details)) {
@@ -210,27 +277,13 @@ function formatLogDetails($details) {
 <html lang="en" data-pc-preset="preset-1" data-pc-sidebar-caption="true" data-pc-direction="ltr" dir="ltr" data-pc-theme="light">
 
 <head>
-    <title>Order Management Admin Portal - User Activity Logs</title>
+    <title>User Activity Logs | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
     
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
     
     <!-- Stylesheets -->
-    <link rel="stylesheet" href="../assets/css/style.css" id="main-style-link" />
-    <link rel="stylesheet" href="../assets/css/orders.css" id="main-style-link" />
-    <link rel="stylesheet" href="../assets/css/customers.css" id="main-style-link" />
-    <style>
-        .orders-table th:last-child, 
-        .orders-table td.actions {
-            text-align: center !important;
-        }
-        .action-buttons-group {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            gap: 5px;
-            width: 100%;
-        }
-    </style>
+    <link rel="stylesheet" href="../assets/css/orders.css" />
+    <link rel="stylesheet" href="../assets/css/customers.css" />
 </head>
 
 <body>
@@ -248,7 +301,7 @@ function formatLogDetails($details) {
             <div class="page-header">
                 <div class="page-block">
                     <div class="page-header-title">
-                        <h5 class="mb-0 font-medium">User Activity Logs</h5>
+                        <h5 class="mb-0 font-medium">User Activity Logs <i class="fas fa-info-circle" style="cursor: pointer; font-size: 16px; margin-left: 8px; color: #3b82f6;" onclick="openInfoModal()" title="Click here to know more about this page"></i></h5>
                     </div>
                 </div>
             </div>
@@ -265,7 +318,7 @@ function formatLogDetails($details) {
                                 <?php foreach ($users_list as $user): ?>
                                     <option value="<?php echo htmlspecialchars($user['name']); ?>" 
                                             <?php echo $user_name_filter == $user['name'] ? 'selected' : ''; ?>>
-                                        <?php echo htmlspecialchars($user['name']); ?>
+                                        <?php echo htmlspecialchars($user['name'] . ' (' . $user['id'] . ')'); ?>
                                     </option>
                                 <?php endforeach; ?>
                             </select>
@@ -293,16 +346,16 @@ function formatLogDetails($details) {
                                 <?php foreach ($action_types as $action_type): ?>
                                     <option value="<?php echo htmlspecialchars($action_type['action_type']); ?>" 
                                             <?php echo $action_type_filter == $action_type['action_type'] ? 'selected' : ''; ?>>
-                                        <?php echo htmlspecialchars($action_type['action_type']); ?>
+                                        <?php echo htmlspecialchars(formatActionType($action_type['action_type'])); ?>
                                     </option>
                                 <?php endforeach; ?>
                             </select>
                         </div>
                         
                         <div class="form-group">
-                            <label for="inquiry_id_filter">Inquiry ID</label>
+                            <label for="inquiry_id_filter">Ref ID</label>
                             <input type="number" id="inquiry_id_filter" name="inquiry_id_filter" 
-                                   placeholder="Enter inquiry ID" 
+                                   placeholder="Enter ID number" 
                                    value="<?php echo htmlspecialchars($inquiry_id_filter); ?>">
                         </div>
                         
@@ -345,12 +398,12 @@ function formatLogDetails($details) {
                     <table class="orders-table">
                         <thead>
                             <tr>
-                                <th>Log ID</th>
-                                <th>User Info</th>
-                                <th>Action</th>
-                                <th>Inquiry ID</th>
-                                <th>Details</th>
-                                <th>Date & Time</th>
+                                <th style="width: 100px; min-width: 100px;">Log ID</th>
+                                <th style="width: 220px; min-width: 220px;">User Info</th>
+                                <th style="width: 200px; min-width: 200px;">Action Type</th>
+                                <th style="width: 140px; min-width: 140px;">Ref ID</th>
+                                <th style="width: 450px; min-width: 450px; max-width: 450px;">Details</th>
+                                <th style="width: 170px; min-width: 170px;">Date & Time</th>
                             </tr>
                         </thead>
                         <tbody id="userLogsTableBody">
@@ -359,16 +412,16 @@ function formatLogDetails($details) {
                                     <tr>
                                         <!-- Log ID -->
                                         <td>
-                                            <div>
-                                                <?php echo htmlspecialchars($row['log_id']); ?>
+                                            <div style="font-weight: 600; color: #007bff;">
+                                                #<?php echo htmlspecialchars($row['log_id']); ?>
                                             </div>
                                         </td>
                                         
                                         <!-- User Info -->
-                                        <td class="user-info-cell">
-                                            <div class="user-info-section">
-                                                <h6 style="margin: 0 0 2px 0; font-size: 14px; font-weight: 600; color: #333;">
-                                                    <?php echo htmlspecialchars($row['username'] ?: 'Unknown User'); ?>
+                                        <td class="user-info-column">
+                                            <div class="user-info-section" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;">
+                                                <h6 style="margin: 0 0 5px 0; font-size: 14px; font-weight: 600; color: #333;">
+                                                    <?php echo htmlspecialchars($row['username'] ?: 'Unknown User'); ?> (<?php echo htmlspecialchars($row['user_id']); ?>)
                                                 </h6>
                                                 <?php if ($is_main_admin && !empty($row['tenant_name'])): ?>
                                                     <div style="color: #4b5563; font-size: 12px; font-weight: 500; margin-bottom: 2px;">
@@ -376,9 +429,6 @@ function formatLogDetails($details) {
                                                         <?php echo htmlspecialchars($row['tenant_name']); ?>
                                                     </div>
                                                 <?php endif; ?>
-                                                <small style="color: #6c757d; font-size: 12px; display: block;">
-                                                    ID: <?php echo htmlspecialchars($row['user_id']); ?>
-                                                </small>
                                                 <?php if (!empty($row['user_email'])): ?>
                                                     <small style="color: #6c757d; font-size: 11px; display: block;">
                                                         <?php echo htmlspecialchars($row['user_email']); ?>
@@ -386,30 +436,32 @@ function formatLogDetails($details) {
                                                 <?php endif; ?>
                                             </div>
                                         </td>
-                                        
-                                        <!-- Action -->
-                                        <td class="action-cell">
-                                            <span class="status-badge <?php 
+
+                                        <!-- Action Type -->
+                                        <td class="action-type-column">
+                                            <?php 
                                                 $action = strtolower($row['action_type']);
                                                 if (strpos($action, 'create') !== false || strpos($action, 'add') !== false) {
-                                                    echo 'pay-status-paid'; // Green for create/add actions
+                                                    $badgeClass = 'pay-status-paid';
                                                 } elseif (strpos($action, 'delete') !== false || strpos($action, 'remove') !== false) {
-                                                    echo 'pay-status-unpaid'; // Red for delete/remove actions
+                                                    $badgeClass = 'pay-status-unpaid';
                                                 } elseif (strpos($action, 'update') !== false || strpos($action, 'edit') !== false) {
-                                                    echo 'status-badge-warning'; // Orange for update/edit actions
+                                                    $badgeClass = 'status-badge-warning';
                                                 } else {
-                                                    echo 'status-badge-info'; // Blue for other actions
+                                                    $badgeClass = 'status-badge-info';
                                                 }
-                                            ?>">
-                                                <?php echo htmlspecialchars($row['action_type']); ?>
+                                            ?>
+                                            <span class="status-badge <?php echo $badgeClass; ?>" title="<?php echo htmlspecialchars($row['action_type']); ?>">
+                                                <?php echo htmlspecialchars(formatActionType($row['action_type'])); ?>
                                             </span>
                                         </td>
                                         
-                                        <!-- Inquiry ID -->
+                                        <!-- Ref ID (with type prefix) -->
                                         <td>
                                             <?php if (!empty($row['inquiry_id'])): ?>
                                                 <div style="font-weight: 500; color: #495057;">
-                                                    #<?php echo htmlspecialchars($row['inquiry_id']); ?>
+                                                    <span class="ref-prefix" style="font-size: 10px; font-weight: 700; color: #6c757d; background: #e9ecef; padding: 1px 5px; border-radius: 3px; margin-right: 3px;"><?php echo getInquiryPrefix($row['action_type']); ?></span>
+                                                    <?php echo htmlspecialchars($row['inquiry_id']); ?>
                                                 </div>
                                             <?php else: ?>
                                                 <span style="color: #6c757d; font-style: italic;">N/A</span>
@@ -418,11 +470,12 @@ function formatLogDetails($details) {
                                         
                                         <!-- Details -->
                                         <td>
-                                            <div class="details-container" style="max-width: 250px;">
+                                            <div class="details-container" style="width: 100%; word-wrap: break-word; overflow-wrap: break-word;">
                                                 <?php 
                                                 $formattedDetails = formatLogDetails($row['details']);
-                                                if (strlen($formattedDetails) > 150) {
-                                                    echo '<div class="details-short">' . substr(strip_tags($formattedDetails), 0, 150) . '...</div>';
+                                                if (strlen($formattedDetails) > 250) {
+                                                    $shortText = strip_tags(str_replace(['<br>', '<br/>', '<br />'], ' | ', $formattedDetails));
+                                                    echo '<div class="details-short">' . substr($shortText, 0, 250) . '...</div>';
                                                     echo '<div class="details-full" style="display: none;">' . $formattedDetails . '</div>';
                                                     echo '<a href="#" class="toggle-details" style="color: #007bff; font-size: 12px;">Show More</a>';
                                                 } else {
@@ -443,7 +496,7 @@ function formatLogDetails($details) {
                                 <?php endwhile; ?>
                             <?php else: ?>
                                 <tr>
-                                        <td colspan="7" class="text-center" style="padding: 40px; text-align: center; color: #666;">
+                                        <td colspan="6" class="text-center" style="padding: 40px; text-align: center; color: #666;">
                                         <i class="fas fa-history" style="font-size: 2rem; margin-bottom: 10px; display: block;"></i>
                                         No activity logs found
                                     </td>
@@ -482,6 +535,35 @@ function formatLogDetails($details) {
             </div>
         </div>
     </div>
+
+    <!-- Info Modal -->
+    <?php
+    include_once($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/info_modal.php');
+    renderInfoModal(
+        'How User Activity Logs Work',
+        'fas fa-history',
+        '<h6 style="color: #374151; border-bottom: 2px solid #e5e7eb; padding-bottom: 6px;">📋 What You See</h6>
+        <ul style="color: #4b5563;">
+            <li><strong>User Info:</strong> Who performed the action</li>
+            <li><strong>Action Type:</strong> Badge shows the action (create, update, delete, etc.)</li>
+            <li><strong>Ref ID:</strong> Linked record with a type prefix (e.g. ORD, PRD, CUS)</li>
+            <li><strong>Details:</strong> Full change summary; expand with Show More</li>
+        </ul>
+
+        <h6 style="color: #374151; border-bottom: 2px solid #e5e7eb; padding-bottom: 6px; margin-top: 16px;">🔍 How to Use Filters</h6>
+        <ul style="color: #4b5563;">
+            <li><strong>User Name:</strong> Show one user activity</li>
+            <li><strong>Action Type:</strong> Filter by a specific action</li>
+            <li><strong>Ref ID & Date:</strong> Find a specific record or time range</li>
+            <li><strong>Search</strong> applies filters; <strong>Clear</strong> resets them</li>
+        </ul>
+
+        <div style="background: #fef3c7; padding: 10px; border-radius: 6px; margin-top: 16px; font-size: 13px;">
+            <strong>💡 Tip:</strong> Badges are color-coded — green for creates, yellow for updates, red for deletes, blue for other actions.
+        </div>',
+        '500px'
+    );
+    ?>
 
     <!-- Log Details Modal -->
     <div id="logDetailsModal" class="modal">
@@ -565,7 +647,7 @@ function openLogModal(button) {
     
     // Set action type badge
     const actionTypeElement = document.getElementById('modal-action-type');
-    actionTypeElement.textContent = actionType;
+    actionTypeElement.textContent = formatActionTypeLabel(actionType);
     
     // Set appropriate badge class based on action type
     const action = actionType.toLowerCase();
@@ -581,6 +663,14 @@ function openLogModal(button) {
 
     // Show modal
     modal.style.display = 'block';
+}
+
+function formatActionTypeLabel(actionType) {
+    if (!actionType) return '';
+    return actionType
+        .split('_')
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(' ');
 }
 
 function formatDetailsForModal(details) {
@@ -636,7 +726,18 @@ function formatDateTime(dateString) {
     if (!dateString) return 'N/A';
     try {
         const date = new Date(dateString);
-        return date.toLocaleString();
+        if (isNaN(date.getTime())) return dateString;
+        const yyyy = date.getFullYear();
+        const mm = String(date.getMonth() + 1).padStart(2, '0');
+        const dd = String(date.getDate()).padStart(2, '0');
+        let hours = date.getHours();
+        const minutes = String(date.getMinutes()).padStart(2, '0');
+        const seconds = String(date.getSeconds()).padStart(2, '0');
+        const ampm = hours >= 12 ? 'PM' : 'AM';
+        hours = hours % 12;
+        hours = hours ? hours : 12;
+        const hh = String(hours).padStart(2, '0');
+        return `${yyyy}-${mm}-${dd} ${hh}:${minutes}:${seconds} ${ampm}`;
     } catch (e) {
         return dateString;
     }

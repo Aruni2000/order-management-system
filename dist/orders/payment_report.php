@@ -187,9 +187,8 @@ $courierDisabled = ($is_main_admin == 1) && empty($tenant_id_filter);
     data-pc-theme="light">
 
 <head>
-    <title>Payment Report</title>
+    <title>Payment Report | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
-    <link rel="stylesheet" href="../assets/css/style.css" />
     <link rel="stylesheet" href="../assets/css/orders.css" />
     <style>
     .total-row {

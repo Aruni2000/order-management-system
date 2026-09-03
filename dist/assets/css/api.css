@@ -47,24 +47,6 @@
             font-size: 14px;
         }
 
-        .status-badge {
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 12px;
-            font-weight: 600;
-            text-transform: uppercase;
-        }
-
-        .status-active {
-            background-color: #d4edda;
-            color: #155724;
-        }
-
-        .status-inactive {
-            background-color: #f8d7da;
-            color: #721c24;
-        }
-
         .text-success {
             color: #28a745 !important;
         }

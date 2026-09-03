@@ -150,14 +150,13 @@ if ($is_main_admin === 1 && $role_id === 1) {
 <html lang="en" data-pc-preset="preset-1" data-pc-sidebar-caption="true" data-pc-direction="ltr" dir="ltr" data-pc-theme="light">
 
 <head>
-    <title>Label Print - Order Management</title>
+    <title>Label Print | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
     
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
     
     <!-- Stylesheets -->
-    <link rel="stylesheet" href="../assets/css/style.css" id="main-style-link" />
-    <link rel="stylesheet" href="../assets/css/orders.css" id="main-style-link" />
-    <link rel="stylesheet" href="../assets/css/label_print.css" id="main-style-link" />
+    <link rel="stylesheet" href="../assets/css/orders.css" />
+    <link rel="stylesheet" href="../assets/css/label_print.css" />
 
 </head>
 <body>
@@ -270,6 +269,10 @@ if ($is_main_admin === 1 && $role_id === 1) {
                     <button class="print-btn" onclick="printLabels('regular')">
                         <i class="fas fa-print"></i>
                        Print 4×6 Labels
+                    </button>
+                    <button class="print-btn" onclick="printLabels('4label')">
+                        <i class="fas fa-print"></i>
+                        Print 4-Label A4
                     </button>
                 </div>
             </div>

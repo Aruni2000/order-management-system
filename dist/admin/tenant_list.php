@@ -171,24 +171,17 @@ if (!$result) {
 <html lang="en" data-pc-preset="preset-1" data-pc-sidebar-caption="true" data-pc-direction="ltr" dir="ltr" data-pc-theme="light">
 
 <head>
-    <title>Order Management Admin Portal - Tenant Management</title>
+    <title>Tenant Management | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
     
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
     
     <!-- Stylesheets -->
-    <link rel="stylesheet" href="../assets/css/style.css" id="main-style-link" />
-    <link rel="stylesheet" href="../assets/css/orders.css" id="main-style-link" />
-    <link rel="stylesheet" href="../assets/css/customers.css" id="main-style-link" />
+    <link rel="stylesheet" href="../assets/css/orders.css" />
+    <link rel="stylesheet" href="../assets/css/customers.css" />
     <style>
         /* Disabled toggle button for own tenant */
         .toggle-status-btn.disabled-btn {
-            opacity: 0.4;
-            cursor: not-allowed !important;
-            pointer-events: none;
-        }
-        .toggle-status-btn.disabled-btn:hover {
-            background: inherit;
-            color: inherit;
+            display: none;
         }
     </style>
 </head>
@@ -209,7 +202,6 @@ if (!$result) {
                 <div class="page-block">
                     <div class="page-header-title">
                         <h5 class="mb-0 font-medium">Tenant Management</h5>
-                        <small class="text-muted">Administrator Access</small>
                     </div>
                 </div>
             </div>
@@ -364,7 +356,7 @@ if (!$result) {
                                         <td>
                                             <div style="font-size: 12px; line-height: 1.4;">
                                                 <div style="font-weight: 500;"><?php echo date('M d, Y', strtotime($row['created_at'])); ?></div>
-                                                <div style="color: #6c757d;"><?php echo date('h:i A', strtotime($row['created_at'])); ?></div>
+                                                <div style="color: #6c757d;"><?php echo date('h:i:s A', strtotime($row['created_at'])); ?></div>
                                             </div>
                                         </td>
                                         
@@ -404,7 +396,7 @@ if (!$result) {
                                                         title="<?= $toggleTitle ?>"
                                                         data-action="<?= $row['status'] == 'active' ? 'deactivate' : 'activate' ?>"
                                                         <?= $toggleDisabled ?>>
-                                                    <i class="fas <?= $row['status'] == 'active' ? 'fa-ban' : 'fa-check-circle' ?>"></i>
+                                                    <i class="fas <?= $row['status'] == 'active' ? 'fa-toggle-off' : 'fa-toggle-on' ?>"></i>
                                                 </button>
                                             </div>
                                         </td>
@@ -567,10 +559,9 @@ function toggleTenantStatus(button) {
         text: `You are about to ${isActive ? 'Deactivate' : 'Activate'} Tenant: ${companyName}`,
         icon: 'warning',
         showCancelButton: true,
-        customClass: {
-            confirmButton: isActive ? 'swal-danger' : 'swal-success'
-        },
-        confirmButtonText: isActive ? 'Yes, Deactivate it!' : 'Yes, Activate it!',
+        confirmButtonColor: isActive ? '#dc3545' : '#28a745',
+        cancelButtonColor: '#6c757d',
+        confirmButtonText: isActive ? 'Yes, deactivate it!' : 'Yes, activate it!',
         cancelButtonText: 'Cancel',
         reverseButtons: true
     }).then((result) => {
@@ -587,26 +578,18 @@ function toggleTenantStatus(button) {
             .then(data => {
                 if (data.success) {
                     Swal.fire({
-                        icon: 'success',
                         title: 'Updated!',
-                        text: `Tenant has been ${isActive ? 'deactivated' : 'activated'} successfully.`,
-                        showConfirmButton: false,
-                        timer: 1500
+                        text: 'Tenant status updated successfully!',
+                        icon: 'success',
+                        timer: 1500,
+                        showConfirmButton: false
                     }).then(() => location.reload());
                 } else {
-                    Swal.fire({
-                        icon: 'error',
-                        title: 'Error!',
-                        text: data.message || 'Failed to update tenant status.'
-                    });
+                    toastManager.error(data.message || 'Failed to update tenant status');
                 }
             })
             .catch(() => {
-                Swal.fire({
-                    icon: 'error',
-                    title: 'Error!',
-                    text: 'A server error occurred while updating the tenant status.'
-                });
+                toastManager.error('A server error occurred while updating the tenant status.');
             });
         }
     });
@@ -620,7 +603,23 @@ function editTenant(id) {
 // ---------- UTIL ----------
 function formatDateTime(dateString) {
     if (!dateString) return 'N/A';
-    return new Date(dateString).toLocaleString();
+    try {
+        const date = new Date(dateString);
+        if (isNaN(date.getTime())) return dateString;
+        const yyyy = date.getFullYear();
+        const mm = String(date.getMonth() + 1).padStart(2, '0');
+        const dd = String(date.getDate()).padStart(2, '0');
+        let hours = date.getHours();
+        const minutes = String(date.getMinutes()).padStart(2, '0');
+        const seconds = String(date.getSeconds()).padStart(2, '0');
+        const ampm = hours >= 12 ? 'PM' : 'AM';
+        hours = hours % 12;
+        hours = hours ? hours : 12;
+        const hh = String(hours).padStart(2, '0');
+        return `${yyyy}-${mm}-${dd} ${hh}:${minutes}:${seconds} ${ampm}`;
+    } catch (e) {
+        return dateString;
+    }
 }
 
 // ---------- EVENT BINDINGS ----------

@@ -77,10 +77,23 @@ $is_moderator = false;
 $is_main_admin_tenant = false;
 $user_id = $_SESSION['user_id'] ?? null;
 
+// Look up role IDs from database by name (avoid hardcoded IDs)
+$admin_role_id = 0;
+$moderator_role_id = 0;
+if (isset($conn) && $conn) {
+    $roleLookup = $conn->query("SELECT id, LOWER(name) AS l_name FROM roles");
+    if ($roleLookup && $roleLookup->num_rows > 0) {
+        while ($r = $roleLookup->fetch_assoc()) {
+            if ($r['l_name'] === 'admin') $admin_role_id = (int)$r['id'];
+            if ($r['l_name'] === 'moderator') $moderator_role_id = (int)$r['id'];
+        }
+    }
+}
+
 // Check flags from session
 if (isset($_SESSION['role_id'])) {
-    $is_admin = ($_SESSION['role_id'] == 1);
-    $is_moderator = ($_SESSION['role_id'] == 3);
+    $is_admin = ($_SESSION['role_id'] == $admin_role_id && $admin_role_id > 0);
+    $is_moderator = ($_SESSION['role_id'] == $moderator_role_id && $moderator_role_id > 0);
 }
 if (isset($_SESSION['is_main_admin'])) {
     $is_main_admin_tenant = ($_SESSION['is_main_admin'] == 1);
@@ -88,16 +101,20 @@ if (isset($_SESSION['is_main_admin'])) {
 
 // Check database if session is incomplete
 if ((!$is_admin || !isset($_SESSION['is_main_admin'])) && $user_id && isset($conn) && $conn) {
-    $user_id_safe = mysqli_real_escape_string($conn, $user_id);
-    $perm_query = "SELECT u.role_id, t.is_main_admin FROM users u 
-                   LEFT JOIN tenants t ON u.tenant_id = t.tenant_id 
-                   WHERE u.id = '$user_id_safe'";
-    $perm_res = mysqli_query($conn, $perm_query);
-    if ($perm_res && $perm_data = mysqli_fetch_assoc($perm_res)) {
-        $is_admin = ($perm_data['role_id'] == 1);
-        $is_moderator = ($perm_data['role_id'] == 3);
-        $is_main_admin_tenant = ($perm_data['is_main_admin'] == 1);
-        $_SESSION['is_main_admin'] = $is_main_admin_tenant;
+    $stmt = $conn->prepare("SELECT u.role_id, t.is_main_admin FROM users u 
+                            LEFT JOIN tenants t ON u.tenant_id = t.tenant_id 
+                            WHERE u.id = ?");
+    if ($stmt) {
+        $stmt->bind_param("i", $user_id);
+        $stmt->execute();
+        $perm_res = $stmt->get_result();
+        if ($perm_res && $perm_data = $perm_res->fetch_assoc()) {
+            $is_admin = ($perm_data['role_id'] == $admin_role_id && $admin_role_id > 0);
+            $is_moderator = ($perm_data['role_id'] == $moderator_role_id && $moderator_role_id > 0);
+            $is_main_admin_tenant = ($perm_data['is_main_admin'] == 1);
+            $_SESSION['is_main_admin'] = $is_main_admin_tenant;
+        }
+        $stmt->close();
     }
 }
 
@@ -186,25 +203,25 @@ $safe_company_name = htmlspecialchars($company_name, ENT_QUOTES, 'UTF-8');
             <li class="pc-item"><a class="pc-link" href="../orders/return_csv_upload.php">Return CSV Upload</a></li>
             <li class="pc-item"><a class="pc-link" href="../orders/complete_mark_upload.php">Completed Mark Upload</a></li>
             <li class="pc-item"><a class="pc-link" href="../orders/label_print.php">Label Print</a></li>
-            <?php if ($is_admin == 1 && $is_main_admin_tenant): ?>
+            <?php if ($is_admin && $is_main_admin_tenant): ?>
             <li class="pc-item"><a class="pc-link" href="../orders/payment_report.php">Payment Report</a></li>
             <?php endif; ?>
           </ul>
         </li>
 
-        <?php if ($is_admin == 1 || $is_moderator): ?>
+        <?php if ($is_admin || $is_moderator): ?>
         <li class="pc-item pc-hasmenu">
             <a href="#!" class="pc-link"><span class="pc-micon"> <i data-feather="truck"></i></span><span class="pc-mtext">Courier Management</span><span class="pc-arrow"><i class="ti ti-chevron-right"></i></span></a>
             <ul class="pc-submenu">
                 <li class="pc-item"><a class="pc-link" href="../orders/couriers.php">Courier List</a></li>
-                <?php if ($is_admin == 1 && $is_main_admin_tenant): ?>
+                <?php if ($is_admin && $is_main_admin_tenant): ?>
                 <li class="pc-item"><a class="pc-link" href="../orders/add_courier_account.php">Add Courier Account</a></li>
                 <?php endif; ?>
             </ul>
         </li>
         <?php endif; ?>
 
-        <?php if ($is_admin == 1 || $is_moderator): ?>
+        <?php if ($is_admin || $is_moderator): ?>
         <li class="pc-item pc-hasmenu">
           <a href="#!" class="pc-link"><span class="pc-micon"> <i data-feather="map-pin"></i></span><span class="pc-mtext">Tracking Management</span><span class="pc-arrow"><i class="ti ti-chevron-right"></i></span></a>
           <ul class="pc-submenu">
@@ -213,7 +230,7 @@ $safe_company_name = htmlspecialchars($company_name, ENT_QUOTES, 'UTF-8');
         </li>
         <?php endif; ?>
 
-        <?php if ($is_admin == 1 && $is_main_admin_tenant): ?>
+        <?php if ($is_admin && $is_main_admin_tenant): ?>
         <li class="pc-item pc-hasmenu">
           <a href="#!" class="pc-link"><span class="pc-micon"> <i data-feather="grid"></i></span><span class="pc-mtext">Tenants</span><span class="pc-arrow"><i class="ti ti-chevron-right"></i></span></a>
           <ul class="pc-submenu">
@@ -223,12 +240,13 @@ $safe_company_name = htmlspecialchars($company_name, ENT_QUOTES, 'UTF-8');
         </li>
         <?php endif; ?>
         
-        <?php if ($is_admin == 1): ?>
+        <?php if ($is_admin): ?>
         <li class="pc-item pc-hasmenu">
-          <a href="#!" class="pc-link"><span class="pc-micon"> <i data-feather="user-check"></i></span><span class="pc-mtext">Users</span><span class="pc-arrow"><i class="ti ti-chevron-right"></i></span></a>
+          <a href="#!" class="pc-link"><span class="pc-micon"> <i data-feather="users"></i></span><span class="pc-mtext">Users</span><span class="pc-arrow"><i class="ti ti-chevron-right"></i></span></a>
           <ul class="pc-submenu">
             <li class="pc-item"><a class="pc-link" href="../users/add_user.php">Add New User</a></li>
             <li class="pc-item"><a class="pc-link" href="../users/users.php">All Users</a></li>
+            <li class="pc-item"><a class="pc-link" href="../users/positions.php">Positions</a></li>
             <li class="pc-item"><a class="pc-link" href="../users/user_success_rate.php">User Success Rate</a></li>
             <li class="pc-item"><a class="pc-link" href="../users/user_logs.php">User Activity Log</a></li>
           </ul>
@@ -236,7 +254,7 @@ $safe_company_name = htmlspecialchars($company_name, ENT_QUOTES, 'UTF-8');
         <?php endif; ?>
         
         <li class="pc-item pc-hasmenu">
-          <a href="#!" class="pc-link"><span class="pc-micon"> <i data-feather="users"></i></span><span class="pc-mtext">Customers</span><span class="pc-arrow"><i class="ti ti-chevron-right"></i></span></a>
+          <a href="#!" class="pc-link"><span class="pc-micon"> <i data-feather="user-check"></i></span><span class="pc-mtext">Customers</span><span class="pc-arrow"><i class="ti ti-chevron-right"></i></span></a>
           <ul class="pc-submenu">
             <li class="pc-item"><a class="pc-link" href="../customers/add_customer.php">Add New Customer</a></li>
             <li class="pc-item"><a class="pc-link" href="../customers/customer_list.php">All Customers</a></li>
@@ -249,18 +267,36 @@ $safe_company_name = htmlspecialchars($company_name, ENT_QUOTES, 'UTF-8');
             <li class="pc-item"><a class="pc-link" href="../products/add_product.php">Add New Product</a></li>
             <li class="pc-item"><a class="pc-link" href="../products/product_list.php">All Products</a></li>
             <li class="pc-item"><a class="pc-link" href="../products/category_list.php">Category List</a></li>
-            <?php if ($is_admin == 1 && $is_main_admin_tenant): ?>
+            <?php if ($is_admin && $is_main_admin_tenant): ?>
             <li class="pc-item"><a class="pc-link" href="../products/product_analysis.php">Product Analysis</a></li>
             <?php endif; ?>
           </ul>
         </li>
 
+        <li class="pc-item pc-caption"><label>Purchasing Management</label></li>
+
+        <li class="pc-item pc-hasmenu">
+          <a href="#!" class="pc-link"><span class="pc-micon"> <i data-feather="truck"></i></span><span class="pc-mtext">Suppliers</span><span class="pc-arrow"><i class="ti ti-chevron-right"></i></span></a>
+          <ul class="pc-submenu">
+            <li class="pc-item"><a class="pc-link" href="../suppliers/add_supplier.php">Add New Supplier</a></li>
+            <li class="pc-item"><a class="pc-link" href="../suppliers/supplier_list.php">All Suppliers</a></li>
+          </ul>
+        </li>
+
+        <li class="pc-item pc-hasmenu">
+          <a href="#!" class="pc-link"><span class="pc-micon"> <i data-feather="clipboard"></i></span><span class="pc-mtext">GRN</span><span class="pc-arrow"><i class="ti ti-chevron-right"></i></span></a>
+          <ul class="pc-submenu">
+            <li class="pc-item"><a class="pc-link" href="../grn/create_grn.php">Create GRN</a></li>
+            <li class="pc-item"><a class="pc-link" href="../grn/grn_list.php">All GRN</a></li>
+          </ul>
+        </li>
+
         <li class="pc-item pc-caption"><label>Lead Management</label></li>
         <li class="pc-item pc-hasmenu">
-          <a href="#!" class="pc-link"><span class="pc-micon"> <i data-feather="trending-up"></i></span><span class="pc-mtext">Leads</span><span class="pc-arrow"><i class="ti ti-chevron-right"></i></span></a>
+          <a href="#!" class="pc-link"><span class="pc-micon"> <i data-feather="user-plus"></i></span><span class="pc-mtext">Leads</span><span class="pc-arrow"><i class="ti ti-chevron-right"></i></span></a>
           <ul class="pc-submenu">
             <li class="pc-item"><a class="pc-link" href="../leads/lead_upload.php">Lead Upload</a></li>
-            <?php if ($is_admin == 1): ?>
+            <?php if ($is_admin): ?>
             <li class="pc-item"><a class="pc-link" href="../leads/lead_list.php">All Leads</a></li>
             <?php endif; ?>
             <li class="pc-item"><a class="pc-link" href="../leads/my_leads.php">My Leads</a></li>
@@ -268,7 +304,7 @@ $safe_company_name = htmlspecialchars($company_name, ENT_QUOTES, 'UTF-8');
           </ul>
         </li>
 
-        <?php if ($is_admin == 1 && !$is_main_admin_tenant): ?>
+        <?php if ($is_admin && !$is_main_admin_tenant): ?>
     <li class="pc-item pc-hasmenu">
         <a href="#!" class="pc-link">
             <span class="pc-micon">

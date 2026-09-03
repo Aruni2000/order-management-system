@@ -40,7 +40,7 @@ if ($user_id == 0) {
 
 // Function to log user actions
 function logUserAction($conn, $user_id, $action_type, $inquiry_id, $details = null) {
-    $stmt = $conn->prepare("INSERT INTO user_logs (user_id, action_type, inquiry_id, details) VALUES (?, ?, ?, ?)");
+    $stmt = $conn->prepare("INSERT INTO user_logs (user_id, action_type, inquiry_id, details, created_at) VALUES (?, ?, ?, ?, NOW())");
     $stmt->bind_param("isis", $user_id, $action_type, $inquiry_id, $details);
     return $stmt->execute();
 }
@@ -595,6 +595,33 @@ foreach ($order_items as $item) {
     // ✅ FIXED: Calculate total_amount: (unit_price × quantity) - total_discount
     $row_total_price = $item['original_price'] * $item['quantity'];
     $item_total = $row_total_price - $item['discount']; // Discount is already total for this row
+    
+    // Check and deduct stock atomically to prevent overselling and race conditions
+    if (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1) {
+        $updateStockSql = "UPDATE products SET stock_quantity = stock_quantity - ? WHERE id = ? AND stock_quantity >= ?";
+        $stockStmt = $conn->prepare($updateStockSql);
+        $stockStmt->bind_param("iii", $item['quantity'], $item['product_id'], $item['quantity']);
+        
+        if (!$stockStmt->execute()) {
+            throw new Exception("Failed to update stock for product ID: " . $item['product_id']);
+        }
+        
+        if ($stockStmt->affected_rows === 0) {
+            // Fetch product name for better error message
+            $getNameSql = "SELECT name FROM products WHERE id = ?";
+            $nameStmt = $conn->prepare($getNameSql);
+            $nameStmt->bind_param("i", $item['product_id']);
+            $nameStmt->execute();
+            $productResult = $nameStmt->get_result();
+            $productName = "Unknown product";
+            if ($productResult && $productRow = $productResult->fetch_assoc()) {
+                $productName = $productRow['name'];
+            }
+            $nameStmt->close();
+            throw new Exception("Insufficient stock for product: " . $productName);
+        }
+        $stockStmt->close();
+    }
     
     $stmt->bind_param(
         "iiidissss",
@@ -1884,7 +1911,7 @@ $updateOrderStmt->bind_param("iisi", $co_id, $default_courier_id, $tracking_numb
         
     } catch (Exception $e) {
         // Rollback transaction
-        if ($conn->inTransaction()) {
+        if (isset($conn) && $conn instanceof mysqli) {
             $conn->rollback();
         }
         

@@ -176,7 +176,6 @@ try {
         }
         
         $paymentDate = date('Y-m-d H:i:s');
-        $updatedAt = date('Y-m-d H:i:s');
         
         // Update order_header with payment information
         $updateHeaderSql = "UPDATE order_header SET 
@@ -184,7 +183,7 @@ try {
                            pay_by = ?, 
                            pay_date = ?, 
                            slip = ?,
-                           updated_at = ?
+                           updated_at = updated_at
                            WHERE order_id = ? AND pay_status != 'paid'";
         
         $updateHeaderStmt = $conn->prepare($updateHeaderSql);
@@ -194,7 +193,7 @@ try {
         
         // pay_by seems to be varchar(50) in your table, so we'll store the user ID as string
         $payByValue = "User_" . $currentUserId;
-        $updateHeaderStmt->bind_param("sssss", $payByValue, $paymentDate, $fileName, $updatedAt, $orderId);
+        $updateHeaderStmt->bind_param("ssss", $payByValue, $paymentDate, $fileName, $orderId);
         
         if (!$updateHeaderStmt->execute()) {
             throw new Exception('Failed to update order header: ' . $updateHeaderStmt->error);
@@ -249,9 +248,7 @@ try {
         // Get the actual payment_id that was just inserted
         $paymentId = $conn->insert_id;
         
-        // Insert simplified user log entry
-        // Format: "pending unpaid order(id) paid mark | payment(payment_id)"
-        $logMessage = $orderData['status'] . " unpaid order(" . $orderId . ") paid mark | payment(" . $paymentId . ")";
+        $logMessage = "Marked Order #" . $orderId . " as Paid";
         
         $logSql = "INSERT INTO user_logs (user_id, action_type, inquiry_id, details, created_at) 
                    VALUES (?, 'payment_marked', ?, ?, CURRENT_TIMESTAMP)";

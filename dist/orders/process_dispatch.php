@@ -172,12 +172,14 @@ try {
         // Get user ID for logging
         $user_id = $_SESSION['user_id'] ?? $_SESSION['id'] ?? 0;
         
-        $log_message = "Add a dispatch unpaid order({$order_id}) with system tracking({$tracking_number}) and co_id({$courier_co_id}) for tenant({$order_tenant_id})";
+        $log_message = "Dispatched Order #{$order_id} with tracking({$tracking_number})";
+        
+        $log_details = $log_message;
         
         $user_log_sql = "INSERT INTO user_logs (user_id, action_type, inquiry_id, details, created_at) 
                         VALUES (?, 'order_dispatch', ?, ?, NOW())";
         $user_log_stmt = $conn->prepare($user_log_sql);
-        $user_log_stmt->bind_param("iss", $user_id, $order_id, $log_message);
+        $user_log_stmt->bind_param("iis", $user_id, $order_id, $log_details);
         
         if (!$user_log_stmt->execute()) {
             throw new Exception('Failed to log user action');

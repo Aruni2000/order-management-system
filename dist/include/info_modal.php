@@ -16,7 +16,7 @@ if (!isset($GLOBALS['_INFO_MODAL_CSS_LOADED'])) {
             left: 0;
             width: 100vw;
             height: 100vh;
-            background: rgba(0, 0, 0, 0.5);
+            background: rgba(0, 0, 0, 0.8);
             backdrop-filter: blur(4px);
             -webkit-backdrop-filter: blur(4px);
             display: flex;
@@ -25,6 +25,7 @@ if (!isset($GLOBALS['_INFO_MODAL_CSS_LOADED'])) {
             z-index: 9999;
             padding: 20px;
             box-sizing: border-box;
+            animation: fadeIn 0.2s ease;
         }
         .modal-container {
             background: #fff;
@@ -36,6 +37,7 @@ if (!isset($GLOBALS['_INFO_MODAL_CSS_LOADED'])) {
             display: flex;
             flex-direction: column;
             min-width: 0;
+            animation: slideUp 0.3s ease;
         }
         .modal-header {
             display: flex;
@@ -99,6 +101,22 @@ if (!isset($GLOBALS['_INFO_MODAL_CSS_LOADED'])) {
             border-radius: 0 0 12px 12px;
             text-align: right;
             flex-shrink: 0;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px) scale(0.95);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
         }
     </style>
     <?php

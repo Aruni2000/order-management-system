@@ -29,7 +29,7 @@ if (!($is_main_admin === 1 && $role_id === 1)) {
 
 // Function to log user actions
 function logUserAction($conn, $user_id, $action_type, $inquiry_id, $details = null) {
-    $stmt = $conn->prepare("INSERT INTO user_logs (user_id, action_type, inquiry_id, details) VALUES (?, ?, ?, ?)");
+    $stmt = $conn->prepare("INSERT INTO user_logs (user_id, action_type, inquiry_id, details, created_at) VALUES (?, ?, ?, ?, NOW())");
     $stmt->bind_param("isis", $user_id, $action_type, $inquiry_id, $details);
     return $stmt->execute();
 }
@@ -108,7 +108,7 @@ function checkCourierStatus($conn, $tenant_id) {
 $courierStatus = checkCourierStatus($conn, $selected_tenant_id);
 
 // Fetch necessary data for the form
-$sql = "SELECT id, name, description, lkr_price FROM products WHERE status = 'active' ORDER BY name ASC";
+$sql = "SELECT id, name, description, lkr_price, stock_quantity, low_stock_threshold FROM products WHERE status = 'active' ORDER BY name ASC";
 $result = $conn->query($sql);
 
 
@@ -167,12 +167,12 @@ if ($is_main_admin === 1 && $role_id === 1) {
 
 <head>
     <!-- TITLE -->
-    <title>Order Management Admin Portal - Create Order</title>
+    <title>Create Order | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
 
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
     
     <!-- [Template CSS Files] -->
-    <link rel="stylesheet" href="../assets/css/styles.css" id="main-style-link" />
+    <link rel="stylesheet" href="../assets/css/styles.css" />
 </head>
 <style>
 .tenant-selector-card {
@@ -473,6 +473,11 @@ if ($is_main_admin === 1 && $role_id === 1) {
     to { transform: rotate(360deg); }
 }
 
+.out-of-stock-option {
+    color: #dc3545 !important;
+    font-style: italic;
+}
+
 </style>
 <body>
     <!-- LOADER -->
@@ -675,34 +680,33 @@ if ($is_main_admin === 1 && $role_id === 1) {
                             
                             <div class="form-group">
                                 <label class="form-label">Phone</label>
-                                <input type="text" class="form-control" name="customer_phone" id="customer_phone" placeholder="(07) xxxx xxxx">
+                                <input type="tel" class="form-control" name="customer_phone" id="customer_phone" placeholder="Enter Phone Number">
                             </div>
 
-                            <!-- NEW Phone 2 Field -->
                             <div class="form-group">
                                 <label class="form-label">Phone 2</label>
-                                <input type="text" class="form-control" name="customer_phone_2" id="customer_phone_2" placeholder="(07) xxxx xxxx">
+                                <input type="tel" class="form-control" name="customer_phone_2" id="customer_phone_2" placeholder="Enter Phone Number 2">
                             </div>
                             
+                            <div class="form-group">
+                                <label class="form-label">Address Line 1</label>
+                                <input type="text" class="form-control" name="address_line1" id="address_line1" placeholder="Enter Address Line 1">
+                            </div>
+                            
+                            <div class="form-group">
+                                <label class="form-label">Address Line 2</label>
+                                <input type="text" class="form-control" name="address_line2" id="address_line2" placeholder="Enter Address Line 2">
+                            </div>
+
                             <div class="form-group">
                                 <label class="form-label">City</label>
                                 <input type="text" 
                                     class="form-control" 
                                     id="city_autocomplete" 
-                                    placeholder="Start typing city name..."
+                                    placeholder="Enter City"
                                     autocomplete="off">
                                 <input type="hidden" name="city_id" id="city_id">
                                 <div id="city_suggestions" class="autocomplete-suggestions"></div>
-                            </div>
-                            
-                            <div class="form-group">
-                                <label class="form-label">Address Line 1</label>
-                                <input type="text" class="form-control" name="address_line1" id="address_line1">
-                            </div>
-                            
-                            <div class="form-group">
-                                <label class="form-label">Address Line 2</label>
-                                <input type="text" class="form-control" name="address_line2" id="address_line2">
                             </div>
                         </div>
                     </div>
@@ -740,11 +744,23 @@ if ($is_main_admin === 1 && $role_id === 1) {
                                                     <?php
                                                     // Reset the pointer for $result
                                                     $result->data_seek(0);
-                                                    while ($row = $result->fetch_assoc()): ?>
+                                                    while ($row = $result->fetch_assoc()): 
+                                                        $stock = (int)$row['stock_quantity'];
+                                                        $allow_inventory = isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1;
+                                                        $is_out_of_stock = $allow_inventory && ($stock <= 0);
+                                                        
+                                                        $stock_label = "";
+                                                        if ($allow_inventory) {
+                                                            $stock_label = $is_out_of_stock ? " (Unavailable)" : " (Stock: $stock)";
+                                                        }
+                                                    ?>
                                                         <option value="<?= $row['id'] ?>"
                                                             data-lkr-price="<?= $row['lkr_price'] ?>"
-                                                            data-description="<?= htmlspecialchars($row['description']) ?>">
-                                                            <?= htmlspecialchars($row['name']) ?>
+                                                            data-description="<?= htmlspecialchars($row['description']) ?>"
+                                                            data-stock="<?= $allow_inventory ? $stock : 999999 ?>"
+                                                            class="<?= $is_out_of_stock ? 'out-of-stock-option' : '' ?>"
+                                                            <?= $is_out_of_stock ? 'disabled' : '' ?>>
+                                                            <?= htmlspecialchars($row['name']) . $stock_label ?>
                                                         </option>
                                                     <?php endwhile; ?>
                                                 </select>
@@ -1436,11 +1452,28 @@ const ProductManager = {
         // Continue with normal product selection if no duplicate
         const priceField = row.querySelector('.price');
         const descriptionField = row.querySelector('.product-description');
+        const quantityInput = row.querySelector('.quantity');
         const description = selectedOption.getAttribute('data-description') || '';
         const price = parseFloat(selectedOption.getAttribute('data-lkr-price') || 0);
+        const stock = parseInt(selectedOption.getAttribute('data-stock') || 0);
 
         priceField.value = isNaN(price) ? '0.00' : price.toFixed(2);
         descriptionField.value = description;
+
+        // Enable fields
+        if (stock > 0) {
+            quantityInput.disabled = false;
+            quantityInput.max = stock;
+            if (parseInt(quantityInput.value) > stock) {
+                quantityInput.value = stock;
+            }
+        } else {
+            quantityInput.disabled = true;
+            quantityInput.value = 0;
+        }
+
+        priceField.disabled = false;
+        row.querySelector('.discount').disabled = false;
 
         ProductManager.updateRowTotal(row);
         ProductManager.checkForProducts();
@@ -1449,7 +1482,26 @@ const ProductManager = {
 updateRowTotal: (row) => {
     let price = parseFloat(row.querySelector('.price').value) || 0;
     let discount = parseFloat(row.querySelector('.discount').value) || 0;
-    let quantity = parseInt(row.querySelector('.quantity').value) || 1;
+    
+    const qtyInput = row.querySelector('.quantity');
+    const productSelect = row.querySelector('.product-select');
+    const selectedOption = productSelect.options[productSelect.selectedIndex];
+    
+    if (qtyInput.value !== "" && parseInt(qtyInput.value) < 1) {
+        qtyInput.value = 1;
+    }
+    
+    let quantity = parseInt(qtyInput.value) || 1;
+
+    // Stock validation
+    if (selectedOption && selectedOption.value !== "") {
+        const stock = parseInt(selectedOption.getAttribute('data-stock') || 0);
+        if (quantity > stock) {
+            qtyInput.value = stock;
+            quantity = stock;
+        }
+        qtyInput.max = stock;
+    }
 
     // Calculate total price before discount
     let totalPrice = price * quantity;
@@ -1573,12 +1625,16 @@ updateRowTotal: (row) => {
         let newRow = document.querySelector('#order_table tbody tr').cloneNode(true);
         
         newRow.querySelectorAll('input').forEach(input => {
+            input.removeAttribute('max');
             if (input.classList.contains('price')) {
                 input.value = '0.00';
+                input.disabled = true;
             } else if (input.classList.contains('discount')) {
                 input.value = '0';
+                input.disabled = true;
             } else if (input.classList.contains('quantity')) {
                 input.value = '1';
+                input.disabled = true;
             } else if (input.classList.contains('subtotal')) {
                 input.value = '0.00';
             } else {

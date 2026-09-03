@@ -184,13 +184,12 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
 <html lang="en" data-pc-preset="preset-1" data-pc-sidebar-caption="true" data-pc-direction="ltr" dir="ltr" data-pc-theme="light">
 
 <head>
-    <title>Order Management Admin Portal - Complete Orders</title>
+    <title>Complete Orders | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
     
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
     
     <!-- Stylesheets -->
-    <link rel="stylesheet" href="../assets/css/style.css" id="main-style-link" />
-    <link rel="stylesheet" href="../assets/css/orders.css" id="main-style-link" />
+    <link rel="stylesheet" href="../assets/css/orders.css" />
     <style>
         /* NEW: Issue Date Styling */
 .issued-time {
@@ -344,7 +343,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                             if (isset($row['created_at']) && !empty($row['created_at'])) {
                                                 $createdAt = new DateTime($row['created_at']);
                                                 echo '<span class="issued-date">' . $createdAt->format('Y-m-d') . '</span>';
-                                                echo '<span class="issued-time-only">' . $createdAt->format('H:i:s') . '</span>';
+                                                echo '<span class="issued-time-only">' . $createdAt->format('h:i:s A') . '</span>';
                                             } else {
                                                 echo '<span style="color: #999; font-style: italic;">N/A</span>';
                                             }
@@ -357,7 +356,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                             if (isset($row['updated_at']) && !empty($row['updated_at'])) {
                                                 $updatedAt = new DateTime($row['updated_at']);
                                                 echo '<span class="updated-date">' . $updatedAt->format('Y-m-d') . '</span>';
-                                                echo '<span class="updated-time-only">' . $updatedAt->format('H:i:s') . '</span>';
+                                                echo '<span class="updated-time-only">' . $updatedAt->format('h:i:s A') . '</span>';
                                             } else {
                                                 echo '<span style="color: #999; font-style: italic;">N/A</span>';
                                             }

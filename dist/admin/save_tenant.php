@@ -77,8 +77,6 @@ try {
         $errors['company_name'] = 'Company name is required';
     } elseif (strlen($company_name) < 2) {
         $errors['company_name'] = 'Company name must be at least 2 characters long';
-    } elseif (strlen($company_name) > 15) {
-        $errors['company_name'] = 'Company name is too long (maximum 15 characters)';
     }
 
     // Validate contact person
@@ -92,25 +90,30 @@ try {
         $errors['contact_person'] = 'Contact person name can only contain letters, spaces, dots, hyphens, and apostrophes';
     }
 
-    // Validate email
-    if (empty($email)) {
-        $errors['email'] = 'Email address is required';
-    } elseif (strlen($email) > 100) {
-        $errors['email'] = 'Email address is too long (maximum 100 characters)';
-    } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-        $errors['email'] = 'Please enter a valid email address';
-    } else {
-        // Check if email already exists
-        $check_email_sql = "SELECT tenant_id FROM tenants WHERE email = ?";
-        $check_stmt = $conn->prepare($check_email_sql);
-        $check_stmt->bind_param("s", $email);
-        $check_stmt->execute();
-        $check_result = $check_stmt->get_result();
-        
-        if ($check_result->num_rows > 0) {
-            $errors['email'] = 'This email address is already registered';
+    // Validate email (optional)
+    if (!empty($email)) {
+        if (strlen($email) > 100) {
+            $errors['email'] = 'Email address is too long (maximum 100 characters)';
+        } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $errors['email'] = 'Please enter a valid email address';
+        } else {
+            // Check if email already exists
+            $check_email_sql = "SELECT tenant_id FROM tenants WHERE email = ?";
+            $check_stmt = $conn->prepare($check_email_sql);
+            $check_stmt->bind_param("s", $email);
+            $check_stmt->execute();
+            $check_result = $check_stmt->get_result();
+            
+            if ($check_result->num_rows > 0) {
+                $errors['email'] = 'This email address is already registered';
+            }
+            $check_stmt->close();
         }
-        $check_stmt->close();
+    }
+
+    // Validate address
+    if (empty($address)) {
+        $errors['address'] = 'Company address is required';
     }
 
     // Validate phone

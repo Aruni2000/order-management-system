@@ -239,115 +239,6 @@
 
 
 
-/* ====================================
-   STATUS BADGES
-   ==================================== */
-
-.status-badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 6px 12px;
-  border-radius: 20px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  transition: all 0.2s ease;
-}
-
-.status-completed {
-  background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%);
-  color: #166534;
-  border: 1px solid #86efac;
-}
-
-.status-dispatched {
-  background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
-  color: #1e40af;
-  border: 1px solid #93c5fd;
-}
-
-.pay-status-paid {
-  background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%);
-  color: #166534;
-  border: 1px solid #86efac;
-}
-
-.pay-status-unpaid {
-  background: linear-gradient(135deg, #fef2f2 0%, #fecaca 100%);
-  color: #991b1b;
-  border: 1px solid #fca5a5;
-}
-
-.status-badge-warning {
-  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
-  color: #92400e;
-  border: 1px solid #fcd34d;
-}
-
-.status-badge-info {
-  background: linear-gradient(135deg, #e0f2fe 0%, #bfdbfe 100%);
-  color: #1d4ed8;
-  border: 1px solid #93c5fd;
-}
-
-/* Success Rate Badges */
-.rate-excellent {
-  background-color: #d1fae5;
-  color: #166534;
-  border: 1px solid #86efac;
-}
-
-.rate-good {
-  background-color: #dbeafe;
-  color: #1d4ed8;
-  border: 1px solid #93c5fd;
-}
-
-.rate-average {
-  background-color: #fef3c7;
-  color: #92400e;
-  border: 1px solid #fcd34d;
-}
-
-.rate-bad {
-  background-color: #fee2e2;
-  color: #991b1b;
-  border: 1px solid #fca5a5;
-}
-
-.rate-new {
-  background-color: #e2e2e7;
-  color: #374151;
-  border: 1px solid #d1d5db;
-}
-
-.status-badge:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-}
-
-/* ====================================
-   ZONE TYPE BADGES
-   ==================================== */
-
-.zone-type-suburb {
-  background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
-  color: #1e40af;
-  border: 1px solid #93c5fd;
-}
-
-.zone-type-outstation {
-  background: linear-gradient(135deg, #ffedd5 0%, #fed7aa 100%);
-  color: #9a3412;
-  border: 1px solid #fdba74;
-}
-
-.zone-type-remote {
-  background: linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 100%);
-  color: #7c3aed;
-  border: 1px solid #c4b5fd;
-}
 
 /* ====================================
    ACTION BUTTONS
@@ -537,11 +428,6 @@
     flex-wrap: wrap;
     justify-content: center;
   }
-  
-  .status-badge {
-    font-size: 0.7rem;
-    padding: 4px 8px;
-  }
 }
 
 /* ====================================
@@ -620,7 +506,7 @@
   left: 0;
   width: 100vw;
   height: 100vh;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(0, 0, 0, 0.8);
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
   z-index: 9999;
@@ -1875,32 +1761,6 @@
   /* max-height: none; */
 }
 
-        .status-active {
-            background-color: #28a745 !important;
-            color: white !important;
-        }
-        
-        .status-inactive {
-            background-color: #6c757d !important;
-            color: white !important;
-        }
-        
-        /* Commission badges */
-        .commission-badge {
-            font-size: 0.8rem;
-            padding: 4px 8px;
-            border-radius: 12px;
-            font-weight: 500;
-            margin-bottom: 4px;
-            display: inline-block;
-        }
-        
-        .commission-info {
-            font-size: 0.75rem;
-            color: #6c757d;
-            margin-top: 2px;
-        }
-        
         /* Action buttons consistent with your existing UI */
         .btn-action {
             padding: 6px 12px;
@@ -2180,28 +2040,6 @@
     margin-top: 2px;
 }
 
-.status-badge {
-    display: inline-block;
-    padding: 4px 12px;
-    border-radius: 20px;
-    font-size: 0.75rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-}
-
-.status-active {
-    background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%);
-    color: #166534 !important;
-    border: 1px solid #86efac;
-}
-
-
-.status-inactive {
-    background: linear-gradient(135deg, #fef2f2 0%, #fecaca 100%) !important;
-    color: #962727 !important;
-        border: 1px solid #fca5a5;
-}
 /* Confirmation Modal Styles */
 .confirmation-modal .modal-content {
     max-width: 450px;

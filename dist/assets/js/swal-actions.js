@@ -98,9 +98,12 @@ function selectAnswerStatus(labelEl, value) {
 // CONDITION RADIO SELECTION
 // =============================================
 function selectCondition(labelEl, value) {
-    var parent = labelEl.closest('.condition-radio-list');
-    var items = parent.querySelectorAll('.condition-radio-item label');
-    items.forEach(function(l) { l.classList.remove('selected'); });
+    var parent = labelEl.closest('.condition-card-container');
+    var allRows = parent.querySelectorAll('.card-radio-row');
+    allRows.forEach(function(row) {
+        var labels = row.querySelectorAll('.card-radio-label');
+        labels.forEach(function(l) { l.classList.remove('selected'); });
+    });
     labelEl.classList.add('selected');
     var radio = labelEl.querySelector('input[type="radio"]');
     if (radio) radio.checked = true;
@@ -160,52 +163,53 @@ function cancelOrder(orderId) {
 }
 
 // =============================================
-// 4. RESTORE ORDER
-// =============================================
-function restoreOrder(orderId) {
-    if (!orderId || orderId.trim() === '') {
-        toastManager.warning('Order ID is required to restore order.');
-        return;
-    }
-    document.getElementById('ro-order-hdr').textContent = orderId.trim();
-    showModal('restoreOrderModal');
-}
-
-// =============================================
-// 5. UPDATE SUCCESS RATE (Condition)
+// 4. UPDATE SUCCESS RATE (Condition)
 // =============================================
 function openConditionModal(orderId, currentCondition) {
     if (!orderId) return;
 
     var condNames = {0:'Excellent',1:'Good',2:'Average',3:'Bad',4:'New'};
-    var condColors = {0:'#198754',1:'#0d6efd',2:'#fd7e14',3:'#dc3545',4:'#6c757d'};
-    var currentName = condNames[currentCondition] || '—';
 
     document.getElementById('cd-order-hdr').textContent = orderId;
-    var nameEl = document.getElementById('cd-current-name');
-    nameEl.textContent = currentName;
-    nameEl.style.color = '#fff';
-    nameEl.style.background = condColors[currentCondition] || '#6c757d';
 
-    // Build radio list
     var list = document.getElementById('cd-radio-list');
     if (!list) return;
     list.innerHTML = '';
+
+    var condIcons = {0:'fa-star',1:'fa-thumbs-up',2:'fa-minus-circle',3:'fa-thumbs-down',4:'fa-bolt'};
+    var condSubs = {0:'Top performer',1:'Above average',2:'Moderate success',3:'Low performer',4:'No data yet'};
+    var condVariants = {0:'excellent-variant',1:'good-variant',2:'average-variant',3:'danger-variant',4:'new-variant'};
     var keys = Object.keys(condNames);
-    for (var i = 0; i < keys.length; i++) {
-        var val = keys[i];
-        var name = condNames[val];
-        var checked = (parseInt(val) === currentCondition);
-        var div = document.createElement('div');
-        div.className = 'condition-radio-item';
-        var label = document.createElement('label');
-        if (checked) label.classList.add('selected');
-        label.setAttribute('onclick', 'selectCondition(this, \'' + val + '\')');
-        label.innerHTML = '<input type="radio" name="cd_condition" value="' + val + '" ' + (checked ? 'checked' : '') + '>'
-                        + '<span class="condition-name">' + name + '</span>';
-        div.appendChild(label);
-        list.appendChild(div);
+
+    // Split into two rows: first 3, last 2
+    var row1Keys = keys.slice(0, 3);
+    var row2Keys = keys.slice(3);
+
+    function buildRow(rowKeys) {
+        var row = document.createElement('div');
+        row.className = 'card-radio-row';
+        for (var r = 0; r < rowKeys.length; r++) {
+            var val = rowKeys[r];
+            var name = condNames[val];
+            var icon = condIcons[val] || 'fa-star';
+            var sub = condSubs[val] || '';
+            var variant = condVariants[val] || '';
+            var checked = (parseInt(val) === currentCondition);
+            var label = document.createElement('label');
+            label.className = 'card-radio-label' + (variant ? ' ' + variant : '');
+            if (checked) label.classList.add('selected');
+            label.setAttribute('onclick', 'selectCondition(this, \'' + val + '\')');
+            label.innerHTML = '<input type="radio" name="cd_condition" value="' + val + '" ' + (checked ? 'checked' : '') + ' style="display:none;">'
+                            + '<div class="radio-icon"><i class="fas ' + icon + '"></i></div>'
+                            + '<span class="radio-title">' + name + '</span>'
+                            + '<span class="radio-sub">' + sub + '</span>';
+            row.appendChild(label);
+        }
+        return row;
     }
+
+    list.appendChild(buildRow(row1Keys));
+    list.appendChild(buildRow(row2Keys));
 
     showModal('conditionModal');
 }
@@ -348,29 +352,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 else { showAlert('error', data.message || 'Failed to cancel order'); }
             })
             .catch(function(err) { console.error('Error:', err); showAlert('error', 'An error occurred while cancelling the order.'); })
-            .finally(function() { btn.innerHTML = origText; btn.disabled = false; });
-        });
-    }
-
-    // --- Restore Order ---
-    var roForm = document.getElementById('restoreOrderForm');
-    if (roForm) {
-        roForm.addEventListener('submit', function(e) {
-            e.preventDefault();
-            var orderId = document.getElementById('ro-order-hdr').textContent;
-            var btn = document.getElementById('ro-submit-btn');
-            var origText = btn.innerHTML;
-            btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Restoring...';
-            var formData = new FormData();
-            formData.append('order_id', orderId.trim());
-            var apiBase = getApiBase();
-            fetch(apiBase + 'restore_order.php', { method: 'POST', body: formData })
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-                if (data.success) { showAlert('success', 'Order restored successfully!'); hideModal('restoreOrderModal'); setTimeout(function() { window.location.reload(); }, 1500); }
-                else { showAlert('error', data.message || 'Failed to restore order'); }
-            })
-            .catch(function(err) { console.error('Error restoring order:', err); showAlert('error', 'An error occurred while restoring the order.'); })
             .finally(function() { btn.innerHTML = origText; btn.disabled = false; });
         });
     }

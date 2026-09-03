@@ -49,15 +49,14 @@ try {
 
 <head>
     <!-- TITLE -->
-    <title>Order Management Admin Portal - Add Product</title>
+    <title>Add Product | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
 
     <?php
     include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php');
     ?>
     
     <!-- [Template CSS Files] -->
-    <link rel="stylesheet" href="../assets/css/style.css" id="main-style-link" />
-    <link rel="stylesheet" href="../assets/css/products.css" id="main-style-link" />
+    <link rel="stylesheet" href="../assets/css/products.css" />
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
  
     <!-- Custom CSS for AJAX notifications -->
@@ -320,7 +319,33 @@ try {
                                 </div>
                             </div>
 
-                            <!-- Third Row: Description -->
+                            <!-- Stock Quantity and Stock Warning Level - only if enabled -->
+                            <?php if (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1): ?>
+                            <div class="form-row">
+                                <div class="product-form-group">
+                                    <label for="stock_quantity" class="form-label">
+                                        <i class="fas fa-cubes"></i> Stock Quantity<span class="required">*</span>
+                                    </label>
+                                    <input type="number" class="form-control" id="stock_quantity" name="stock_quantity"
+                                        placeholder="0" required min="0" step="1" value="0">
+                                    <div class="error-feedback" id="stock_quantity-error"></div>
+                                </div>
+
+                                <div class="product-form-group">
+                                    <label for="low_stock_threshold" class="form-label">
+                                        <i class="fas fa-exclamation-circle"></i> Stock Warning Level<span class="required">*</span>
+                                    </label>
+                                    <input type="number" class="form-control" id="low_stock_threshold" name="low_stock_threshold"
+                                        placeholder="10" required min="0" step="1" value="10">
+                                    <div class="error-feedback" id="low_stock_threshold-error"></div>
+                                </div>
+                            </div>
+                            <?php else: ?>
+                            <input type="hidden" name="stock_quantity" value="0">
+                            <input type="hidden" name="low_stock_threshold" value="0">
+                            <?php endif; ?>
+
+                            <!-- Fourth Row: Description -->
                            <div class="form-row">
                             <div class="product-form-group full-width">
                                 <label for="description" class="form-label">

@@ -524,13 +524,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file']) && isset
 <html lang="en" data-pc-preset="preset-1" data-pc-sidebar-caption="true" data-pc-direction="ltr" dir="ltr" data-pc-theme="light">
 
 <head>
-    <title>Order Management Admin Portal - Tracking CSV Upload</title>
+    <title>Tracking CSV Upload | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
     
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
     
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css">
-    <link rel="stylesheet" href="../assets/css/style.css" id="main-style-link" />
-    <link rel="stylesheet" href="../assets/css/leads.css" id="main-style-link" />
+    <!-- Stylesheets -->
+    <link rel="stylesheet" href="../assets/css/leads.css" />
 </head>
 
 <body>
@@ -548,7 +547,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file']) && isset
                     <div class="page-header-title">
                         <h5 class="mb-0 font-medium">
                             Tracking Numbers Upload
-                            <i class="fas fa-info-circle text-primary" style="cursor: pointer; font-size: 16px; margin-left: 8px;" onclick="openInfoModal()" title="How to use this page"></i>
+                            <i class="fas fa-info-circle text-primary" style="cursor: pointer; font-size: 16px; margin-left: 8px; color: #3b82f6;" onclick="openInfoModal()" title="How to use this page"></i>
                         </h5>
                     </div>
                 </div>

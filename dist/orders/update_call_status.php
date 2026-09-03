@@ -90,7 +90,7 @@ try {
                           call_log = ?, 
                           answer_reason = ?, 
                           no_answer_reason = NULL,
-                          updated_at = CURRENT_TIMESTAMP 
+                          updated_at = updated_at 
                           WHERE order_id = ?";
             $params = [$call_log, $answer_reason, $order_id];
             $types = "iss";
@@ -101,7 +101,7 @@ try {
                           call_log = ?, 
                           no_answer_reason = ?, 
                           answer_reason = NULL,
-                          updated_at = CURRENT_TIMESTAMP 
+                          updated_at = updated_at 
                           WHERE order_id = ?";
             $params = [$call_log, $answer_reason, $order_id];
             $types = "iss";
@@ -123,10 +123,7 @@ try {
         }
         
         // Check if any rows were affected
-        if ($updateStmt->affected_rows === 0) {
-            throw new Exception('No changes made to the order');
-        }
-        
+        $noChanges = ($updateStmt->affected_rows === 0);
         $updateStmt->close();
         
         // Get current user ID from session
@@ -139,11 +136,17 @@ try {
             $currentUserId = 1; // Default fallback
         }
         
-        // Simple log message format with actual notes
+        // Log message format
         if ($call_log == 1) {
-            $log_message = "Call answered order({$order_id}) - {$answer_reason}";
+            $log_message = "Marked Order #{$order_id} as Answered";
+            if (!empty($answer_reason)) {
+                $log_message .= " - {$answer_reason}";
+            }
         } else {
-            $log_message = "Call no answer order({$order_id}) - {$answer_reason}";
+            $log_message = "Marked Order #{$order_id} as No Answer";
+            if (!empty($answer_reason)) {
+                $log_message .= " - {$answer_reason}";
+            }
         }
         
         // Insert user log entry with simple format
@@ -155,7 +158,7 @@ try {
             throw new Exception('Failed to prepare log statement: ' . $conn->error);
         }
         
-        $logStmt->bind_param("isss", $currentUserId, $action_type, $order_id, $log_message);
+        $logStmt->bind_param("isis", $currentUserId, $action_type, $order_id, $log_message);
         
         if (!$logStmt->execute()) {
             throw new Exception('Failed to insert user log: ' . $logStmt->error);
@@ -170,7 +173,7 @@ try {
         // Return success response
         echo json_encode([
             'success' => true,
-            'message' => 'Call status updated successfully',
+            'message' => $noChanges ? 'Call status already recorded' : 'Call status updated successfully',
             'data' => [
                 'order_id' => $order_id,
                 'call_log' => $call_log,

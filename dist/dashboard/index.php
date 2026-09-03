@@ -14,6 +14,7 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
 
 // Include database connection
 include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/fe_it_db_connection.php');
 
 // Check if user is main admin
 $is_main_admin = $_SESSION['is_main_admin'];
@@ -185,6 +186,18 @@ $tableExists = $conn->query("SHOW TABLES LIKE 'products'");
      if ($tableExists && $tableExists->num_rows > 0) {
          $stats['total_products'] = safeQuery($conn, "SELECT COUNT(*) as count FROM products");}
 
+// Check for low stock products count
+$low_stock_count = 0;
+$allow_inventory = isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1;
+if ($allow_inventory) {
+    $low_stock_query = "SELECT COUNT(*) as count FROM products WHERE status = 'active' AND stock_quantity <= low_stock_threshold";
+    $low_stock_result = $conn->query($low_stock_query);
+    if ($low_stock_result) {
+        $row = $low_stock_result->fetch_assoc();
+        $low_stock_count = (int)$row['count'];
+    }
+}
+
 // Check if orders table exists
 $tableExists = $conn->query("SHOW TABLES LIKE 'order_header'");
 if ($tableExists && $tableExists->num_rows > 0) {
@@ -292,6 +305,34 @@ if ($tableExists && $tableExists->num_rows > 0) {
     }
 }
 
+// Check for unpaid invoices
+$suspend_notice = null;
+$customer_id_session = $_SESSION['customer_id'] ?? 0;
+
+if (isset($_SESSION['customer_id'])) {
+    $sql_unpaid = "SELECT status, due_date FROM invoices 
+                  WHERE customer_id = ? 
+                  AND pay_status = 'unpaid' AND status = 'pending' 
+                  AND (CURRENT_DATE() >= DATE_SUB(due_date, INTERVAL 2 DAY))
+                  ORDER BY due_date ASC LIMIT 1";
+    $stmt_unpaid = $fe_conn->prepare($sql_unpaid);
+    if ($stmt_unpaid) {
+        $stmt_unpaid->bind_param("i", $customer_id_session);
+        $stmt_unpaid->execute();
+        $res_unpaid = $stmt_unpaid->get_result();
+        if ($res_unpaid && $res_unpaid->num_rows > 0) {
+            $unpaid_invoice = $res_unpaid->fetch_assoc();
+            $due_date_formatted = date('F d, Y', strtotime($unpaid_invoice['due_date']));
+            $current_date = date('Y-m-d');
+            if ($current_date > $unpaid_invoice['due_date']) {
+                $suspend_notice = "<strong>Account Suspension Warning:</strong> Your invoice was due on " . $due_date_formatted . ". Please pay immediately to avoid account suspension.";
+            } else {
+                $suspend_notice = "<strong>Suspend account notice:</strong> Please pay your invoice before " . $due_date_formatted . " to avoid account suspension.";
+            }
+        }
+        $stmt_unpaid->close();
+    }
+}
 
 ?>
 
@@ -301,14 +342,13 @@ if ($tableExists && $tableExists->num_rows > 0) {
 
 <head>
     <!-- TITLE -->
-    <title>Order Management Admin Portal - Dashboard</title>
+    <title>Dashboard | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
     <?php
     include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php');
     ?>
-    <link rel="stylesheet" href="../assets/css/style.css" id="main-style-link" />
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css">
-
+    <link rel="stylesheet" href="../assets/css/style.css" id="main-style-link" />
+    <link rel="stylesheet" href="../assets/css/tailwind-utilities.css">
 
     <style>
     .filter-bar {
@@ -491,6 +531,19 @@ if ($tableExists && $tableExists->num_rows > 0) {
         font-size: 0.9em;
         margin-left: 0.5rem;
     }
+
+    .suspend-alert {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        background: #f6f6f6;
+        color: #ff0000;
+        padding: 0.875rem 1.25rem;
+        border-radius: 0.5rem;
+        margin-bottom: 1.25rem;
+        font-size: 18px;
+        border: 1px solid #f87171;
+    }
     </style>
 </head>
 
@@ -526,6 +579,19 @@ if ($tableExists && $tableExists->num_rows > 0) {
                 </div>
             </div>
             <!-- [ breadcrumb ] end -->
+
+            <?php if ($low_stock_count > 0): ?>
+            <div class="date-info" style="color: #dc3545; border-color: #fca5a5; background: #fff5f5;">
+                <i class="fas fa-exclamation-triangle"></i> Low Stock: <?php echo $low_stock_count; ?> products
+            </div>
+            <?php endif; ?>
+
+            <?php if ($suspend_notice): ?>
+            <div class="suspend-alert" role="alert">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                <?php echo $suspend_notice; ?>
+            </div>
+            <?php endif; ?>
 
             <!-- Date Info -->
             <div class="date-info">

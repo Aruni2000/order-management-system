@@ -113,6 +113,33 @@ function detectUserChanges($existingData, $newData, $passwordChanged = false) {
     if (isset($newData['tenant_id']) && $existingData['tenant_id'] != $newData['tenant_id']) {
         $changes[] = "Tenant changed";
     }
+
+    if ((int)($existingData['position_id'] ?? 0) !== (int)($newData['position_id'] ?? 0)) {
+        global $conn;
+        // Fetch old position name
+        $oldPosName = 'None';
+        if (!empty($existingData['position_id'])) {
+            $posStmt = $conn->prepare("SELECT name FROM positions WHERE id = ?");
+            if ($posStmt) {
+                $posStmt->bind_param("i", $existingData['position_id']);
+                $posStmt->execute();
+                $oldPosName = $posStmt->get_result()->fetch_assoc()['name'] ?? "ID: {$existingData['position_id']}";
+                $posStmt->close();
+            }
+        }
+        // Fetch new position name
+        $newPosName = 'None';
+        if (!empty($newData['position_id'])) {
+            $posStmt = $conn->prepare("SELECT name FROM positions WHERE id = ?");
+            if ($posStmt) {
+                $posStmt->bind_param("i", $newData['position_id']);
+                $posStmt->execute();
+                $newPosName = $posStmt->get_result()->fetch_assoc()['name'] ?? "ID: {$newData['position_id']}";
+                $posStmt->close();
+            }
+        }
+        $changes[] = "Position changed from '{$oldPosName}' to '{$newPosName}'";
+    }
     
     if ($passwordChanged) {
         $changes[] = "Password updated";
@@ -142,7 +169,7 @@ try {
     }
 
     // Check if user exists and get current data - MODIFIED to include role_name and tenant_id
-    $checkQuery = "SELECT u.id, u.name, u.email, u.nic, u.mobile, u.address, u.status, u.role_id, u.tenant_id, r.name as role_name 
+    $checkQuery = "SELECT u.id, u.name, u.email, u.nic, u.mobile, u.address, u.status, u.role_id, u.tenant_id, u.position_id, r.name as role_name 
                                 FROM users u 
                                 LEFT JOIN roles r ON u.role_id = r.id 
                                 WHERE u.id = ?";
@@ -181,27 +208,9 @@ try {
     $nic = trim(strtoupper($_POST['nic'] ?? ''));
     $address = trim($_POST['address'] ?? '');
     $status = strtolower($_POST['status'] ?? 'active');
-    $role = $_POST['role'] ?? '';
+    $role_id = isset($_POST['role_id']) ? (int)$_POST['role_id'] : 0;
     $input_tenant_id = $_POST['tenant_id'] ?? null;
-    
-    // Convert role to role_id
-    $role_mapping = [];
-    $roleQuery = "SELECT id, name FROM roles";
-    $roleResult = $conn->query($roleQuery);
-    if ($roleResult && $roleResult->num_rows > 0) {
-        while ($row = $roleResult->fetch_assoc()) {
-            $role_mapping[strtolower($row['name'])] = ['id' => $row['id'], 'name' => $row['name']];
-        }
-    }
-    
-    // Fallback if database roles are empty (using initial defaults)
-    if (empty($role_mapping)) {
-        $role_mapping = [
-            'admin' => ['id' => 1, 'name' => 'Admin'],
-            'user' => ['id' => 2, 'name' => 'User'],
-            'moderator' => ['id' => 3, 'name' => 'Moderator'],
-        ];
-    }
+    $position_id = !empty($_POST['position']) ? (int)$_POST['position'] : null;
     
     // Essential server-side validation (security-critical only)
     $fieldErrors = [];
@@ -213,7 +222,28 @@ try {
     if (empty($nic)) $fieldErrors['nic'] = "NIC number is required.";
     if (empty($address)) $fieldErrors['address'] = "Address is required.";
     if (!empty($password) && strlen($password) < 6) $fieldErrors['password'] = "Password must be at least 6 characters long.";
-    if (!isset($role_mapping[strtolower($role)])) $fieldErrors['role'] = "Please select a valid role.";
+    
+    // Validate role against the roles table
+    $role_name = '';
+    if ($role_id <= 0) {
+        $fieldErrors['role'] = "Please select a valid role.";
+    } else {
+        $roleStmt = $conn->prepare("SELECT id, name FROM roles WHERE id = ? LIMIT 1");
+        if ($roleStmt) {
+            $roleStmt->bind_param("i", $role_id);
+            $roleStmt->execute();
+            $roleRow = $roleStmt->get_result()->fetch_assoc();
+            $roleStmt->close();
+            if ($roleRow) {
+                $role_name = $roleRow['name'];
+            } else {
+                $fieldErrors['role'] = "Please select a valid role.";
+            }
+        } else {
+            error_log("Failed to prepare role lookup statement: " . $conn->error);
+            $fieldErrors['role'] = "Unable to verify role. Please try again.";
+        }
+    }
     
     // Email format validation (security critical)
     if (!empty($email) && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
@@ -271,10 +301,7 @@ try {
     }
 
     // NEW: Check if any actual changes were made before proceeding
-    $role_id = $role_mapping[strtolower($role)]['id'];
     $passwordChanged = !empty($password);
-    
-    $role_name = $role_mapping[strtolower($role)]['name'] ?? ucfirst($role);
     
     $newData = [
         'name' => $name,
@@ -285,7 +312,8 @@ try {
         'status' => $status,
         'role_id' => $role_id,
         'role_name' => $role_name,
-        'tenant_id' => $existingUser['tenant_id']
+        'tenant_id' => $existingUser['tenant_id'],
+        'position_id' => $position_id
     ];
 
     // Check if any field has actually changed (excluding password for now)
@@ -310,14 +338,14 @@ try {
     // Begin database transaction
     $conn->begin_transaction();
     
-    $role_name = $role_mapping[strtolower($role)]['name'];
+    // role_name already set from validation above
     
     // Prepare update query - with or without password
     if (!empty($password)) {
         // Update with new password
         $hashed_password = password_hash($password, PASSWORD_BCRYPT);
         $stmt = $conn->prepare("UPDATE users SET name = ?, email = ?, password = ?, mobile = ?, nic = ?, 
-                               address = ?, status = ?, role_id = ?, tenant_id = ?, updated_at = NOW() 
+                               address = ?, status = ?, role_id = ?, position_id = ?, tenant_id = ?, updated_at = NOW() 
                                WHERE id = ?");
         
         if ($stmt === false) {
@@ -325,25 +353,41 @@ try {
             jsonResponse(false, 'Database error occurred. Please try again.');
         }
         
-        $stmt->bind_param("sssssssiii", 
+        $stmt->bind_param("sssssssiiii", 
             $name, $email, $hashed_password, $mobile, $nic, $address, 
-            $status, $role_id, $newData['tenant_id'], $userId
+            $status, $role_id, $position_id, $newData['tenant_id'], $userId
         );
     } else {
         // Update without changing password
-        $stmt = $conn->prepare("UPDATE users SET name = ?, email = ?, mobile = ?, nic = ?, 
-                               address = ?, status = ?, role_id = ?, tenant_id = ?, updated_at = NOW() 
-                               WHERE id = ?");
-        
-        if ($stmt === false) {
-            $conn->rollback();
-            jsonResponse(false, 'Database error occurred. Please try again.');
+        if ($position_id !== null) {
+            $stmt = $conn->prepare("UPDATE users SET name = ?, email = ?, mobile = ?, nic = ?, 
+                                   address = ?, status = ?, role_id = ?, position_id = ?, tenant_id = ?, updated_at = NOW() 
+                                   WHERE id = ?");
+            
+            if ($stmt === false) {
+                $conn->rollback();
+                jsonResponse(false, 'Database error occurred. Please try again.');
+            }
+            
+            $stmt->bind_param("ssssssiiii", 
+                $name, $email, $mobile, $nic, $address, 
+                $status, $role_id, $position_id, $newData['tenant_id'], $userId
+            );
+        } else {
+            $stmt = $conn->prepare("UPDATE users SET name = ?, email = ?, mobile = ?, nic = ?, 
+                                   address = ?, status = ?, role_id = ?, position_id = NULL, tenant_id = ?, updated_at = NOW() 
+                                   WHERE id = ?");
+            
+            if ($stmt === false) {
+                $conn->rollback();
+                jsonResponse(false, 'Database error occurred. Please try again.');
+            }
+            
+            $stmt->bind_param("ssssssiii", 
+                $name, $email, $mobile, $nic, $address, 
+                $status, $role_id, $newData['tenant_id'], $userId
+            );
         }
-        
-        $stmt->bind_param("ssssssiii", 
-            $name, $email, $mobile, $nic, $address, 
-            $status, $role_id, $newData['tenant_id'], $userId
-        );
     }
 
     // Execute update

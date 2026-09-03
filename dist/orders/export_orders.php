@@ -242,7 +242,7 @@ if ($result && $result->num_rows > 0) {
         if (!empty($row['created_at'])) {
             $createdDateTime = new DateTime($row['created_at']);
             $createdDate = $createdDateTime->format('Y-m-d');
-            $createdTime = $createdDateTime->format('H:i:s');
+            $createdTime = $createdDateTime->format('h:i:s A');
         }
         
         // Base order data - Reordered to match headers

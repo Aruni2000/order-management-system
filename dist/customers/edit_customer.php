@@ -63,12 +63,11 @@ $customerStmt->close();
 <html lang="en" data-pc-preset="preset-1" data-pc-sidebar-caption="true" data-pc-direction="ltr" dir="ltr" data-pc-theme="light">
 
 <head>
-    <title>Order Management Admin Portal - Edit Customer</title>
+    <title>Edit Customer | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
 
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
     
-    <link rel="stylesheet" href="../assets/css/style.css" id="main-style-link" />
-    <link rel="stylesheet" href="../assets/css/customers.css" id="main-style-link" />
+    <link rel="stylesheet" href="../assets/css/customers.css" />
 
     <style>
         .ajax-notification {
@@ -283,14 +282,6 @@ $customerStmt->close();
                     <div class="page-header-title">
                         <h5 class="mb-0 font-medium">Edit Customer</h5>
                     </div>
-                    <div class="page-header-breadcrumb">
-                        <ul class="breadcrumb">
-                            <li class="breadcrumb-item">
-                                <a href="customer_list.php">Customer List</a>
-                            </li>
-                            <li class="breadcrumb-item active">Edit Customer</li>
-                        </ul>
-                    </div>
                 </div>
             </div>
 
@@ -348,23 +339,6 @@ $customerStmt->close();
                                 </div>
                             </div>
 
-                            <div class="form-row">
-                                <div class="customer-form-group">
-                                    <label for="status" class="form-label">
-                                        <i class="fas fa-toggle-on"></i> Status<span class="required">*</span>
-                                    </label>
-                                    <select class="form-select" id="status" name="status" required>
-                                        <option value="Active" <?= $customer['status'] === 'Active' ? 'selected' : '' ?>>Active</option>
-                                        <option value="Inactive" <?= $customer['status'] === 'Inactive' ? 'selected' : '' ?>>Inactive</option>
-                                    </select>
-                                    <div class="error-feedback" id="status-error"></div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="form-section address-section">
-                        <div class="section-content">
                             <div class="form-row">
                                 <div class="customer-form-group">
                                     <label for="address_line1" class="form-label">
@@ -610,7 +584,6 @@ $customerStmt->close();
                 email: $('#email').val(),
                 phone: $('#phone').val(),
                 phone_2: $('#phone_2').val(),
-                status: $('#status').val(),
                 address_line1: $('#address_line1').val(),
                 address_line2: $('#address_line2').val(),
                 city_id: $('#city_id').val(),
@@ -688,7 +661,6 @@ $customerStmt->close();
                 $('#email').val() !== originalFormData.email ||
                 $('#phone').val() !== originalFormData.phone ||
                 $('#phone_2').val() !== originalFormData.phone_2 ||
-                $('#status').val() !== originalFormData.status ||
                 $('#address_line1').val() !== originalFormData.address_line1 ||
                 $('#address_line2').val() !== originalFormData.address_line2 ||
                 $('#city_id').val() !== originalFormData.city_id

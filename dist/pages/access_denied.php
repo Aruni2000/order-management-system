@@ -10,7 +10,7 @@ session_start();
 
 <head>
     <!-- TITLE -->
-    <title>Access Denied - Order Management Admin Portal</title>
+    <title>Access Denied | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
 
     <?php
     include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php');
@@ -19,8 +19,7 @@ session_start();
     ?>
     
     <!-- [Template CSS Files] -->
-    <link rel="stylesheet" href="../assets/css/style.css" id="main-style-link" />
-    <link rel="stylesheet" href="../assets/css/customers.css" id="main-style-link" />
+    <link rel="stylesheet" href="../assets/css/customers.css" />
 </head>
 
 <body>

@@ -282,13 +282,12 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
     data-pc-theme="light">
 
 <head>
-    <title>Order Management Admin Portal - Cancel Orders</title>
+    <title>Cancel Orders | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
 
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
 
     <!-- Stylesheets -->
-    <link rel="stylesheet" href="../assets/css/style.css" id="main-style-link" />
-    <link rel="stylesheet" href="../assets/css/orders.css" id="main-style-link" />
+    <link rel="stylesheet" href="../assets/css/orders.css" />
     <style>
     .issued-time {
     font-size: 0.9em;
@@ -323,26 +322,6 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
     }
 
     .print-btn:active {
-        transform: scale(0.95);
-    }
-
-    .restore-btn {
-        background-color: #17a2b8;
-        color: white;
-        border: none;
-        padding: 8px 10px;
-        border-radius: 4px;
-        cursor: pointer;
-        font-size: 14px;
-        margin-left: 5px;
-        transition: background-color 0.3s;
-    }
-
-    .restore-btn:hover {
-        background-color: #138496;
-    }
-
-    .restore-btn:active {
         transform: scale(0.95);
     }
 
@@ -539,7 +518,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                             if (isset($row['created_at']) && !empty($row['created_at'])) {
                                                 $createdAt = new DateTime($row['created_at']);
                                                 echo '<span class="issued-date">' . $createdAt->format('Y-m-d') . '</span>';
-                                                echo '<span class="issued-time-only">' . $createdAt->format('H:i:s') . '</span>';
+                                                echo '<span class="issued-time-only">' . $createdAt->format('h:i:s A') . '</span>';
                                             } else {
                                                 echo '<span style="color: #999; font-style: italic;">N/A</span>';
                                             }
@@ -610,12 +589,6 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                             <i class="fas fa-print"></i>
                                         </button>
 
-                                        <!-- Restore Button -->
-                                        <button class="action-btn restore-btn" title="Restore Order"
-                                            onclick="restoreOrder('<?php echo isset($row['order_id']) ? htmlspecialchars($row['order_id']) : ''; ?>')"
-                                            style="background-color: #17a2b8; color: white;">
-                                            <i class="fas fa-undo"></i>
-                                        </button>
                                     </div>
                                 </td>
                             </tr>

@@ -70,12 +70,11 @@ if (!$courierResult) {
 <html lang="en" data-pc-preset="preset-1" data-pc-sidebar-caption="true" data-pc-direction="ltr" dir="ltr" data-pc-theme="light">
 
 <head>
-    <title>Order Management Admin Portal - Add Courier Account</title>
+    <title>Add Courier Account | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
 
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
     
-    <link rel="stylesheet" href="../assets/css/style.css" id="main-style-link" />
-    <link rel="stylesheet" href="../assets/css/customers.css" id="main-style-link" />
+    <link rel="stylesheet" href="../assets/css/customers.css" />
     
     <style>
         .ajax-notification {

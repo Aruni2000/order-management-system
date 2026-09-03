@@ -1,22 +1,23 @@
 <?php
-// Get role name based on role_id from session
-function getRoleName($role_id) {
-    switch($role_id) {
-        case 1:
-            return 'admin';
-        case 2:
-            return 'user';
-        case 3:
-            return 'moderator';
-        default:
-            return 'user';
+// Get role name based on role_id from database
+$role_name = 'User'; // default fallback
+$role_id = $_SESSION['role_id'] ?? 0;
+if ($role_id > 0 && isset($conn)) {
+    $roleStmt = $conn->prepare("SELECT name FROM roles WHERE id = ? LIMIT 1");
+    if ($roleStmt) {
+        $roleStmt->bind_param("i", $role_id);
+        $roleStmt->execute();
+        $roleRow = $roleStmt->get_result()->fetch_assoc();
+        $roleStmt->close();
+        if ($roleRow) {
+            $role_name = $roleRow['name'];
+        }
     }
 }
 
 // Get user data from session
 $user_name = $_SESSION['name'] ?? 'User';
 $user_email = $_SESSION['user'] ?? 'user@example.com';
-$role_name = getRoleName($_SESSION['role_id'] ?? 2);
 ?>
 
 <!-- [ Header Topbar ] start -->

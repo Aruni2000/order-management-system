@@ -64,14 +64,12 @@ if (!($is_main_admin === 1 && $role_id === 1) && !empty($tenants)) {
     data-pc-theme="light">
 
 <head>
-    <title>Order Management Admin Portal - Delivery CSV Upload</title>
+    <title>Delivery CSV Upload | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
 
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
 
     <!-- Stylesheets -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css">
-    <link rel="stylesheet" href="../assets/css/style.css" id="main-style-link" />
-    <link rel="stylesheet" href="../assets/css/leads.css" id="main-style-link" />
+    <link rel="stylesheet" href="../assets/css/leads.css" />
 </head>
 
 <body>
@@ -91,7 +89,7 @@ if (!($is_main_admin === 1 && $role_id === 1) && !empty($tenants)) {
                     <div class="page-header-title">
                         <h5 class="mb-0 font-medium">
                             Delivery Complete Management
-                            <i class="fas fa-info-circle text-primary" style="cursor: pointer; font-size: 16px; margin-left: 8px;" onclick="openInfoModal()" title="How to use this page"></i>
+                            <i class="fas fa-info-circle text-primary" style="cursor: pointer; font-size: 16px; margin-left: 8px; color: #3b82f6;" onclick="openInfoModal()" title="How to use this page"></i>
                         </h5>
                     </div>
                 </div>

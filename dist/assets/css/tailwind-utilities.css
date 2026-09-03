@@ -1,0 +1,50 @@
+/* ====================================
+   TAILWIND UTILITIES (local, no preflight)
+   Provides the Tailwind utility classes used by product_analysis.php
+   WITHOUT the Tailwind CDN, whose preflight reset clobbers the app
+   template's base styles (navbar/sidebar/buttons).
+   ==================================== */
+
+/* Stat cards */
+.shadow-sm {
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+}
+
+.border-gray-100 {
+  border-color: #f3f4f6;
+}
+
+.min-w-\[180px\] {
+  min-width: 180px;
+}
+
+.text-gray-500 {
+  color: #6b7280;
+}
+
+.text-blue-600 {
+  color: #2563eb;
+}
+
+.text-purple-600 {
+  color: #7c3aed;
+}
+
+.text-green-600 {
+  color: #059669;
+}
+
+.text-amber-600 {
+  color: #d97706;
+}
+
+/* Progress bars */
+.h-1\.5 {
+  height: 0.375rem;
+}
+
+/* Dark-mode variant for the success-rate track (inert while page is light) */
+[data-pc-theme="dark"] .dark\:bg-gray-700,
+.dark .dark\:bg-gray-700 {
+  background-color: #374151;
+}

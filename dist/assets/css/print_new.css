@@ -44,24 +44,27 @@ body {
 /* Header Section */
 .header-section {
     height: 40mm;
-    padding: 2mm;
+    padding: 3mm;
     text-align: center;
     vertical-align: top;
+    width: 50%;
 }
 
 .company-name {
-    font-size: 11px;
-    margin-bottom: 1mm;
+    font-size: 12px;
+    margin-bottom: 2mm;
+    font-weight: bold;
 }
 
 .company-info {
     font-size: 10px;
-    margin-bottom: 1mm;
+    line-height: 1.5;
+    margin-bottom: 1.5mm;
 }
 
 .company-logo img {
     max-height: 55px;
-    width: auto;
+    max-width: 150px;
 }
 
 /* Order and Service Information */
@@ -70,7 +73,7 @@ body {
     font-size: 10px;
     text-align: center;
     background-color: #f0f0f0;
-    width: 100%;
+    width: 50%;
     vertical-align: top;
     padding: 2mm;
     border: 1px solid #ddd;
@@ -145,13 +148,12 @@ body {
 }
 
 .barcode-image {
-    max-width: 280px;
+    max-width: 185px;
     max-height: 20mm;
     height: auto;
     width: auto;
-    margin: 5px 0;
+    margin: 5px auto;
     display: block;
-    margin: 0 auto;
 }
 
 .barcode-text {

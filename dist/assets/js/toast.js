@@ -11,6 +11,7 @@
  */
 class ToastManager {
     constructor() {
+        this.maxToasts = 3;
         this.createContainer();
     }
 
@@ -23,11 +24,21 @@ class ToastManager {
         }
     }
 
+    enforceLimit() {
+        const container = document.getElementById('toast-container');
+        while (container.children.length > this.maxToasts) {
+            const oldest = container.children[0];
+            oldest.classList.remove('show');
+            container.removeChild(oldest);
+        }
+    }
+
     show(message, type = 'info', duration = 5000) {
         const container = document.getElementById('toast-container');
         const toast = this.createToast(message, type);
 
         container.appendChild(toast);
+        this.enforceLimit();
 
         // Trigger animation
         setTimeout(() => {

@@ -168,14 +168,13 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
     data-pc-theme="light">
 
 <head>
-    <title>Order Management Admin Portal - Customer Management</title>
+    <title>Customer Management | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
 
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
 
     <!-- Stylesheets -->
-    <link rel="stylesheet" href="../assets/css/style.css" id="main-style-link" />
-    <link rel="stylesheet" href="../assets/css/orders.css" id="main-style-link" />
-    <link rel="stylesheet" href="../assets/css/customers.css" id="main-style-link" />
+    <link rel="stylesheet" href="../assets/css/orders.css" />
+    <link rel="stylesheet" href="../assets/css/customers.css" />
 </head>
 
 <body>
@@ -415,7 +414,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                             title="<?= $row['status'] == 'Active' ? 'Deactivate Customer' : 'Activate Customer' ?>"
                                             data-action="<?= $row['status'] == 'Active' ? 'deactivate' : 'activate' ?>">
                                             <i
-                                                class="fas <?= $row['status'] == 'Active' ? 'fa-user-times' : 'fa-user-check' ?>"></i>
+                                                class="fas <?= $row['status'] == 'Active' ? 'fa-toggle-off' : 'fa-toggle-on' ?>"></i>
                                         </button>
                                     </div>
                                 </td>
@@ -601,7 +600,18 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
         if (!dateString) return 'N/A';
         try {
             const date = new Date(dateString);
-            return date.toLocaleString();
+            if (isNaN(date.getTime())) return dateString;
+            const yyyy = date.getFullYear();
+            const mm = String(date.getMonth() + 1).padStart(2, '0');
+            const dd = String(date.getDate()).padStart(2, '0');
+            let hours = date.getHours();
+            const minutes = String(date.getMinutes()).padStart(2, '0');
+            const seconds = String(date.getSeconds()).padStart(2, '0');
+            const ampm = hours >= 12 ? 'PM' : 'AM';
+            hours = hours % 12;
+            hours = hours ? hours : 12;
+            const hh = String(hours).padStart(2, '0');
+            return `${yyyy}-${mm}-${dd} ${hh}:${minutes}:${seconds} ${ampm}`;
         } catch (e) {
             return dateString;
         }
@@ -652,10 +662,9 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
             text: `You are about to ${isActive ? 'Deactivate' : 'Activate'} Customer: ${customerName}`,
             icon: 'warning',
             showCancelButton: true,
-            customClass: {
-                confirmButton: isActive ? 'swal-danger' : 'swal-success'
-            },
-            confirmButtonText: isActive ? 'Yes, Deactivate it!' : 'Yes, Activate it!',
+            confirmButtonColor: isActive ? '#dc3545' : '#28a745',
+            cancelButtonColor: '#6c757d',
+            confirmButtonText: isActive ? 'Yes, deactivate it!' : 'Yes, activate it!',
             cancelButtonText: 'Cancel',
             reverseButtons: true
         }).then((result) => {
@@ -672,27 +681,19 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                 .then(data => {
                     if (data.success) {
                         Swal.fire({
-                            icon: 'success',
                             title: 'Updated!',
-                            text: `Customer has been ${isActive ? 'deactivated' : 'activated'} successfully.`,
-                            showConfirmButton: false,
-                            timer: 1500
+                            text: 'Customer status updated successfully!',
+                            icon: 'success',
+                            timer: 1500,
+                            showConfirmButton: false
                         }).then(() => location.reload());
                     } else {
-                        Swal.fire({
-                            icon: 'error',
-                            title: 'Error!',
-                            text: data.message || 'Failed to update customer status.'
-                        });
+                        toastManager.error(data.message || 'Failed to update customer status');
                     }
                 })
                 .catch(error => {
                     console.error('Error:', error);
-                    Swal.fire({
-                        icon: 'error',
-                        title: 'Error!',
-                        text: 'An error occurred while updating the customer status.'
-                    });
+                    toastManager.error('An error occurred while updating the customer status.');
                 });
             }
         });

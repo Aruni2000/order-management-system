@@ -1,11 +1,10 @@
 <?php
 /**
  * Four Thirteen Bulk Print (Simple Labels)
- * Prints 8 simple labels per A4 page (2 columns × 4 rows layout) - LANDSCAPE
- * Each label: 3.75" × 2" (95mm × 51mm)
- * Each label contains: From, To, Products, Barcode, Total Amount, Order ID, and Order Date
- * UPDATED: Barcode now displays tracking number instead of order ID
- * Based on filters from label print page
+ * Prints 6 simple labels per A4 page (2 columns × 3 rows layout) - LANDSCAPE
+ * Each label: Larger size with maximized font sizes
+ * FIXED: Full text display for city and products (no truncation)
+ * FIXED: Removed tracking status indicator
  */
 
 // Start session management
@@ -44,9 +43,9 @@ $offset = ($page - 1) * $limit;
 /**
  * BUILD QUERY TO FETCH ORDERS
  */
-$sql = "SELECT o.order_id, o.tenant_id, o.customer_id, o.full_name, o.mobile, o.address_line1, o.address_line2,
+$sql = "SELECT o.order_id, o.tenant_id, o.customer_id, o.full_name, o.mobile, o.address_line1, o.address_line2, o.notes,
                o.status, o.updated_at, o.interface, o.tracking_number, o.total_amount, o.currency,
-               o.delivery_fee, o.discount, o.issue_date,
+               o.delivery_fee, o.discount, o.issue_date, o.pay_status,
                c.name as customer_name, c.phone as customer_phone, 
                c.email as customer_email, c.city_id,
                cr.courier_name as delivery_service,
@@ -186,9 +185,8 @@ function getTenantData($tId, $tenants_list) {
     if (!empty($tId) && isset($tenants_list[$tId])) {
         return $tenants_list[$tId];
     }
-    if (!empty($tenants_list)) {
-        return reset($tenants_list);
-    }
+    // Tenant not found (inactive/missing): return neutral placeholder
+    // instead of falling back to the first active tenant's branding
     return [
         'company_name' => 'Company Name', 'tenant_address' => 'Address not set', 'tenant_email' => '', 'phone' => '', 'logo_url' => ''
     ];
@@ -246,7 +244,7 @@ foreach ($orders as $order) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Simple Bulk Print Labels (<?php echo count($orders); ?> orders) - A4 Landscape 8 Labels</title>
+    <title>Simple Bulk Print Labels (<?php echo count($orders); ?> orders) - A4 Landscape 6 Labels | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
     
  
     <style>
@@ -286,31 +284,31 @@ foreach ($orders as $order) {
 
         /* Main container for labels */
         .labels-container {
-            width: 297mm; /* A4 landscape width */
+            width: 297mm;
             margin: 0 auto;
         }
 
-        /* Page wrapper - A4 landscape for 8 labels (2 columns × 4 rows) */
+        /* Page wrapper - A4 landscape for 6 labels (2 columns × 3 rows) */
         .page-wrapper {
             display: grid;
-            grid-template-columns: 1fr 1fr; /* 2 columns */
-            grid-template-rows: repeat(4, 1fr); /* 4 rows */
+            grid-template-columns: 1fr 1fr;
+            grid-template-rows: repeat(3, 1fr);
             gap: 5mm;
-            width: 297mm; /* A4 landscape width */
-            height: 210mm; /* A4 landscape height */
-            padding: 10mm;
+            width: 297mm;
+            height: 210mm;
+            padding: 8mm;
         }
 
-        /* Individual label styling - 3.75" × 2" (95mm × 51mm) */
+        /* Individual label styling - LARGER SIZE */
         .simple-label {
-            border: 2px dashed #333;
+            border: 2px dashed Black;
             padding: 3mm;
             display: flex;
-            flex-direction: row; /* Horizontal layout */
+            flex-direction: row;
             justify-content: space-between;
             align-items: stretch;
-            width: 135mm; /* Adjusted for 2 columns with gap */
-            height: 45mm; /* Adjusted for 4 rows with gap */
+            width: 138mm;
+            height: 62mm;
             background: white;
             position: relative;
         }
@@ -320,47 +318,77 @@ foreach ($orders as $order) {
             display: flex;
             flex-direction: column;
             flex: 1;
-            margin-right: 5mm;
             justify-content: space-between;
         }
 
-        /* From section */
+        /* From section - LARGER FONT */
         .from-section {
             border-bottom: 1px solid #ccc;
-            padding-bottom: 1mm;
             margin-bottom: 2mm;
         }
 
         .from-label {
             font-weight: bold;
-            font-size: 9px;
-            margin-bottom: 1mm;
-            color: #333;
+            font-size: 12px;
+            margin-bottom: 0.5mm;
+            color: black;
         }
 
         .from-details {
-            font-size: 8px;
-            line-height: 1.2;
+            font-size: 11px;
+            line-height: 1.3;
         }
 
-        /* To section */
+        /* Company logo - small, floats left so text wraps beside it */
+        .from-logo {
+            max-height: 14mm;
+            max-width: 20mm;
+            width: auto;
+            height: auto;
+            float: left;
+            margin: 0 2mm 1mm 0;
+        }
+
+        .from-company {
+            display: inline;
+        }
+
+        /* To section - LARGER FONT */
         .to-section {
             flex-grow: 1;
         }
 
         .to-label {
             font-weight: bold;
-            font-size: 9px;
-            margin-bottom: 1mm;
-            color: #333;
+            font-size: 12px;
+            margin-bottom: 0.5mm;
+            color: black;
         }
 
         .to-details {
-            font-size: 8px;
-            line-height: 1.2;
+            font-size: 11px;
+            line-height: 1.3;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
         }
 
-        /* NEW: Products section styling */
+        .to-name,
+        .to-phone,
+        .to-address,
+        .to-city {
+            display: block;
+        }
+
+        /* City name - full display with wrapping - LARGER FONT */
+        .city-name {
+            display: block;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+            line-height: 1.3;
+            font-weight: 600;
+        }
+
+        /* Products section styling - LARGER FONT */
         .products-section {
             margin-top: 1mm;
             border-top: 1px dotted #ccc;
@@ -369,15 +397,17 @@ foreach ($orders as $order) {
 
         .products-label {
             font-weight: bold;
-            font-size: 7px;
-            color: #666;
+            font-size: 12px;
+            color: black;
             margin-bottom: 0.5mm;
         }
 
         .product-item {
-            font-size: 7px;
-            color: #333;
-            line-height: 1.1;
+            font-size: 11px;
+            color: Black;
+            line-height: 1.4;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
         }
 
         /* Right section - Order info, Barcode and Total */
@@ -386,31 +416,28 @@ foreach ($orders as $order) {
             flex-direction: column;
             align-items: center;
             justify-content: space-between;
-            width: 40mm;
+            width: 50mm;
             text-align: center;
             border-left: 1px solid #ccc;
             padding-left: 3mm;
         }
 
-        /* NEW: Order info section at the top right */
+        /* Order info section at the top right */
         .order-info-section {
             text-align: center;
             width: 100%;
-            border-bottom: 1px solid #eee;
-            padding-bottom: 2mm;
-            margin-bottom: 2mm;
         }
 
         .order-id {
             font-weight: bold;
-            font-size: 8px;
+            font-size: 15px;
             color: #000;
-            margin-bottom: 0.5mm;
+            margin-bottom: 1mm;
         }
 
         .order-date {
-            font-size: 7px;
-            color: #666;
+            font-size: 14px;
+            color: Black;
         }
 
         .barcode-section {
@@ -422,31 +449,36 @@ foreach ($orders as $order) {
         }
 
         .barcode-image {
-            height: 12mm; /* Slightly reduced to accommodate order info */
-            max-width: 35mm;
+            height: 20mm;
+            max-width: 50mm;
             object-fit: contain;
         }
 
         .barcode-text {
-            font-size: 7px;
+            font-size: 8px;
             margin-top: 1mm;
             font-weight: bold;
         }
 
+        .no-tracking-barcode {
+            font-size: 9px;
+            color: #dc3545;
+            margin-bottom: 2mm;
+        }
+
         .total-section {
             text-align: center;
-            margin-top: 2mm;
         }
 
         .total-label {
-            font-size: 7px;
-            color: #666;
+            font-size: 12px;
+            color: Black;
         }
 
         .total-amount {
             font-weight: bold;
-            font-size: 10px;
-            margin-top: 0.5mm;
+            font-size: 16px;
+            margin-top: 0mm;
             color: #000;
         }
 
@@ -472,18 +504,16 @@ foreach ($orders as $order) {
             
             .page-wrapper {
                 margin: 0;
-                padding: 10mm;
-                width: 297mm !important; /* A4 landscape width */
-                height: 210mm !important; /* A4 landscape height */
+                padding: 8mm;
+                width: 297mm !important;
+                height: 210mm !important;
             }
             
-            /* Ensure exact label dimensions when printing */
             .simple-label {
-                width: 135mm !important;
-                height: 45mm !important;
+                width: 138mm !important;
+                height: 62mm !important;
             }
 
-            /* Set landscape orientation */
             @page {
                 size: A4 landscape;
                 margin: 0;
@@ -493,7 +523,7 @@ foreach ($orders as $order) {
         .no-orders {
             text-align: center;
             padding: 50px;
-            color: #666;
+            color: Black;
         }
     </style>
 
@@ -534,7 +564,7 @@ foreach ($orders as $order) {
             </div>
         <?php else: ?>
             <?php 
-            $labels_per_page = 8; // 8 labels per A4 landscape page (2×4 grid)
+            $labels_per_page = 6;
             $total_orders = count($orders);
             $current_page_labels = 0;
             ?>
@@ -545,13 +575,14 @@ foreach ($orders as $order) {
                 $tId = isset($order['tenant_id']) ? $order['tenant_id'] : 0;
                 $bData = getTenantData($tId, $tenants);
                 $company = [
-                    'name'    => $bData['company_name'] ?? 'Company Name',
-                    'address' => $bData['tenant_address'] ?? 'Address not set',
-                    'email'   => $bData['tenant_email'] ?? '',
-                    'phone'   => $bData['phone'] ?? ''
+                    'name'     => $bData['company_name'] ?? 'Company Name',
+                    'address'  => $bData['tenant_address'] ?? 'Address not set',
+                    'email'    => $bData['tenant_email'] ?? '',
+                    'phone'    => $bData['phone'] ?? '',
+                    'logo_url' => $bData['logo_url'] ?? ''
                 ];
                 
-                // Start new page wrapper every 8 labels
+                // Start new page wrapper every 6 labels
                 if ($current_page_labels == 0): ?>
                     <div class="page-wrapper">
                 <?php endif; ?>
@@ -597,25 +628,30 @@ foreach ($orders as $order) {
                     <div class="left-section">
                         <!-- From Section -->
                         <div class="from-section">
-                            <div class="from-label">From:</div>
                             <div class="from-details">
-                                <strong><?php echo htmlspecialchars($company['name']); ?></strong><br>
+                                <?php if (!empty($company['logo_url'])): ?>
+                                    <img src="<?php echo htmlspecialchars($company['logo_url']); ?>"
+                                         alt="Company Logo" class="from-logo"
+                                         onerror="this.style.display='none'">
+                                <?php endif; ?>
+                                <div class="from-label"><?php echo htmlspecialchars($company['name']); ?></div>
                                 <?php echo htmlspecialchars($company['address']); ?><br>
-                                <?php echo htmlspecialchars($company['phone']); ?>
+                                <span style="margin-top: 2px; display: inline-block;">
+                                    <?php echo htmlspecialchars($company['phone']); ?>
+                                    <?php if (!empty($company['email'])): ?> | <?php echo htmlspecialchars($company['email']); ?><?php endif; ?>
+                                </span>
                             </div>
                         </div>
 
                         <!-- To Section -->
                         <div class="to-section">
-                            <div class="to-label">To:</div>
+                            <div class="to-label">Customer Details</div>
                             <div class="to-details">
-                                <strong><?php echo htmlspecialchars(substr($order['display_name'], 0, 25)); ?></strong><br>
-                                <?php echo htmlspecialchars($order['display_mobile']); ?><br>
+                                <span class="to-name"><strong>Name:</strong> <?php echo htmlspecialchars(ucwords(strtolower($order['display_name']))); ?></span>
+                                <span class="to-phone"><strong>Phone:</strong> <?php echo htmlspecialchars($order['display_mobile']); ?></span>
                                 <?php 
-                                // Build address with only address lines (no city)
                                 $address_parts = [];
                                 
-                                // Priority 1: Use order address lines if available
                                 if (!empty($order['address_line1'])) {
                                     $address_parts[] = trim($order['address_line1']);
                                 }
@@ -623,7 +659,6 @@ foreach ($orders as $order) {
                                     $address_parts[] = trim($order['address_line2']);
                                 }
                                 
-                                // Priority 2: If no order address, use customer address lines
                                 if (empty($address_parts)) {
                                     if (!empty($order['customer_address_line1'])) {
                                         $address_parts[] = trim($order['customer_address_line1']);
@@ -633,21 +668,22 @@ foreach ($orders as $order) {
                                     }
                                 }
                                 
-                                $address_only = implode(', ', array_filter($address_parts));
-                                if (empty($address_only)) {
-                                    $address_only = 'Address not available';
+                                if (!empty($address_parts)) {
+                                    echo '<span class="to-address"><strong>Address:</strong> ' . htmlspecialchars(implode(', ', $address_parts)) . '</span>';
+                                } else {
+                                    echo '<span class="to-address"><strong>Address:</strong> Not available</span>';
                                 }
-                                
-                                echo htmlspecialchars(substr($address_only, 0, 40)) . (strlen($address_only) > 40 ? '...' : '');
-                                ?><br>
-                                <?php echo !empty($order['city_name']) ? htmlspecialchars($order['city_name']) : 'City not specified'; ?>
+                                ?>
+                                <span class="to-city"><strong>City:</strong> <?php 
+                                    $city_display = !empty($order['city_name']) ? $order['city_name'] : 'City not specified';
+                                    echo htmlspecialchars($city_display);
+                                ?></span>
                             </div>
 
-                            <!-- NEW: Products Section -->
+                            <!-- Products Section -->
                             <?php if (!empty($products)): ?>
                             <div class="products-section">
                                 <?php 
-                                // Group products by ID and sum quantities
                                 $grouped_products = [];
                                 foreach ($products as $product) {
                                     $product_id = $product['product_id'];
@@ -661,44 +697,31 @@ foreach ($orders as $order) {
                                         ];
                                     }
                                 }
-                                
-                                $total_unique_products = count($grouped_products);
                                 ?>
-                                <div class="products-label">Products (<?php echo $total_unique_products; ?>):</div>
+                                <div class="products-label">Products:</div>
                                 <div class="product-item">
                                     <?php 
                                     $product_list = [];
                                     foreach ($grouped_products as $product) {
-                                        $product_name = htmlspecialchars(substr($product['product_name'], 0, 15));
-                                        if (strlen($product['product_name']) > 15) $product_name .= '...';
-                                        $product_list[] = $product['product_id'] . " - " . $product_name . " (" . $product['quantity'] . ")";
+                                        $product_name = htmlspecialchars($product['product_name']);
+                                        $product_list[] = $product_name . "(" . $product['quantity'] . ")";
                                     }
                                     echo implode(', ', $product_list);
                                     ?>
                                 </div>
                             </div>
                             <?php endif; ?>
+
                         </div>
                     </div>
 
                     <!-- Right Section: Order Info, Barcode and Total -->
                     <div class="right-section">
-                        <!-- Order Info Section -->
                         <div class="order-info-section">
-                            <div class="order-id">Order #<?php echo $order_id; ?></div>
+                            <div class="order-id">Order ID:<?php echo str_pad($order_id, 5, '0', STR_PAD_LEFT); ?></div>
                             <div class="order-date"><?php echo $order_date; ?></div>
-                            
-                            <!-- NEW: Tracking status indicator -->
-                            <div class="tracking-status <?php echo $has_tracking ? 'has-tracking' : 'no-tracking'; ?>">
-                                <?php if ($has_tracking): ?>
-                                  
-                                <?php else: ?>
-                                    ⚠ No Track
-                                <?php endif; ?>
-                            </div>
                         </div>
 
-                        <!-- UPDATED: Barcode Section - Show tracking number or fallback to order ID -->
                         <div class="barcode-section">
                             <?php if ($has_tracking): ?>
                                 <img src="<?php echo $barcode_url; ?>" alt="Tracking Barcode" class="barcode-image" onerror="this.style.display='none'">
@@ -708,7 +731,7 @@ foreach ($orders as $order) {
                             <?php else: ?>
                                 <div class="no-tracking-barcode">
                                     NO TRACKING<br>
-                                    Order: <?php echo $order_id; ?>
+                                    Order ID: <?php echo str_pad($order_id, 5, '0', STR_PAD_LEFT); ?>
                                 </div>
                                 <img src="<?php echo $barcode_url; ?>" alt="Order Barcode" class="barcode-image" onerror="this.style.display='none'">
                                 <div class="barcode-text"><?php echo $barcode_data; ?></div>
@@ -716,8 +739,14 @@ foreach ($orders as $order) {
                         </div>
                         
                         <div class="total-section">
-                            <div class="total-label">Total:</div>
-                            <div class="total-amount"><?php echo $currency_symbol . ' ' . number_format($total_amount, 2); ?></div>
+                            <?php if ($order['pay_status'] !== 'paid'): ?>
+                                <div class="total-label">Total:</div>
+                                <div class="total-amount"><?php echo $currency_symbol . ' ' . number_format($total_amount, 2); ?></div>
+                            <?php else: ?>
+                                <div style="color: green; font-weight: bold; font-size: 14px; margin-top: 2mm;">
+                                    ✔ PAID
+                                </div>
+                            <?php endif; ?>
                         </div>
                     </div>
                 </div>
@@ -725,7 +754,7 @@ foreach ($orders as $order) {
                 <?php 
                 $current_page_labels++;
                 
-                // Close page wrapper and reset counter every 8 labels
+                // Close page wrapper and reset counter every 6 labels
                 if ($current_page_labels == $labels_per_page || $index == $total_orders - 1): 
                     $current_page_labels = 0; ?>
                     </div> <!-- Close page-wrapper -->

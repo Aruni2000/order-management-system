@@ -102,7 +102,6 @@ try {
     $email = trim($_POST['email'] ?? '');
     $phone = trim($_POST['phone'] ?? '');
     $phone_2 = trim($_POST['phone_2'] ?? '');
-    $status = trim($_POST['status'] ?? 'Active');
     $address_line1 = trim($_POST['address_line1'] ?? '');
     $address_line2 = trim($_POST['address_line2'] ?? '');
     $city_id = intval($_POST['city_id'] ?? 0);
@@ -145,6 +144,7 @@ try {
     
     $existingCustomer = $customerCheckResult->fetch_assoc();
     $customerCheckStmt->close();
+    $status = $existingCustomer['status'] ?? 'Active';
 
     // ============================================
     // COMPREHENSIVE VALIDATION

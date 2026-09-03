@@ -86,9 +86,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // Log the change
         $user_id = isset($_SESSION['user_id']) ? $_SESSION['user_id'] : 0;
         $log_details = "Return fee updated for {$courier_name} (ID: {$courier_id}, co_id: {$co_id}). Changed from {$old_return_fee} to {$return_fee_value}";
-        $action_type = 'RETURN_FEE_UPDATE';
+        $action_type = 'return_fee_update';
         
-        $logSql = "INSERT INTO user_logs (user_id, action_type, inquiry_id, details) VALUES (?, ?, ?, ?)";
+        $logSql = "INSERT INTO user_logs (user_id, action_type, inquiry_id, details, created_at) VALUES (?, ?, ?, ?, NOW())";
         $logStmt = $conn->prepare($logSql);
         if ($logStmt) {
             $logStmt->bind_param("isis", $user_id, $action_type, $courier_id, $log_details);

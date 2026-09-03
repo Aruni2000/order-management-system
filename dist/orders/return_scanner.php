@@ -22,6 +22,48 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
 // Include database connection
 include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
+// Session role context (main admin vs tenant-restricted users)
+$is_main_admin = isset($_SESSION['is_main_admin']) ? (int)$_SESSION['is_main_admin'] : 0;
+$role_id = isset($_SESSION['role_id']) ? (int)$_SESSION['role_id'] : 0;
+$session_tenant_id = isset($_SESSION['tenant_id']) ? (int)$_SESSION['tenant_id'] : 0;
+
+/**
+ * FETCH COURIERS AJAX REQUEST (for the courier dropdown)
+ */
+if (isset($_GET['action']) && $_GET['action'] === 'get_couriers' && isset($_GET['tenant_id'])) {
+    header('Content-Type: application/json');
+    $tenantId = intval($_GET['tenant_id']);
+    $sql = "SELECT co_id, courier_id, courier_name 
+            FROM couriers 
+            WHERE tenant_id = ? AND status = 'active' 
+            ORDER BY courier_name ASC";
+    
+    $stmt = $conn->prepare($sql);
+    if (!$stmt) {
+        echo json_encode(['success' => false, 'message' => 'Database error']);
+        exit();
+    }
+    
+    $stmt->bind_param("i", $tenantId);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    
+    $couriers = [];
+    if ($result && $result->num_rows > 0) {
+        while ($row = $result->fetch_assoc()) {
+            $couriers[] = [
+                'co_id' => $row['co_id'],
+                'courier_id' => $row['courier_id'],
+                'courier_name' => $row['courier_name'],
+                'display_name' => $row['courier_name'] . ' (ID: ' . $row['courier_id'] . ')'
+            ];
+        }
+    }
+    $stmt->close();
+    echo json_encode(['success' => true, 'couriers' => $couriers]);
+    exit();
+}
+
 /**
  * PROCESS TRACKING NUMBERS AJAX REQUEST
  */
@@ -30,9 +72,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     
     $tracking_number = isset($_POST['tracking_number']) ? trim($_POST['tracking_number']) : '';
     $scan_mode = isset($_POST['scan_mode']) ? trim($_POST['scan_mode']) : 'return complete';
+    $co_id = isset($_POST['co_id']) ? (int)$_POST['co_id'] : 0;
+    $tenant_id = isset($_POST['tenant_id']) ? (int)$_POST['tenant_id'] : 0;
     
     if (empty($tracking_number)) {
         echo json_encode(['success' => false, 'message' => 'Tracking number is required']);
+        exit();
+    }
+    
+    if (empty($co_id)) {
+        echo json_encode(['success' => false, 'message' => 'Please select a courier first']);
         exit();
     }
     
@@ -49,10 +98,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         } else {
             // Live mode - update database
             
-            // First, check if tracking number exists in orders
-            $checkSql = "SELECT order_id, status, tracking_number FROM order_header WHERE tracking_number = ?";
-            $checkStmt = $conn->prepare($checkSql);
-            $checkStmt->bind_param("s", $tracking_number);
+            // First, check if tracking number exists in orders (scoped to courier + tenant)
+            if ($is_main_admin === 1 && $role_id === 1) {
+                $checkSql = "SELECT order_id, status, tracking_number FROM order_header WHERE tracking_number = ? AND co_id = ? LIMIT 1";
+                $checkStmt = $conn->prepare($checkSql);
+                $checkStmt->bind_param("si", $tracking_number, $co_id);
+            } else {
+                $checkSql = "SELECT order_id, status, tracking_number FROM order_header WHERE tracking_number = ? AND co_id = ? AND tenant_id = ? LIMIT 1";
+                $checkStmt = $conn->prepare($checkSql);
+                $checkStmt->bind_param("sii", $tracking_number, $co_id, $session_tenant_id);
+            }
             $checkStmt->execute();
             $result = $checkStmt->get_result();
             
@@ -81,10 +136,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             $conn->begin_transaction();
             
             try {
-                // Update order_header status to return_handover
-                $updateHeaderSql = "UPDATE order_header SET status = 'return_handover', updated_at = NOW() WHERE tracking_number = ?";
+                // Update order_header status to return_handover (scoped to the found order)
+                $updateHeaderSql = "UPDATE order_header SET status = 'return_handover', updated_at = NOW() WHERE order_id = ? AND status = 'return complete'";
                 $updateHeaderStmt = $conn->prepare($updateHeaderSql);
-                $updateHeaderStmt->bind_param("s", $tracking_number);
+                $updateHeaderStmt->bind_param("i", $order['order_id']);
                 
                 if (!$updateHeaderStmt->execute()) {
                     throw new Exception("Failed to update order_header: " . $conn->error);
@@ -99,6 +154,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                     throw new Exception("Failed to update order_items: " . $conn->error);
                 }
                 
+                // Get updated counts (Header update)
+                // INVENTORY IMPLEMENTATION
+                $inventoryUpdatedCount = 0;
+                if (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1) {
+                    // Get order items to update inventory
+                    $getItemsSql = "SELECT product_id, quantity FROM order_items WHERE order_id = ?";
+                    $itemsStmt = $conn->prepare($getItemsSql);
+                    $itemsStmt->bind_param("i", $order['order_id']);
+                    $itemsStmt->execute();
+                    $itemsResult = $itemsStmt->get_result();
+
+                    while ($item = $itemsResult->fetch_assoc()) {
+                        $productId = $item['product_id'];
+                        $quantity = $item['quantity'];
+
+                        // Update stock - Increment stock for returned items
+                        $updateStockSql = "UPDATE products SET stock_quantity = stock_quantity + ? WHERE id = ?";
+                        $stockStmt = $conn->prepare($updateStockSql);
+                        $stockStmt->bind_param("ii", $quantity, $productId);
+                        
+                        if (!$stockStmt->execute()) {
+                             throw new Exception("Failed to update stock for product ID: " . $productId);
+                        }
+                        $inventoryUpdatedCount++;
+                        $stockStmt->close();
+                    }
+                    $itemsStmt->close();
+                }
+                
                 // Get updated counts
                 $itemsUpdated = $updateItemsStmt->affected_rows;
                 
@@ -111,6 +195,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                     'previous_status' => 'return complete',
                     'new_status' => 'return_handover',
                     'items_updated' => $itemsUpdated,
+                    'inventory_updated_count' => $inventoryUpdatedCount,
                     'scan_method' => 'bulk_scanner',
                     'ip_address' => $_SERVER['REMOTE_ADDR'] ?? 'unknown',
                     'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? 'unknown'
@@ -133,10 +218,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                                    FROM order_header o 
                                    LEFT JOIN customers c ON o.customer_id = c.customer_id 
                                    LEFT JOIN order_items oi ON o.order_id = oi.order_id
-                                   WHERE o.tracking_number = ?
+                                   WHERE o.order_id = ?
                                    GROUP BY o.order_id";
                 $detailsStmt = $conn->prepare($orderDetailsSql);
-                $detailsStmt->bind_param("s", $tracking_number);
+                $detailsStmt->bind_param("i", $order['order_id']);
                 $detailsStmt->execute();
                 $orderDetails = $detailsStmt->get_result()->fetch_assoc();
                 
@@ -172,7 +257,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     exit();
 }
 
-
+// Fetch tenants for the dropdown
+$tenants = [];
+if ($is_main_admin === 1 && $role_id === 1) {
+    // Main Admin gets all active tenants
+    $tenantResult = $conn->query("SELECT tenant_id, company_name FROM tenants WHERE status = 'active' ORDER BY company_name");
+} else {
+    // Others get only their assigned tenant
+    $tenantStmt = $conn->prepare("SELECT tenant_id, company_name FROM tenants WHERE tenant_id = ? AND status = 'active' LIMIT 1");
+    $tenantStmt->bind_param("i", $session_tenant_id);
+    $tenantStmt->execute();
+    $tenantResult = $tenantStmt->get_result();
+}
+if ($tenantResult && $tenantResult->num_rows > 0) {
+    while ($row = $tenantResult->fetch_assoc()) {
+        $tenants[] = $row;
+    }
+}
+$restricted_tenant_id = (count($tenants) === 1 && !($is_main_admin === 1 && $role_id === 1)) ? $tenants[0]['tenant_id'] : 0;
 
 ?>
 
@@ -180,13 +282,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 <html lang="en" data-pc-preset="preset-1" data-pc-sidebar-caption="true" data-pc-direction="ltr" dir="ltr" data-pc-theme="light">
 
 <head>
-    <title>Return Scanner - Admin Portal</title>
+    <title>Return Scanner | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
     
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
     
     <!-- Stylesheets -->
-    <link rel="stylesheet" href="../assets/css/style.css" id="main-style-link" />
-    <link rel="stylesheet" href="../assets/css/orders.css" id="main-style-link" />
+    <link rel="stylesheet" href="../assets/css/orders.css" />
 </head>
 
 <style>
@@ -221,7 +322,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         border-radius: 8px;
         font-size: 16px;
         transition: border-color 0.3s ease;
-        height: 60px;
+    }
+
+    .input-group select {
+        height: 42px;
+        padding: 8px 12px;
+        font-size: 14px;
+        cursor: pointer;
+    }
+
+    .input-group textarea {
+        min-height: 300px;
+        resize: vertical;
+    }
+
+    /* Tenant + Courier side by side */
+    .tenant-courier-row {
+        display: flex;
+        gap: 20px;
+    }
+
+    .tenant-courier-row .input-group {
+        flex: 1;
+        min-width: 0;
     }
 
     .input-group textarea:focus, .input-group select:focus {
@@ -253,6 +376,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         background: #6c757d;
         cursor: not-allowed;
         transform: none;
+    }
+
+    .clear-btn {
+        background: #6c757d;
+        color: white;
+        border: none;
+        padding: 10px 21px;
+        border-radius: 8px;
+        font-size: 16px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        width: 15%;
+        margin-bottom: 20px;
+    }
+
+    .clear-btn:hover {
+        background: #5a6268;
+        transform: translateY(-2px);
     }
 
     /* Progress bar styling */
@@ -354,7 +496,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             padding: 20px;
         }
 
+        .tenant-courier-row {
+            flex-direction: column;
+        }
+
         .scan-btn {
+            width: 100%;
+        }
+
+        .clear-btn {
             width: 100%;
         }
     }
@@ -387,14 +537,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                     <div class="scanner-content">
                         
                         <div class="scanner-section">
+                            <div class="tenant-courier-row">
+                                <?php if ($restricted_tenant_id > 0): ?>
+                                    <input type="hidden" id="tenant_id" name="tenant_id" value="<?php echo $restricted_tenant_id; ?>">
+                                <?php else: ?>
+                                <div class="input-group">
+                                    <label for="tenant_id">Select Tenant <span style="color: #dc3545;">*</span></label>
+                                    <select id="tenant_id" name="tenant_id" required>
+                                        <option value="">Select Tenant</option>
+                                        <?php foreach ($tenants as $tenant): ?>
+                                            <option value="<?php echo $tenant['tenant_id']; ?>">
+                                                <?php echo htmlspecialchars($tenant['company_name']); ?>
+                                            </option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                </div>
+                                <?php endif; ?>
+
+                                <div class="input-group">
+                                    <label for="co_id">Select Courier <span style="color: #dc3545;">*</span></label>
+                                    <select id="co_id" name="co_id" required disabled>
+                                        <option value=""><?php echo $restricted_tenant_id > 0 ? 'Loading Couriers...' : 'Select Tenant First'; ?></option>
+                                    </select>
+                                </div>
+                            </div>
+
                             <div class="input-group">
-                                <label for="trackingInput">Enter Tracking Numbers </label>
-                                <textarea id="trackingInput" rows="5" placeholder="Enter tracking numbers here..." style="resize: vertical; min-height: 120px;"></textarea>
+                                <label for="trackingInput">Enter Tracking Numbers</label>
+                                <textarea id="trackingInput" rows="12" placeholder="Enter tracking numbers here (one per line or scan multiple)..."></textarea>
                             </div>
                             
-                            <button class="scan-btn" id="processBtn" onclick="processTracking()">
-                            Process Tracking Numbers
-                            </button>
+                            <div style="display: flex; gap: 15px; justify-content: flex-end;">
+                                <button class="scan-btn" id="processBtn" onclick="processTracking()">
+                                Process Tracking Numbers
+                                </button>
+                                <button class="clear-btn" id="clearBtn" onclick="clearTracking()">
+                                Clear
+                                </button>
+                            </div>
 
                             <div class="progress-bar" id="progressBar">
                                 <div class="progress-fill" id="progressFill"></div>
@@ -428,12 +608,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         </div>
     </div>
 
+    <!-- Footer -->
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php'); ?>
+
     <!-- Include JavaScript files -->
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php'); ?>
     
     <script>
         // JavaScript functions for scanner functionality
         function processTracking() {
+            const courierSelect = document.getElementById('co_id');
+            if (!courierSelect.value) {
+                alert('Please select a courier before scanning.');
+                courierSelect.focus();
+                return;
+            }
+            const tenantSelect = document.getElementById('tenant_id');
+
             const trackingInput = document.getElementById('trackingInput').value.trim();
             if (!trackingInput) {
                 alert('Please enter at least one tracking number');
@@ -444,6 +635,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             const total = trackingNumbers.length;
             let successCount = 0;
             let errorCount = 0;
+
+            // Lock the tracking input & process button while scanning
+            // (tenant/courier selections stay as they are)
+            document.getElementById('trackingInput').disabled = true;
+            document.getElementById('processBtn').disabled = true;
 
             // Show progress bar and status
             document.getElementById('progressBar').style.display = 'block';
@@ -496,6 +692,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                                 document.getElementById('statsContainer').style.display = 'flex';
                                 document.getElementById('processingStatus').style.display = 'none';
                                 document.getElementById('progressBar').style.display = 'none';
+                                // Unlock inputs for the next batch
+                                document.getElementById('trackingInput').disabled = false;
+                                document.getElementById('processBtn').disabled = false;
                             }
                         } catch (e) {
                             console.error('Error parsing response:', e);
@@ -519,13 +718,78 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                                 document.getElementById('statsContainer').style.display = 'flex';
                                 document.getElementById('processingStatus').style.display = 'none';
                                 document.getElementById('progressBar').style.display = 'none';
+                                // Unlock inputs for the next batch
+                                document.getElementById('trackingInput').disabled = false;
+                                document.getElementById('processBtn').disabled = false;
                             }
                         }
                     }
                 };
-                xhr.send(`action=process_tracking&tracking_number=${encodeURIComponent(trackingNumber.trim())}`);
+                xhr.send(`action=process_tracking&tracking_number=${encodeURIComponent(trackingNumber.trim())}&co_id=${encodeURIComponent(courierSelect.value)}&tenant_id=${encodeURIComponent(tenantSelect.value)}`);
             });
         }
+
+        function clearTracking() {
+            document.getElementById('trackingInput').value = '';
+            document.getElementById('results').innerHTML = '';
+            document.getElementById('progressBar').style.display = 'none';
+            document.getElementById('processingStatus').style.display = 'none';
+            document.getElementById('statsContainer').style.display = 'none';
+
+            document.getElementById('successCount').textContent = '0';
+            document.getElementById('errorCount').textContent = '0';
+            document.getElementById('totalCount').textContent = '0';
+
+            if (document.getElementById('processBtn')) {
+                document.getElementById('processBtn').disabled = false;
+            }
+            if (document.getElementById('trackingInput')) {
+                document.getElementById('trackingInput').disabled = false;
+            }
+        }
+
+        // Load couriers when tenant is selected
+        document.getElementById('tenant_id').addEventListener('change', function() {
+            const tenantId = this.value;
+            const courierSelect = document.getElementById('co_id');
+
+            courierSelect.innerHTML = '<option value="">Loading Couriers...</option>';
+            courierSelect.disabled = true;
+
+            if (tenantId) {
+                fetch('return_scanner.php?action=get_couriers&tenant_id=' + tenantId)
+                    .then(response => response.json())
+                    .then(data => {
+                        courierSelect.innerHTML = '<option value="">Select Courier</option>';
+
+                        if (data.success && data.couriers.length > 0) {
+                            data.couriers.forEach(courier => {
+                                const option = document.createElement('option');
+                                option.value = courier.co_id;
+                                option.textContent = courier.display_name;
+                                courierSelect.appendChild(option);
+                            });
+                            courierSelect.disabled = false;
+                        } else {
+                            courierSelect.innerHTML = '<option value="">No Couriers Available</option>';
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error fetching couriers:', error);
+                        courierSelect.innerHTML = '<option value="">Error Loading Couriers</option>';
+                    });
+            } else {
+                courierSelect.innerHTML = '<option value="">Select Tenant First</option>';
+            }
+        });
+
+        // Auto-load couriers if tenant is pre-selected (restricted users)
+        document.addEventListener('DOMContentLoaded', function() {
+            const tenantSelect = document.getElementById('tenant_id');
+            if (tenantSelect && tenantSelect.value) {
+                tenantSelect.dispatchEvent(new Event('change'));
+            }
+        });
     </script>
 </body>
 </html>

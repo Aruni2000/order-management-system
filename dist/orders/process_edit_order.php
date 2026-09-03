@@ -22,7 +22,7 @@ $session_tenant_id = isset($_SESSION['tenant_id']) ? intval($_SESSION['tenant_id
 // Function to log user actions
 function logUserAction($conn, $user_id, $action_type, $inquiry_id, $details = null) {
     if (!$conn) return false;
-    $stmt = $conn->prepare("INSERT INTO user_logs (user_id, action_type, inquiry_id, details) VALUES (?, ?, ?, ?)");
+    $stmt = $conn->prepare("INSERT INTO user_logs (user_id, action_type, inquiry_id, details, created_at) VALUES (?, ?, ?, ?, NOW())");
     $stmt->bind_param("isis", $user_id, $action_type, $inquiry_id, $details);
     return $stmt->execute();
 }
@@ -65,21 +65,47 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         // Begin transaction
         $conn->begin_transaction();
 
-        // Fetch current pay_status, interface and tenant_id of the order before updating
-        $currentPayStatusSql = "SELECT pay_status, interface, tenant_id FROM order_header WHERE order_id = ?";
-        $currentPayStatusStmt = $conn->prepare($currentPayStatusSql);
-        $currentPayStatusStmt->bind_param("s", $order_id);
-        $currentPayStatusStmt->execute();
-        $currentPayResult = $currentPayStatusStmt->get_result();
-        $old_pay_status = 'unpaid';
-        $order_interface = 'individual'; // default to individual
-        $order_tenant_id = 0;
-        if ($old_row = $currentPayResult->fetch_assoc()) {
-            $old_pay_status = $old_row['pay_status'];
-            $order_interface = $old_row['interface'] ?? 'individual';
-            $order_tenant_id = intval($old_row['tenant_id'] ?? 0);
+        // Fetch current order data before updating (for change tracking)
+        $oldDataSql = "SELECT full_name, email, mobile, mobile_2, address_line1, address_line2, city_id, 
+                              issue_date, due_date, notes, pay_status, subtotal, discount, delivery_fee, 
+                              total_amount, product_code, interface, tenant_id
+                       FROM order_header WHERE order_id = ?";
+        $oldDataStmt = $conn->prepare($oldDataSql);
+        $oldDataStmt->bind_param("s", $order_id);
+        $oldDataStmt->execute();
+        $oldDataResult = $oldDataStmt->get_result();
+        $oldData = $oldDataResult->fetch_assoc();
+        $oldDataStmt->close();
+
+        $old_pay_status = $oldData['pay_status'] ?? 'unpaid';
+        $order_interface = $oldData['interface'] ?? 'individual';
+        $order_tenant_id = intval($oldData['tenant_id'] ?? 0);
+
+        // Fetch old order items with product names (for change tracking)
+        $oldItemsSql = "SELECT oi.product_id, oi.quantity, oi.unit_price, p.name AS product_name
+                        FROM order_items oi
+                        LEFT JOIN products p ON oi.product_id = p.id
+                        WHERE oi.order_id = ?";
+        $oldItemsStmt = $conn->prepare($oldItemsSql);
+        $oldItemsStmt->bind_param("s", $order_id);
+        $oldItemsStmt->execute();
+        $old_items = $oldItemsStmt->get_result()->fetch_all(MYSQLI_ASSOC);
+        $oldItemsStmt->close();
+
+        // Build old items index by product_id (for change tracking)
+        $oldItemsByProd = [];
+        foreach ($old_items as $oldItm) {
+            $pid = $oldItm['product_id'];
+            if (!isset($oldItemsByProd[$pid])) {
+                $oldItemsByProd[$pid] = [
+                    'qty'   => 0,
+                    'price' => floatval($oldItm['unit_price']),
+                    'name'  => $oldItm['product_name'] ?? 'Product #' . $pid
+                ];
+            }
+            $oldItemsByProd[$pid]['qty'] += intval($oldItm['quantity']);
+            $oldItemsByProd[$pid]['name'] = $oldItm['product_name'] ?? 'Product #' . $pid;
         }
-        $currentPayStatusStmt->close();
 
         // Validate tenant access - non-main admins can only edit orders from their own tenant
         if (!($is_main_admin === 1 && $role_id === 1)) {
@@ -246,6 +272,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)";
         $insertStmt = $conn->prepare($insertItemSql);
         
+        // Prepare stock management statements
+        $restoreStockSql = "UPDATE products SET stock_quantity = stock_quantity + ? WHERE id = ?";
+        $restoreStockStmt = $conn->prepare($restoreStockSql);
+
+        $deductStockSql = "UPDATE products SET stock_quantity = stock_quantity - ? WHERE id = ? AND stock_quantity >= ?";
+        $deductStockStmt = $conn->prepare($deductStockSql);
 
         // Process each item
         foreach ($order_items as $item) {
@@ -254,6 +286,21 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 $old_item = $current_items_map[$item['item_id']] ?? null;
                 
                 if ($old_item) {
+                    // Stock management - only if enabled
+                    if (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1) {
+                        // Restore old stock
+                        $restoreStockStmt->bind_param("ii", $old_item['quantity'], $old_item['product_id']);
+                        $restoreStockStmt->execute();
+                        
+                        // Deduct new stock
+                        $deductStockStmt->bind_param("iii", $item['qty'], $item['product_id'], $item['qty']);
+                        $deductStockStmt->execute();
+                        
+                        if ($deductStockStmt->affected_rows === 0) {
+                            throw new Exception("Insufficient stock for product ID: " . $item['product_id']);
+                        }
+                    }
+                    
                     // Update the item
                     $updateStmt->bind_param("ididdssss", 
                         $item['product_id'], $item['price'], $item['qty'], 
@@ -264,6 +311,16 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 }
             } else {
                 // NEW ITEM - INSERT IT
+                if (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1) {
+                    // Deduct stock for the new item
+                    $deductStockStmt->bind_param("iii", $item['qty'], $item['product_id'], $item['qty']);
+                    $deductStockStmt->execute();
+                    
+                    if ($deductStockStmt->affected_rows === 0) {
+                        throw new Exception("Insufficient stock for product ID: " . $item['product_id']);
+                    }
+                }
+
                 $insertStmt->bind_param("iididsss",
                     $order_id, $item['product_id'], $item['price'], $item['qty'], 
                     $item['discount'], $item['total'], $pay_status, $item['desc']
@@ -275,6 +332,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         // Delete items that were removed from the order
         foreach ($current_items_map as $item_id => $old_item) {
             if (!in_array($item_id, $processed_item_ids)) {
+                // This item was removed - restore its stock and delete it
+                if (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1) {
+                    $restoreStockStmt->bind_param("ii", $old_item['quantity'], $old_item['product_id']);
+                    $restoreStockStmt->execute();
+                }
                 $deleteStmt = $conn->prepare("DELETE FROM order_items WHERE item_id = ? AND order_id = ?");
                 $deleteStmt->bind_param("is", $item_id, $order_id);
                 $deleteStmt->execute();
@@ -285,20 +347,158 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $updateStmt->close();
         $insertStmt->close();
 
-        // Create detailed log message
-        $logDetails = "Order details updated via edit interface";
+        // ====== Build detailed change log ======
+        $itemChangesLog = [];
+        $otherChanges   = [];
+
+        // Compare header text fields
+        $headerFields = [
+            'full_name'    => 'Customer Name',
+            'email'        => 'Email',
+            'mobile'       => 'Phone',
+            'mobile_2'     => 'Phone 2',
+            'address_line1'=> 'Address Line 1',
+            'address_line2'=> 'Address Line 2',
+            'notes'        => 'Notes'
+        ];
+
+        $newHeaderData = [
+            'full_name'    => $customer_name,
+            'email'        => $customer_email,
+            'mobile'       => $customer_phone,
+            'mobile_2'     => $customer_phone_2,
+            'address_line1'=> $address_line1,
+            'address_line2'=> $address_line2,
+            'notes'        => $notes
+        ];
+
+        foreach ($headerFields as $field => $label) {
+            $oldVal = trim((string)($oldData[$field] ?? ''));
+            $newVal = trim((string)($newHeaderData[$field] ?? ''));
+            if ($oldVal !== $newVal) {
+                $otherChanges[] = "$label: '" . ($oldVal ?: 'empty') . "' to '" . ($newVal ?: 'empty') . "'";
+            }
+        }
+
+        // Compare dates
+        if (($oldData['issue_date'] ?? '') !== $order_date) {
+            $otherChanges[] = "Order Date: " . ($oldData['issue_date'] ?? 'empty') . " to " . $order_date;
+        }
+        if (($oldData['due_date'] ?? '') !== $due_date) {
+            $otherChanges[] = "Due Date: " . ($oldData['due_date'] ?? 'empty') . " to " . $due_date;
+        }
+
+        // Compare city - resolve names
+        $oldCityName = '';
+        if (!empty($oldData['city_id'])) {
+            $cityChk = $conn->prepare("SELECT city_name FROM city_table WHERE city_id = ?");
+            if ($cityChk) {
+                $cityChk->bind_param("i", $oldData['city_id']);
+                $cityChk->execute();
+                $oldCityName = $cityChk->get_result()->fetch_assoc()['city_name'] ?? '';
+                $cityChk->close();
+            }
+        }
+        $newCityName = '';
+        if (!empty($city_id)) {
+            $cityChk2 = $conn->prepare("SELECT city_name FROM city_table WHERE city_id = ?");
+            if ($cityChk2) {
+                $cityChk2->bind_param("i", $city_id);
+                $cityChk2->execute();
+                $newCityName = $cityChk2->get_result()->fetch_assoc()['city_name'] ?? '';
+                $cityChk2->close();
+            }
+        }
+        if ($oldCityName !== $newCityName) {
+            $otherChanges[] = "City: '" . ($oldCityName ?: 'none') . "' to '" . ($newCityName ?: 'none') . "'";
+        }
+
+        // Compare financial fields
+        $oldSubtotal = floatval($oldData['subtotal'] ?? 0);
+        $newSubtotal = floatval($subtotal_before_discounts);
+        if (abs($oldSubtotal - $newSubtotal) > 0.005) {
+            $otherChanges[] = "Subtotal: LKR " . number_format($oldSubtotal, 2) . " to LKR " . number_format($newSubtotal, 2);
+        }
+
+        $oldDiscount = floatval($oldData['discount'] ?? 0);
+        $newDiscount = floatval($total_discount);
+        if (abs($oldDiscount - $newDiscount) > 0.005) {
+            $otherChanges[] = "Discount: LKR " . number_format($oldDiscount, 2) . " to LKR " . number_format($newDiscount, 2);
+        }
+
+        $oldDelivery = floatval($oldData['delivery_fee'] ?? 0);
+        $newDelivery = floatval($delivery_fee);
+        if (abs($oldDelivery - $newDelivery) > 0.005) {
+            $otherChanges[] = "Delivery Fee: LKR " . number_format($oldDelivery, 2) . " to LKR " . number_format($newDelivery, 2);
+        }
+
+        // Compare pay status
         if ($old_pay_status !== $pay_status) {
-            $logDetails .= " | Payment Status: " . ucfirst($old_pay_status) . " to " . ucfirst($pay_status);
+            $otherChanges[] = "Payment: " . ucfirst($old_pay_status) . " to " . ucfirst($pay_status);
+        }
+
+        // ====== Compare order items ======
+        // Build new items index by product_id
+        $newItemsByProd = [];
+        foreach ($order_items as $item) {
+            $pid = $item['product_id'];
+            if (!isset($newItemsByProd[$pid])) {
+                $newItemsByProd[$pid] = ['qty' => 0, 'price' => floatval($item['price'])];
+            }
+            $newItemsByProd[$pid]['qty'] += $item['qty'];
+        }
+
+        // Check removed products
+        foreach ($oldItemsByProd as $pid => $oldItm) {
+            if (!isset($newItemsByProd[$pid])) {
+                $itemChangesLog[] = "Removed product: " . $oldItm['name'] . " (qty: " . $oldItm['qty'] . ")";
+            }
+        }
+
+        // Check added or changed products
+        foreach ($newItemsByProd as $pid => $newItm) {
+            $prodName = 'Product #' . $pid;
+            if (isset($oldItemsByProd[$pid])) {
+                $prodName = $oldItemsByProd[$pid]['name'];
+            } else {
+                $pStmt = $conn->prepare("SELECT name FROM products WHERE id = ?");
+                if ($pStmt) {
+                    $pStmt->bind_param("i", $pid);
+                    $pStmt->execute();
+                    $prodName = $pStmt->get_result()->fetch_assoc()['name'] ?? 'Product #' . $pid;
+                    $pStmt->close();
+                }
+            }
+
+            if (!isset($oldItemsByProd[$pid])) {
+                $itemChangesLog[] = "Added product: " . $prodName . " (qty: " . $newItm['qty'] . ", LKR " . number_format($newItm['price'], 2) . ")";
+            } else {
+                $oldItm = $oldItemsByProd[$pid];
+                $prodItemChanges = [];
+                if ($oldItm['qty'] != $newItm['qty']) {
+                    $prodItemChanges[] = "qty " . $oldItm['qty'] . " to " . $newItm['qty'];
+                }
+                if (abs($oldItm['price'] - $newItm['price']) > 0.005) {
+                    $prodItemChanges[] = "price LKR " . number_format($oldItm['price'], 2) . " to LKR " . number_format($newItm['price'], 2);
+                }
+                if (!empty($prodItemChanges)) {
+                    $itemChangesLog[] = $prodName . ": " . implode(', ', $prodItemChanges);
+                }
+            }
+        }
+
+        // Merge: product changes first, then other field changes
+        $changes = array_merge($itemChangesLog, $otherChanges);
+
+        // Build final log message
+        if (!empty($changes)) {
+            $logDetails = "Edited Order #" . $order_id . " - " . implode('; ', $changes);
+        } else {
+            $logDetails = "Edited Order #" . $order_id . " - No changes were made";
         }
 
         // Log action with details
-        logUserAction($conn, $user_id, "Updated order", $order_id, $logDetails);
-
-        // Debug logging
-        error_log("Payment Debug - Old status: " . $old_pay_status . ", New status: " . $pay_status);
-        
-        // Debug logging
-        error_log("Payment Debug - Old status: " . $old_pay_status . ", New status: " . $pay_status);
+        logUserAction($conn, $user_id, 'order_edited', $order_id, $logDetails);
         
         // If status changed from unpaid to paid, insert payment record
         if ($old_pay_status !== 'paid' && $pay_status === 'paid') {

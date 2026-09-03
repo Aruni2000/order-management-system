@@ -81,7 +81,7 @@ if (isset($_GET['download']) && $_GET['download'] == 1) {
 <!DOCTYPE html>
 <html>
 <head>
-    <title>CSV Reader + Converter</title>
+    <title>CSV Reader + Converter | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
     <style>
         table { border-collapse: collapse; width: 95%; margin-top: 20px; }
         th, td { border: 1px solid #444; padding: 6px 10px; }

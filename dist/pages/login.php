@@ -82,7 +82,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     // Only check customer subscription if tenant is marked as main admin
                     if ($user['is_main_admin'] == 1) {
                         // Get customer_id from branding table
-                        $sql_branding_customer = "SELECT customer_id FROM branding WHERE active = 1 LIMIT 1";
+                        $sql_branding_customer = "SELECT customer_id, billing_date FROM branding WHERE active = 1 LIMIT 1";
                         $result_branding_customer = $conn->query($sql_branding_customer);
                         
                         if ($result_branding_customer && $result_branding_customer->num_rows > 0) {
@@ -91,7 +91,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                             
                             if ($customer_id > 0) {
                                 // Check customer/company subscription status in FE IT database
-                                $sql_customer_status = "SELECT status FROM customers WHERE customer_id = ?";
+                                $sql_customer_status = "SELECT status, billing_date FROM customers WHERE customer_id = ?";
                                 $stmt_customer = $fe_conn->prepare($sql_customer_status);
                                 
                                 if ($stmt_customer === false) {
@@ -114,6 +114,31 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                                                 error_log("Customer ID $customer_id has inactive subscription status: " . $customer_status);
                                             } else {
                                                 error_log("Customer ID $customer_id subscription is active");
+
+                                                // Sync billing_date to branding table ONLY if it changed
+                                                $sync_billing_date = isset($customer['billing_date']) && $customer['billing_date'] !== '' ? intval($customer['billing_date']) : null;
+                                                $local_billing_date = isset($branding_data['billing_date']) && $branding_data['billing_date'] !== '' ? intval($branding_data['billing_date']) : null;
+
+                                                if ($sync_billing_date !== $local_billing_date) {
+                                                    if ($sync_billing_date === null) {
+                                                        $update_branding_sql = "UPDATE branding SET billing_date = NULL WHERE customer_id = ?";
+                                                        $update_stmt = $conn->prepare($update_branding_sql);
+                                                        if ($update_stmt) {
+                                                            $update_stmt->bind_param("i", $customer_id);
+                                                        }
+                                                    } else {
+                                                        $update_branding_sql = "UPDATE branding SET billing_date = ? WHERE customer_id = ?";
+                                                        $update_stmt = $conn->prepare($update_branding_sql);
+                                                        if ($update_stmt) {
+                                                            $update_stmt->bind_param("ii", $sync_billing_date, $customer_id);
+                                                        }
+                                                    }
+
+                                                    if ($update_stmt && $update_stmt->execute()) {
+                                                        $update_stmt->close();
+                                                        error_log("Synced billing_date (" . ($sync_billing_date ?? "NULL") . ") for customer_id $customer_id (was " . ($local_billing_date ?? "NULL") . ")");
+                                                    }
+                                                }
                                             }
                                         } else {
                                             $customer_status_check = false;
@@ -172,6 +197,21 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
                             error_log("User $email successfully logged in - Tenant ID: " . $user['tenant_id'] . ", Is Main Admin: " . $user['is_main_admin']);
 
+                            // Log user login action
+                            try {
+                                $log_action = 'user_login';
+                                $log_details = "User successfully logged in.";
+                                $log_sql = "INSERT INTO user_logs (user_id, action_type, details, created_at) VALUES (?, ?, ?, NOW())";
+                                $log_stmt = $conn->prepare($log_sql);
+                                if ($log_stmt) {
+                                    $log_stmt->bind_param("iss", $_SESSION['user_id'], $log_action, $log_details);
+                                    $log_stmt->execute();
+                                    $log_stmt->close();
+                                }
+                            } catch (Exception $e) {
+                                error_log("Failed to log user login: " . $e->getMessage());
+                            }
+
                             // Redirect by role
                             switch ($user['role_id']) {
                                 case 1: // Superadmin
@@ -209,9 +249,9 @@ $fe_conn->close();
     data-pc-theme="light">
 
 <head>
-    <title>Login | Order Management Admin Portal</title>
+    <title>Login</title>
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
-    <link rel="stylesheet" href="../assets/css/login.css" id="main-style-link" />
+    <link rel="stylesheet" href="../assets/css/login.css" />
     <script>
         // Force reload if page is loaded from back-forward cache
         window.addEventListener('pageshow', function(event) {

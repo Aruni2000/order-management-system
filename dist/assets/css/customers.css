@@ -412,3 +412,13 @@ Additional CSS for add customer page - (add_customer.php) End
     flex: 1;
     margin-bottom: 20px;
 }
+.action-highlight {
+    font-weight: bold;
+    color: #e74c3c;
+}
+        
+.user-name-highlight {
+    font-weight: bold;
+    color: #2c3e50;
+    font-size: 1.2rem;
+        }

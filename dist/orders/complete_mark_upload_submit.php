@@ -15,6 +15,9 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
 // Include the database connection file early
 include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
+// Get user ID for logging
+$user_id = $_SESSION['user_id'] ?? null;
+
 // Check if user is main admin
 $is_main_admin = $_SESSION['is_main_admin'];
 $tenant_id = $_SESSION['tenant_id'] ?? 0;
@@ -82,6 +85,18 @@ if (($handle = fopen($filename, "r")) !== false) {
                 $updateStmt->bind_param("i", $order_id);
                 $updateStmt->execute();
                 $successCount++;
+
+                // Log user action
+                if ($user_id) {
+                    $logSql = "INSERT INTO user_logs (user_id, action_type, inquiry_id, details, created_at) VALUES (?, 'complete_mark_csv', ?, ?, NOW())";
+                    $logStmt = $conn->prepare($logSql);
+                    if ($logStmt) {
+                        $logDetails = "Delivery CSV bulk complete order updated with tracking: {$waybill_id}, Order ID: {$order_id}";
+                        $logStmt->bind_param("iis", $user_id, $order_id, $logDetails);
+                        $logStmt->execute();
+                        $logStmt->close();
+                    }
+                }
 
             } else {
                 $errorCount++;

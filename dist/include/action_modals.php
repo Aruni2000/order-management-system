@@ -107,11 +107,52 @@
   color: #fff;
 }
 
-/* Condition radio list */
-.condition-radio-list {
-  margin-top: 6px;
+/* Condition card color variants */
+.card-radio-label.excellent-variant .radio-icon {
+  background: #d4edda;
+  color: #28a745;
 }
-.condition-radio-item {
+.card-radio-label.excellent-variant.selected .radio-icon {
+  background: #28a745;
+  color: #fff;
+}
+
+.card-radio-label.good-variant .radio-icon {
+  background: #cce5ff;
+  color: #0d6efd;
+}
+.card-radio-label.good-variant.selected .radio-icon {
+  background: #0d6efd;
+  color: #fff;
+}
+
+.card-radio-label.average-variant .radio-icon {
+  background: #fff3cd;
+  color: #fd7e14;
+}
+.card-radio-label.average-variant.selected .radio-icon {
+  background: #fd7e14;
+  color: #fff;
+}
+
+.card-radio-label.new-variant .radio-icon {
+  background: #e2e3e5;
+  color: #6c757d;
+}
+.card-radio-label.new-variant.selected .radio-icon {
+  background: #6c757d;
+  color: #fff;
+}
+
+/* Condition card grid: 3+2 layout */
+.condition-card-container {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.condition-card-container .card-radio-row {
+  margin-bottom: 0;
+}
   margin-bottom: 6px;
 }
 .condition-radio-item label {
@@ -335,38 +376,7 @@
 </div>
 
 <!-- ============================================= -->
-<!-- 4. RESTORE ORDER MODAL                        -->
-<!-- ============================================= -->
-<div id="restoreOrderModal" class="api-modal-overlay" style="display: none;">
-  <div class="api-modal">
-    <div class="api-modal-header">
-      <h4><i class="fas fa-undo-alt text-white"></i> <span class="text-white">Restore Order - #<span id="ro-order-hdr">—</span></span></h4>
-      <button type="button" class="close-btn" onclick="closeActionModal('restoreOrderModal')">
-        <i class="fas fa-times"></i>
-      </button>
-    </div>
-    <form id="restoreOrderForm">
-      <div class="action-modal-body">
-        <div style="text-align:center;padding:16px 0;">
-          <i class="fas fa-question-circle" style="font-size:2.5rem;color:#0d6efd;margin-bottom:12px;"></i>
-          <div style="font-size:15px;font-weight:600;color:#374151;margin-bottom:6px;">Restore Order?</div>
-          <div style="font-size:13px;color:#6c757d;">Are you sure you want to restore this cancelled order?</div>
-        </div>
-      </div>
-      <div class="api-modal-footer">
-        <button type="button" class="btn btn-secondary" onclick="closeActionModal('restoreOrderModal')">
-          <i class="fas fa-times"></i> Cancel
-        </button>
-        <button type="submit" class="btn btn-primary" id="ro-submit-btn" style="background:#17a2b8;background:linear-gradient(135deg,#17a2b8 0%,#138496 100%);">
-          <i class="fas fa-check"></i> Yes, restore it!
-        </button>
-      </div>
-    </form>
-  </div>
-</div>
-
-<!-- ============================================= -->
-<!-- 5. UPDATE SUCCESS RATE MODAL                  -->
+<!-- 4. UPDATE SUCCESS RATE MODAL                  -->
 <!-- ============================================= -->
 <div id="conditionModal" class="api-modal-overlay" style="display: none;">
   <div class="api-modal">
@@ -378,10 +388,9 @@
     </div>
     <form id="conditionForm">
       <div class="action-modal-body">
-        <div style="margin-bottom:14px;font-size:13px;color:#6c757d;">Current Rate: <span id="cd-current-name" style="font-weight:600;color:#374151;background:#e9ecef;padding:2px 8px;border-radius:10px;font-size:12px;">—</span></div>
         <div style="margin-bottom:4px;">
           <label class="form-label-compact">Select New Success Rate:</label>
-          <div class="condition-radio-list" id="cd-radio-list">
+          <div class="condition-card-container" id="cd-radio-list">
             <!-- Populated by JS -->
           </div>
         </div>

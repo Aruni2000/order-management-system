@@ -38,12 +38,11 @@ $role_id = $_SESSION['role_id'];
     data-pc-theme="light">
 
 <head>
-    <title>Order Management Admin Portal - Add New Customer</title>
+    <title>Add New Customer | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
 
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
 
-    <link rel="stylesheet" href="../assets/css/style.css" id="main-style-link" />
-    <link rel="stylesheet" href="../assets/css/customers.css" id="main-style-link" />
+    <link rel="stylesheet" href="../assets/css/customers.css" />
 
     <style>
     .ajax-notification {
@@ -365,19 +364,6 @@ $role_id = $_SESSION['role_id'];
                                 </div>
                             </div>
 
-                            <div class="form-row">
-                                <div class="customer-form-group">
-                                    <label for="status" class="form-label">
-                                        <i class="fas fa-toggle-on"></i> Status<span class="required">*</span>
-                                    </label>
-                                    <select class="form-select" id="status" name="status" required>
-                                        <option value="Active" selected>Active</option>
-                                        <option value="Inactive">Inactive</option>
-                                    </select>
-                                    <div class="error-feedback" id="status-error"></div>
-                                </div>
-                            </div>
-                        
                             <div class="form-row">
                                 <div class="customer-form-group">
                                     <label for="address_line1" class="form-label">

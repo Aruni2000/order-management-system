@@ -199,9 +199,8 @@ function getTenantData($tId, $tenants_list) {
     if (!empty($tId) && isset($tenants_list[$tId])) {
         return $tenants_list[$tId];
     }
-    if (!empty($tenants_list)) {
-        return reset($tenants_list);
-    }
+    // Tenant not found (inactive/missing): return neutral placeholder
+    // instead of falling back to the first active tenant's branding
     return [
         'company_name' => 'Company Name', 'tenant_address' => 'Address not set', 'tenant_email' => '', 'phone' => '', 'logo_url' => ''
     ];
@@ -249,7 +248,7 @@ function getTrackingFilterText($tracking_filter, $tracking_number = '') {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Six by Four Bulk Print - 6x4 inch Labels (<?php echo count($orders); ?> orders)</title>
+    <title>Six by Four Bulk Print - 6x4 inch Labels (<?php echo count($orders); ?> orders) | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
     
     <!-- Link to external CSS file -->
     <link rel="stylesheet" href="../assets/css/print_new.css">
@@ -360,8 +359,9 @@ function getTrackingFilterText($tracking_filter, $tracking_number = '') {
                                     <?php endif; ?>
                                 </div>
                                 <div class="company-name"><?php echo htmlspecialchars($company['name']); ?></div>
-                                <div class="company-info">Address: <?php echo htmlspecialchars($company['address']); ?></div>
-                                <div class="company-info">Phone: <?php echo htmlspecialchars($company['phone']); ?> | Email: <?php echo htmlspecialchars($company['email']); ?></div>
+                                <div class="company-info"><?php echo htmlspecialchars($company['address']); ?></div>
+                                <div class="company-info"><?php echo htmlspecialchars($company['phone']); ?> 
+                                <?php if (!empty($company['email'])) :?> | <?php echo htmlspecialchars($company['email']); ?><?php endif; ?></div>
                             </td>
                                 <td class="order-id-cell">
                                     <div style="font-weight: bold; ">
@@ -405,7 +405,7 @@ function getTrackingFilterText($tracking_filter, $tracking_number = '') {
                                         <div>
                                             <strong>Tracking:</strong> 
                                             <?php if ($has_tracking): ?>
-                                                <span style="color: #2563eb;"><?php echo htmlspecialchars(substr($tracking_display, 0, 20)); ?></span>
+                                                <span><?php echo htmlspecialchars(substr($tracking_display, 0, 20)); ?></span>
                                             <?php else: ?>
                                                 <span style="color: #dc2626;">No Tracking</span>
                                             <?php endif; ?>
@@ -428,7 +428,7 @@ function getTrackingFilterText($tracking_filter, $tracking_number = '') {
                                             foreach ($order_items as $item) {
                                                 $product_name = htmlspecialchars(substr($item['product_name'], 0, 25));
                                                 if (strlen($item['product_name']) > 25) $product_name .= '...';
-                                                $product_list[] = $item['product_id'] . " - " . $product_name . " (" . $item['total_quantity'] . ")";
+                                                $product_list[] = $product_name . " (" . $item['total_quantity'] . ")";
                                             }
                                             echo implode(', ', $product_list);
                                             ?>

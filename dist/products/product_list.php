@@ -28,6 +28,7 @@ $status_filter = isset($_GET['status_filter']) ? trim($_GET['status_filter']) : 
 $date_from = isset($_GET['date_from']) ? trim($_GET['date_from']) : '';
 $date_to = isset($_GET['date_to']) ? trim($_GET['date_to']) : '';
 $category_filter = isset($_GET['category_filter']) ? trim($_GET['category_filter']) : '';
+$low_stock_filter = isset($_GET['low_stock_filter']) ? trim($_GET['low_stock_filter']) : '';
 
 // Fetch all categories for filter with parent name
 $categories = [];
@@ -120,6 +121,11 @@ if (!empty($category_filter)) {
     $searchConditions[] = "(p.category_id = '$catTerm' OR c.parent_id = '$catTerm')";
 }
 
+// Low stock filter
+if ($low_stock_filter === '1' && isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1) {
+    $searchConditions[] = "p.stock_quantity <= p.low_stock_threshold";
+}
+
 // Apply all search conditions
 if (!empty($searchConditions)) {
     $finalSearchCondition = " WHERE " . implode(' AND ', $searchConditions);
@@ -144,14 +150,13 @@ $result = $conn->query($sql);
 <html lang="en" data-pc-preset="preset-1" data-pc-sidebar-caption="true" data-pc-direction="ltr" dir="ltr" data-pc-theme="light">
 
 <head>
-    <title>Order Management Admin Portal - Product Management</title>
+    <title>Product Management | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
     
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
     
     <!-- Stylesheets -->
-    <link rel="stylesheet" href="../assets/css/style.css" id="main-style-link" />
-    <link rel="stylesheet" href="../assets/css/orders.css" id="main-style-link" />
-    <link rel="stylesheet" href="../assets/css/customers.css" id="main-style-link" />
+    <link rel="stylesheet" href="../assets/css/orders.css" />
+    <link rel="stylesheet" href="../assets/css/customers.css" />
 
     <style>
         .product-category {
@@ -255,6 +260,16 @@ $result = $conn->query($sql);
                                 <?php endforeach; ?>
                             </select>
                         </div>
+                        <?php if (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1): ?>
+                        <div class="form-group">
+                            <label for="low_stock_filter">Stock Status</label>
+                            <select id="low_stock_filter" name="low_stock_filter">
+                                <option value="">All Products</option>
+                                <option value="1" <?php echo ($low_stock_filter === '1') ? 'selected' : ''; ?>>Low Stock Only</option>
+                            </select>
+                        </div>
+                        <?php endif; ?>
+
                         <div class="form-group">
                             <label for="date_from">Date From</label>
                             <input type="date" id="date_from" name="date_from" 
@@ -300,6 +315,9 @@ $result = $conn->query($sql);
                                 <th>Product Code</th>
                                 <!-- <th>Description</th> -->
                                 <th>Price (LKR)</th>
+                                <?php if (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1): ?>
+                                <th>Stock</th>
+                                <?php endif; ?>
                                 <th>Created Date</th>
                                 <th>Status</th>
                                 <th>Actions</th>
@@ -358,12 +376,31 @@ $result = $conn->query($sql);
                                             </div>
                                         </td>
                                         
+                                        <?php if (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1): ?>
+                                        <!-- Stock -->
+                                        <td>
+                                            <div class="stock-display">
+                                                <?php 
+                                                $stock = (int)$row['stock_quantity'];
+                                                $threshold = (int)$row['low_stock_threshold'];
+                                                $is_low = $stock <= $threshold;
+                                                ?>
+                                                <span style="font-weight: 600; color: <?php echo $is_low ? '#dc3545' : '#28a745'; ?>;">
+                                                    <?php echo $stock; ?>
+                                                </span>
+                                                <?php if ($is_low): ?>
+                                                    <i class="fas fa-exclamation-triangle" style="color: #dc3545; font-size: 12px;" title="Low Stock"></i>
+                                                <?php endif; ?>
+                                            </div>
+                                        </td>
+                                        <?php endif; ?>
+                                        
                                         <!-- Created Date -->
                                         <td>
                                             <div style="font-size: 13px;">
                                                 <?php echo date('Y-m-d', strtotime($row['created_at'])); ?>
                                                 <br>
-                                                <small style="color: #6c757d;"><?php echo date('H:i:s', strtotime($row['created_at'])); ?></small>
+                                                <small style="color: #6c757d;"><?php echo date('h:i:s A', strtotime($row['created_at'])); ?></small>
                                             </div>
                                         </td>
                                         
@@ -386,17 +423,33 @@ $result = $conn->query($sql);
                                                         data-product-code="<?= htmlspecialchars($row['product_code'] ?? '') ?>"
                                                         data-product-description="<?= htmlspecialchars($row['description'] ?? '') ?>"
                                                         data-product-price="<?= htmlspecialchars($row['lkr_price']) ?>"
+                                                        <?php if (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1): ?>
+                                                        data-product-stock="<?= htmlspecialchars($row['stock_quantity']) ?>"
+                                                        data-product-threshold="<?= htmlspecialchars($row['low_stock_threshold']) ?>"
+                                                        <?php endif; ?>
                                                         data-product-status="<?= htmlspecialchars($row['status']) ?>"
                                                         data-product-created="<?= htmlspecialchars($row['created_at']) ?>"
                                                         title="View Product Details">
                                                     <i class="fas fa-eye"></i>
                                                 </button>
                                                 
+                                                <?php if (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1): ?>
+                                                <button type="button" class="action-btn stock-update-btn" 
+                                                        style="background: #17a2b8; color: white;"
+                                                        title="Update Stock"
+                                                        data-product-id="<?= $row['id'] ?>"
+                                                        data-product-name="<?= htmlspecialchars($row['name']) ?>"
+                                                        data-product-stock="<?= htmlspecialchars($row['stock_quantity']) ?>"
+                                                        onclick="openStockUpdateModal(this)">
+                                                    <i class="fas fa-boxes"></i>
+                                                </button>
+                                                <?php endif; ?>
+                                                
                                                 <button class="action-btn dispatch-btn" title="Edit Product" 
                                                         onclick="editProduct(<?php echo $row['id']; ?>)">
                                                     <i class="fas fa-edit"></i>
                                                 </button>
-                                          
+                                                
                                                 <!-- Status Toggle Button -->
                                                 <button type="button" class="action-btn <?= $row['status'] == 'active' ? 'deactivate-btn' : 'activate-btn' ?> toggle-status-btn"
                                                   data-product-id="<?= $row['id'] ?>"
@@ -560,7 +613,18 @@ $result = $conn->query($sql);
             if (!dateString) return 'N/A';
             try {
                 const date = new Date(dateString);
-                return date.toLocaleString();
+                if (isNaN(date.getTime())) return dateString;
+                const yyyy = date.getFullYear();
+                const mm = String(date.getMonth() + 1).padStart(2, '0');
+                const dd = String(date.getDate()).padStart(2, '0');
+                let hours = date.getHours();
+                const minutes = String(date.getMinutes()).padStart(2, '0');
+                const seconds = String(date.getSeconds()).padStart(2, '0');
+                const ampm = hours >= 12 ? 'PM' : 'AM';
+                hours = hours % 12;
+                hours = hours ? hours : 12;
+                const hh = String(hours).padStart(2, '0');
+                return `${yyyy}-${mm}-${dd} ${hh}:${minutes}:${seconds} ${ampm}`;
             } catch (e) {
                 return dateString;
             }
@@ -611,10 +675,9 @@ $result = $conn->query($sql);
                 text: `You are about to ${isActive ? 'Deactivate' : 'Activate'} Product: ${productName}`,
                 icon: 'warning',
                 showCancelButton: true,
-                customClass: {
-                    confirmButton: isActive ? 'swal-danger' : 'swal-success'
-                },
-                confirmButtonText: isActive ? 'Yes, Deactivate it!' : 'Yes, Activate it!',
+                confirmButtonColor: isActive ? '#dc3545' : '#28a745',
+                cancelButtonColor: '#6c757d',
+                confirmButtonText: isActive ? 'Yes, deactivate it!' : 'Yes, activate it!',
                 cancelButtonText: 'Cancel',
                 reverseButtons: true
             }).then((result) => {
@@ -631,27 +694,19 @@ $result = $conn->query($sql);
                     .then(data => {
                         if (data.success) {
                             Swal.fire({
-                                icon: 'success',
                                 title: 'Updated!',
-                                text: `Product has been ${isActive ? 'deactivated' : 'activated'} successfully.`,
-                                showConfirmButton: false,
-                                timer: 1500
+                                text: 'Product status updated successfully!',
+                                icon: 'success',
+                                timer: 1500,
+                                showConfirmButton: false
                             }).then(() => location.reload());
                         } else {
-                            Swal.fire({
-                                icon: 'error',
-                                title: 'Error!',
-                                text: data.message || 'Failed to update product status.'
-                            });
+                            toastManager.error(data.message || 'Failed to update product status');
                         }
                     })
                     .catch(error => {
                         console.error('Error:', error);
-                        Swal.fire({
-                            icon: 'error',
-                            title: 'Error!',
-                            text: 'An error occurred while updating the product status.'
-                        });
+                        toastManager.error('An error occurred while updating the product status.');
                     });
                 }
             });
@@ -701,6 +756,174 @@ $result = $conn->query($sql);
             }
         });
 
+    </script>
+
+    <!-- Stock Update Modal -->
+    <div id="stockUpdateModal" class="modal">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">
+                <h4>Quick Stock Update - <span id="stock-modal-title-name"></span></h4>
+                <span class="close" onclick="closeStockUpdateModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="form-group" style="margin-bottom: 15px;">
+                    <label style="display: block; margin-bottom: 8px; font-weight: 500;">Current Stock</label>
+                    <strong id="stock-modal-current-stock"></strong>
+                </div>
+                
+                <div class="form-group" style="margin-bottom: 15px;">
+                    <label style="display: block; margin-bottom: 8px; font-weight: 500;">Action Type</label>
+                    <div style="display: flex; gap: 20px;">
+                        <label style="cursor: pointer; display: flex; align-items: center; gap: 5px;">
+                            <input type="radio" name="stock_operation" value="increase" checked> Increase
+                        </label>
+                        <label style="cursor: pointer; display: flex; align-items: center; gap: 5px;">
+                            <input type="radio" name="stock_operation" value="decrease"> Decrease
+                        </label>
+                    </div>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 20px;">
+                    <label for="adjustment_value" style="display: block; margin-bottom: 8px; font-weight: 500;">Quantity</label>
+                    <input type="number" id="adjustment_value" class="form-control" min="1" step="1" value="1" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
+                </div>
+
+                <div class="modal-buttons" style="display: flex; gap: 10px; justify-content: flex-end;">
+                    <button type="button" class="btn btn-secondary" onclick="closeStockUpdateModal()">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="confirmStockUpdateBtn">Update Stock</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Stock Update Functionality
+        let currentStockValue = 0;
+
+        function openStockUpdateModal(button) {
+            const productId = button.getAttribute('data-product-id');
+            const productName = button.getAttribute('data-product-name');
+            const productStock = button.getAttribute('data-product-stock');
+            
+            currentStockValue = parseInt(productStock) || 0;
+            
+            document.getElementById('stock-modal-title-name').textContent = productName;
+            document.getElementById('stock-modal-current-stock').textContent = productStock;
+            
+            const adjustmentInput = document.getElementById('adjustment_value');
+            adjustmentInput.value = 1;
+            
+            // Explicitly set default operation to increase
+            document.querySelector('input[name="stock_operation"][value="increase"]').checked = true;
+
+            const confirmBtn = document.getElementById('confirmStockUpdateBtn');
+            confirmBtn.onclick = function() {
+                const operation = document.querySelector('input[name="stock_operation"]:checked').value;
+                updateProductStock(productId, operation, adjustmentInput.value);
+            };
+            
+            document.getElementById('stockUpdateModal').style.display = 'block';
+            adjustmentInput.focus();
+            adjustmentInput.select();
+        }
+
+        // Validate adjustment value when decreasing stock
+        document.addEventListener('DOMContentLoaded', function() {
+            const adjustmentInput = document.getElementById('adjustment_value');
+            const stockOperationRadios = document.querySelectorAll('input[name="stock_operation"]');
+            
+            if (adjustmentInput) {
+                adjustmentInput.addEventListener('input', function() {
+                    const selectedOperation = document.querySelector('input[name="stock_operation"]:checked');
+                    if (selectedOperation && selectedOperation.value === 'decrease') {
+                        // Check if stock is 0 - can't decrease from 0
+                        if (currentStockValue <= 0) {
+                            toastManager.warning('Cannot decrease stock. Current stock is already 0.');
+                            this.value = 1;
+                            // Switch back to increase
+                            document.querySelector('input[name="stock_operation"][value="increase"]').checked = true;
+                            return;
+                        }
+                        const enteredValue = parseInt(this.value) || 0;
+                        if (enteredValue > currentStockValue) {
+                            this.value = currentStockValue;
+                        }
+                    }
+                });
+            }
+            
+            // Re-validate when switching to decrease operation
+            stockOperationRadios.forEach(radio => {
+                radio.addEventListener('change', function() {
+                    if (this.value === 'decrease') {
+                        // Check if stock is 0 - can't decrease from 0
+                        if (currentStockValue <= 0) {
+                            toastManager.warning('Cannot decrease stock. Current stock is already 0.');
+                            // Switch back to increase
+                            document.querySelector('input[name="stock_operation"][value="increase"]').checked = true;
+                            return;
+                        }
+                        const currentValue = parseInt(adjustmentInput.value) || 0;
+                        if (currentValue > currentStockValue) {
+                            adjustmentInput.value = currentStockValue;
+                        }
+                    }
+                });
+            });
+        });
+
+        function closeStockUpdateModal() {
+            const stockModal = document.getElementById('stockUpdateModal');
+            if (stockModal) stockModal.style.display = 'none';
+        }
+
+        function updateProductStock(productId, operation, adjustmentValue) {
+            if (adjustmentValue === '' || isNaN(adjustmentValue) || parseInt(adjustmentValue) <= 0) {
+                toastManager.warning('Please enter a valid quantity greater than 0.');
+                return;
+            }
+
+            // Check if trying to decrease when stock is 0
+            if (operation === 'decrease' && currentStockValue <= 0) {
+                toastManager.warning('Cannot decrease stock. Current stock is already 0.');
+                return;
+            }
+
+            const btn = document.getElementById('confirmStockUpdateBtn');
+            const originalText = btn.textContent;
+            btn.textContent = 'Updating...';
+            btn.disabled = true;
+
+            fetch('/OMS/dist/products/update_stock_action.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    product_id: productId,
+                    operation: operation,
+                    adjustment_value: adjustmentValue
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    closeStockUpdateModal();
+                    toastManager.success('Stock updated successfully!');
+                    setTimeout(() => { location.reload(); }, 1500);
+                } else {
+                    toastManager.error('Error updating stock: ' + data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                toastManager.error('An error occurred while updating the stock.');
+            })
+            .finally(() => {
+                btn.textContent = originalText;
+                btn.disabled = false;
+            });
+        }
     </script>
 
 </body>

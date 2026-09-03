@@ -100,15 +100,13 @@ try {
             $currentUserId = 1; // Default fallback
         }
 
-        $updatedAt = date('Y-m-d H:i:s');
-
         // Update order_header with payment removal
         $updateHeaderSql = "UPDATE order_header SET
                            pay_status = 'unpaid',
                            pay_by = NULL,
                            pay_date = NULL,
                            slip = NULL,
-                           updated_at = ?
+                           updated_at = updated_at
                            WHERE order_id = ? AND pay_status = 'paid'";
 
         $updateHeaderStmt = $conn->prepare($updateHeaderSql);
@@ -116,7 +114,7 @@ try {
             throw new Exception('Failed to prepare header update statement: ' . $updateHeaderStmt->error);
         }
 
-        $updateHeaderStmt->bind_param("ss", $updatedAt, $orderId);
+        $updateHeaderStmt->bind_param("s", $orderId);
 
         if (!$updateHeaderStmt->execute()) {
             throw new Exception('Failed to update order header: ' . $updateHeaderStmt->error);
@@ -160,8 +158,7 @@ try {
             throw new Exception('Failed to delete payment record: ' . $deletePaymentStmt->error);
         }
 
-        // Insert simplified user log entry
-        $logMessage = $orderData['status'] . " paid order(" . $orderId . ") unmarked paid";
+        $logMessage = "Unmarked Order #" . $orderId . " as Unpaid";
 
         $logSql = "INSERT INTO user_logs (user_id, action_type, inquiry_id, details, created_at)
                    VALUES (?, 'payment_unmarked', ?, ?, CURRENT_TIMESTAMP)";

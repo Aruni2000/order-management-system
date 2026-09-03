@@ -95,9 +95,9 @@ try {
         // Logging - using courier_id for reference
         $log_details = "API settings updated: " . $courier['courier_name'] . " (ID: " . $courier_id . ", co_id: " . $co_id . "). Changes: " . implode(' | ', $changes);
         $user_id = isset($_SESSION['user_id']) ? $_SESSION['user_id'] : 0;
-        $action_type = 'API_UPDATE';
+        $action_type = 'api_update';
 
-        $logSql = "INSERT INTO user_logs (user_id, action_type, inquiry_id, details) VALUES (?, ?, ?, ?)";
+        $logSql = "INSERT INTO user_logs (user_id, action_type, inquiry_id, details, created_at) VALUES (?, ?, ?, ?, NOW())";
         $logStmt = $conn->prepare($logSql);
         $logStmt->bind_param("isis", $user_id, $action_type, $courier_id, $log_details);
         $logStmt->execute();

@@ -268,14 +268,12 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
     data-pc-theme="light">
 
 <head>
-    <title>Order Management Admin Portal - All Orders</title>
+    <title>All Orders | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
 
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
 
     <!-- Stylesheets -->
-    <link rel="stylesheet" href="../assets/css/style.css" id="main-style-link" />
-    <link rel="stylesheet" href="../assets/css/orders.css" id="main-style-link" />
-    <link rel="stylesheet" href="../assets/css/status-badge-colors.css" id="main-style-link" />
+    <link rel="stylesheet" href="../assets/css/orders.css" />
     <style>
     .print-btn {
         background-color: #28a745;
@@ -610,7 +608,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                             if (isset($row['order_updated_at']) && !empty($row['order_updated_at'])) {
                                                 $updatedAt = new DateTime($row['order_updated_at']);
                                                 echo '<span class="updated-date">' . $updatedAt->format('Y-m-d') . '</span>';
-                                                echo '<span class="updated-time-only">' . $updatedAt->format('H:i:s') . '</span>';
+                                                echo '<span class="updated-time-only">' . $updatedAt->format('h:i:s A') . '</span>';
                                             } else {
                                                 echo '<span style="color: #999; font-style: italic;">N/A</span>';
                                             }

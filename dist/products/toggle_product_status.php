@@ -112,9 +112,9 @@ try {
         
         // Insert user log
         $action_type = $new_status === 'active' ? 'product_activated' : 'product_deactivated';
-        $details = "Product ID " . $product_id . " " . ($new_status === 'active' ? 'activated' : 'deactivated');
+        $details = ($new_status === 'active' ? 'Activated' : 'Deactivated') . " Product '{$product['name']}'";
         
-        $logSql = "INSERT INTO user_logs (user_id, action_type, inquiry_id, details) VALUES (?, ?, ?, ?)";
+        $logSql = "INSERT INTO user_logs (user_id, action_type, inquiry_id, details, created_at) VALUES (?, ?, ?, ?, NOW())";
         $logStmt = $conn->prepare($logSql);
         
         if (!$logStmt) {

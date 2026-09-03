@@ -148,12 +148,11 @@ if ($summaryResult && $summaryResult->num_rows > 0) {
 <html lang="en" data-pc-preset="preset-1" data-pc-sidebar-caption="true" data-pc-direction="ltr" dir="ltr" data-pc-theme="light">
 
 <head>
-    <title>Product Analysis - Order Management</title>
+    <title>Product Analysis | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css">
-    <link rel="stylesheet" href="../assets/css/style.css" id="main-style-link" />
-    <link rel="stylesheet" href="../assets/css/orders.css" id="main-style-link" />
-    <link rel="stylesheet" href="../assets/css/customers.css" id="main-style-link" />
+    <link rel="stylesheet" href="../assets/css/tailwind-utilities.css" />
+    <link rel="stylesheet" href="../assets/css/orders.css" />
+    <link rel="stylesheet" href="../assets/css/customers.css" />
 </head>
 
 <body>
@@ -205,7 +204,7 @@ if ($summaryResult && $summaryResult->num_rows > 0) {
                 </div>
 
                 <div class="col-span-12 mb-4">
-                    <h2 class="section-title" style="font-size: 16px; font-weight: 600; color: #1f2937; margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 2px solid #e5e7eb;">Analysis Summary <i class="fas fa-info-circle text-primary" style="cursor: pointer; font-size: 16px;" onclick="openInfoModal()" title="Click here to know more about this page"></i></h2>
+                    <h2 class="section-title" style="font-size: 16px; font-weight: 600; color: #1f2937; margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 2px solid #e5e7eb;">Analysis Summary <i class="fas fa-info-circle text-primary" style="cursor: pointer; font-size: 16px; color: #3b82f6;" onclick="openInfoModal()" title="Click here to know more about this page"></i></h2>
                 </div>
 
                 <div class="flex flex-wrap gap-4 mb-6">

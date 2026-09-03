@@ -76,8 +76,8 @@ try {
             if ($originalData['name'] !== $name) $changes[] = "Name: '{$originalData['name']}' to '$name'";
             if ($originalData['parent_id'] != $parent_id_val) $changes[] = "Parent ID: " . ($originalData['parent_id'] ?? 'NULL') . " to " . ($parent_id_val ?? 'NULL');
             
-            $details = "Updated category ID $category_id: " . implode(', ', $changes);
-            $log = $conn->prepare("INSERT INTO user_logs (user_id, action_type, inquiry_id, details) VALUES (?, 'category_update', ?, ?)");
+            $details = "Updated Category '{$name}': " . implode(', ', $changes);
+            $log = $conn->prepare("INSERT INTO user_logs (user_id, action_type, inquiry_id, details, created_at) VALUES (?, 'category_update', ?, ?, NOW())");
             $log->bind_param("iis", $user_id, $category_id, $details);
             $log->execute();
             $log->close();

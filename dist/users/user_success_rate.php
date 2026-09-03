@@ -71,7 +71,8 @@ if (isset($_GET['export']) && $_GET['export'] == 'success_report') {
                    (SELECT COUNT(*) FROM order_header WHERE user_id = u.id AND status IN ('done', 'delivered')) as delivered_orders,
                    (SELECT COUNT(*) FROM order_header WHERE user_id = u.id AND status = 'cancel') as cancelled_orders,
                    (SELECT COUNT(*) FROM order_header WHERE user_id = u.id AND status = 'pending') as pending_orders,
-                   (SELECT COUNT(*) FROM order_header WHERE user_id = u.id AND status = 'waiting') as waiting_orders
+                   (SELECT COUNT(*) FROM order_header WHERE user_id = u.id AND status = 'waiting') as waiting_orders,
+                   (SELECT COUNT(*) FROM order_header WHERE user_id = u.id AND status IN ('return_handover', 'return', 'return pending', 'return transfer', 'return complete')) as return_orders
             FROM users u 
             LEFT JOIN roles r ON u.role_id = r.id
             LEFT JOIN tenants t ON u.tenant_id = t.tenant_id";
@@ -146,6 +147,7 @@ if (isset($_GET['export']) && $_GET['export'] == 'success_report') {
         'Status',
         'Dispatched Orders',
         'Delivered Orders',
+        'Return Orders',
         'Cancelled Orders',
         'Pending Orders',
         'Waiting Orders',
@@ -191,12 +193,13 @@ if (isset($_GET['export']) && $_GET['export'] == 'success_report') {
                 ucfirst($export_row['status']),
                 $dispatched,
                 $delivered,
+                $export_row['return_orders'],
                 $export_row['cancelled_orders'],
                 $export_row['pending_orders'],
                 $export_row['waiting_orders'],
                 $success_rate,
                 $performance_rating,
-                date('Y-m-d H:i:s', strtotime($export_row['created_at']))
+                date('Y-m-d h:i:s A', strtotime($export_row['created_at']))
             ]);
         }
     }
@@ -240,7 +243,8 @@ $countSql = "SELECT COUNT(*) as total FROM users u LEFT JOIN tenants t ON u.tena
 $sql = "SELECT u.id as user_id, u.name as username, u.email, u.mobile as phone, 
                u.nic, r.name as role, u.status, u.created_at, t.company_name as tenant_name,
                (SELECT COUNT(*) FROM order_header WHERE user_id = u.id AND status NOT IN ('pending', 'cancel', 'dispatch','waiting')) as dispatched_orders,
-               (SELECT COUNT(*) FROM order_header WHERE user_id = u.id AND status IN ('done', 'delivered')) as delivered_orders
+               (SELECT COUNT(*) FROM order_header WHERE user_id = u.id AND status IN ('done', 'delivered')) as delivered_orders,
+               (SELECT COUNT(*) FROM order_header WHERE user_id = u.id AND status IN ('return_handover', 'return', 'return pending', 'return transfer', 'return complete')) as return_orders
         FROM users u 
         LEFT JOIN roles r ON u.role_id = r.id
         LEFT JOIN tenants t ON u.tenant_id = t.tenant_id";
@@ -390,14 +394,13 @@ function getSuccessRateBadgeClass($rate) {
 <html lang="en" data-pc-preset="preset-1" data-pc-sidebar-caption="true" data-pc-direction="ltr" dir="ltr" data-pc-theme="light">
 
 <head>
-    <title>Order Management Admin Portal - User Management</title>
+    <title>User Management | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
     
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
     
     <!-- Stylesheets -->
-    <link rel="stylesheet" href="../assets/css/style.css" id="main-style-link" />
-    <link rel="stylesheet" href="../assets/css/orders.css" id="main-style-link" />
-    <link rel="stylesheet" href="../assets/css/customers.css" id="main-style-link" />
+    <link rel="stylesheet" href="../assets/css/orders.css" />
+    <link rel="stylesheet" href="../assets/css/customers.css" />
     
     <style>
         /* Success Rate Badge Styles */
@@ -513,8 +516,7 @@ function getSuccessRateBadgeClass($rate) {
             <div class="page-header">
                 <div class="page-block">
                     <div class="page-header-title">
-                        <h5 class="mb-0 font-medium">User Management</h5>
-                        <small class="text-muted">Administrator Access - User Performance & Success Rate</small>
+                        <h5 class="mb-0 font-medium">User Success Rate <i class="fas fa-info-circle" style="cursor: pointer; font-size: 16px; margin-left: 8px; color: #3b82f6;" onclick="openInfoModal()" title="Click here to know more about this page"></i></h5>
                     </div>
                 </div>
             </div>
@@ -573,7 +575,7 @@ function getSuccessRateBadgeClass($rate) {
                         <div class="form-group">
                             <label for="date_from">
                                 Date From
-                                <small style="color: #6c757d; font-weight: normal;">(Created Date)</small>
+                                
                             </label>
                             <input type="date" id="date_from" name="date_from" 
                                    value="<?php echo htmlspecialchars($date_from); ?>">
@@ -583,7 +585,6 @@ function getSuccessRateBadgeClass($rate) {
                         <div class="form-group">
                             <label for="date_to">
                                 Date To
-                                <small style="color: #6c757d; font-weight: normal;">(Created Date)</small>
                             </label>
                             <input type="date" id="date_to" name="date_to" 
                                    value="<?php echo htmlspecialchars($date_to); ?>">
@@ -730,6 +731,9 @@ function getSuccessRateBadgeClass($rate) {
                                                     <span class="order-stats-item">
                                                         <span class="order-stats-label">Delivered:</span> <?php echo $row['delivered_orders']; ?>
                                                     </span>
+                                                    <span class="order-stats-item">
+                                                        <span class="order-stats-label">Returns:</span> <?php echo $row['return_orders']; ?>
+                                                    </span>
                                                 </div>
                                             </div>
                                         </td>
@@ -738,7 +742,7 @@ function getSuccessRateBadgeClass($rate) {
                                         <td>
                                             <div style="font-size: 12px; line-height: 1.4;">
                                                 <div style="font-weight: 500;"><?php echo date('M d, Y', strtotime($row['created_at'])); ?></div>
-                                                <div style="color: #6c757d;"><?php echo date('h:i A', strtotime($row['created_at'])); ?></div>
+                                                <div style="color: #6c757d;"><?php echo date('h:i:s A', strtotime($row['created_at'])); ?></div>
                                             </div>
                                         </td>
                                         
@@ -844,6 +848,10 @@ function getSuccessRateBadgeClass($rate) {
                     <span class="detail-label">Delivered Orders:</span>
                     <span class="detail-value" id="modal-delivered-orders"></span>
                 </div>
+                <div class="customer-detail-row">
+                    <span class="detail-label">Return Orders:</span>
+                    <span class="detail-value" id="modal-return-orders"></span>
+                </div>
                 <div class="customer-detail-row" style="border-top: 2px solid #e9ecef; margin-top: 15px; padding-top: 15px;">
                     <span class="detail-label">Created:</span>
                     <span class="detail-value" id="modal-user-created"></span>
@@ -851,6 +859,41 @@ function getSuccessRateBadgeClass($rate) {
             </div>
         </div>
     </div>
+
+    <!-- Info Modal -->
+    <?php
+    include_once($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/info_modal.php');
+    renderInfoModal(
+        'How User Success Rate Works',
+        'fas fa-chart-line',
+        '<h6 style="color: #374151; border-bottom: 2px solid #e5e7eb; padding-bottom: 6px;">📊 How It\'s Calculated</h6>
+        <ul style="color: #4b5563;">
+            <li><strong>Formula:</strong> Delivered Orders ÷ Dispatched Orders × 100</li>
+            <li><strong>Dispatched:</strong> Orders assigned to the user for delivery</li>
+            <li><strong>Delivered:</strong> Orders successfully completed</li>
+            <li>Pending and cancelled orders are <strong>not</strong> counted</li>
+        </ul>
+
+        <h6 style="color: #374151; border-bottom: 2px solid #e5e7eb; padding-bottom: 6px; margin-top: 16px;">🏷️ Performance Ratings</h6>
+        <ul style="color: #4b5563;">
+            <li><strong>Excellent:</strong> 80%+ · <strong>Good:</strong> 60-79%</li>
+            <li><strong>Average:</strong> 40-59% · <strong>Poor:</strong> below 40%</li>
+            <li><strong>N/A:</strong> No dispatched orders yet</li>
+        </ul>
+
+        <h6 style="color: #374151; border-bottom: 2px solid #e5e7eb; padding-bottom: 6px; margin-top: 16px;">🔍 How to Use Filters</h6>
+        <ul style="color: #4b5563;">
+            <li><strong>Search</strong> matches name, email, phone, or NIC</li>
+            <li><strong>Role / Status / Date:</strong> Narrow the list by role, active status, or join date</li>
+            <li><strong>Export Success Report</strong> downloads the filtered list as a CSV</li>
+        </ul>
+
+        <div style="background: #fef3c7; padding: 10px; border-radius: 6px; margin-top: 16px; font-size: 13px;">
+            <strong>💡 Tip:</strong> Use the eye icon on any row to view a user\'s full delivery details.
+        </div>',
+        '500px'
+    );
+    ?>
 
     <!-- Scripts -->
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php'); ?>
@@ -915,6 +958,7 @@ function getSuccessRateBadgeClass($rate) {
                 document.getElementById('modal-success-rate').innerText = this.dataset.successRate;
                 document.getElementById('modal-dispatched-orders').innerText = this.dataset.dispatchedOrders;
                 document.getElementById('modal-delivered-orders').innerText = this.dataset.deliveredOrders;
+                document.getElementById('modal-return-orders').innerText = this.dataset.returnOrders ?? 'N/A';
                 document.getElementById('modal-user-created').innerText = this.dataset.userCreated;
 
                 document.getElementById('userDetailsModal').style.display = 'block';

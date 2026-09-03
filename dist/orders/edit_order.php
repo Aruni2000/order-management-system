@@ -21,7 +21,7 @@ $session_tenant_id = isset($_SESSION['tenant_id']) ? intval($_SESSION['tenant_id
 
 // Function to log user actions
 function logUserAction($conn, $user_id, $action_type, $inquiry_id, $details = null) {
-    $stmt = $conn->prepare("INSERT INTO user_logs (user_id, action_type, inquiry_id, details) VALUES (?, ?, ?, ?)");
+    $stmt = $conn->prepare("INSERT INTO user_logs (user_id, action_type, inquiry_id, details, created_at) VALUES (?, ?, ?, ?, NOW())");
     $stmt->bind_param("isis", $user_id, $action_type, $inquiry_id, $details);
     return $stmt->execute();
 }
@@ -160,7 +160,7 @@ while ($item = $itemsResult->fetch_assoc()) {
 $stmt->close();
 
 // Fetch necessary data for the form
-$productSql = "SELECT id, name, description, lkr_price FROM products WHERE status = 'active' ORDER BY name ASC";
+$productSql = "SELECT id, name, description, lkr_price, stock_quantity, low_stock_threshold FROM products WHERE status = 'active' ORDER BY name ASC";
 $productStmt = $conn->prepare($productSql);
 $productStmt->execute();
 $productsResult = $productStmt->get_result();
@@ -192,9 +192,9 @@ $deliveryFeeStmt->close();
 <html lang="en" data-pc-preset="preset-1" data-pc-sidebar-caption="true" data-pc-direction="ltr" dir="ltr" data-pc-theme="light">
 
 <head>
-    <title>Order Management Admin Portal - Edit Order #<?= htmlspecialchars($order_id) ?></title>
+    <title>Edit Order #<?= htmlspecialchars($order_id) ?> | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
-    <link rel="stylesheet" href="../assets/css/styles.css" id="main-style-link" />
+    <link rel="stylesheet" href="../assets/css/styles.css" />
     <style>
         .autocomplete-suggestions {
             position: absolute;
@@ -349,6 +349,10 @@ $deliveryFeeStmt->close();
         @keyframes spin {
             from { transform: rotate(0deg); }
             to { transform: rotate(360deg); }
+        }
+        .out-of-stock-option {
+            color: #dc3545 !important;
+            font-style: italic;
         }
     </style>
 </head>
@@ -559,29 +563,29 @@ $deliveryFeeStmt->close();
                                 
                                 <div class="form-group">
                                     <label class="form-label">Phone</label>
-                                    <input type="text" class="form-control" name="customer_phone" id="customer_phone" value="<?= htmlspecialchars($order['mobile']) ?>" placeholder="(07) xxxx xxxx">
+                                    <input type="tel" class="form-control" name="customer_phone" id="customer_phone" value="<?= htmlspecialchars($order['mobile']) ?>" placeholder="Enter Phone Number">
                                 </div>
 
                                 <div class="form-group">
                                     <label class="form-label">Phone 2</label>
-                                    <input type="text" class="form-control" name="customer_phone_2" id="customer_phone_2" value="<?= htmlspecialchars($order['mobile_2'] ?? '') ?>" placeholder="(07) xxxx xxxx">
-                                </div>
-                                
-                                <div class="form-group">
-                                    <label class="form-label">City</label>
-                                    <input type="text" class="form-control" id="city_autocomplete" value="<?= htmlspecialchars($order['city_name'] ?? '') ?>" placeholder="Start typing city name..." autocomplete="off">
-                                    <input type="hidden" name="city_id" id="city_id" value="<?= $order['city_id'] ?>">
-                                    <div id="city_suggestions" class="autocomplete-suggestions"></div>
+                                    <input type="tel" class="form-control" name="customer_phone_2" id="customer_phone_2" value="<?= htmlspecialchars($order['mobile_2'] ?? '') ?>" placeholder="Enter Phone Number 2">
                                 </div>
                                 
                                 <div class="form-group">
                                     <label class="form-label">Address Line 1</label>
-                                    <input type="text" class="form-control" name="address_line1" id="address_line1" value="<?= htmlspecialchars($order['address_line1']) ?>">
+                                    <input type="text" class="form-control" name="address_line1" id="address_line1" value="<?= htmlspecialchars($order['address_line1']) ?>" placeholder="Enter Address Line 1">
                                 </div>
                                 
                                 <div class="form-group">
                                     <label class="form-label">Address Line 2</label>
-                                    <input type="text" class="form-control" name="address_line2" id="address_line2" value="<?= htmlspecialchars($order['address_line2'] ?? '') ?>">
+                                    <input type="text" class="form-control" name="address_line2" id="address_line2" value="<?= htmlspecialchars($order['address_line2'] ?? '') ?>" placeholder="Enter Address Line 2">
+                                </div>
+
+                                <div class="form-group">
+                                    <label class="form-label">City</label>
+                                    <input type="text" class="form-control" id="city_autocomplete" value="<?= htmlspecialchars($order['city_name'] ?? '') ?>" placeholder="Enter City" autocomplete="off">
+                                    <input type="hidden" name="city_id" id="city_id" value="<?= $order['city_id'] ?>">
+                                    <div id="city_suggestions" class="autocomplete-suggestions"></div>
                                 </div>
                             </div>
                         </div>
@@ -621,13 +625,37 @@ $deliveryFeeStmt->close();
                                                             <?php
                                                             $productsResult->data_seek(0);
                                                             while ($p = $productsResult->fetch_assoc()): 
+                                                                $stock = (int)$p['stock_quantity'];
+                                                                $allow_inventory = isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1;
+                                                                $is_out_of_stock = $allow_inventory && ($stock <= 0);
+                                                                $orig_qty = $p['id'] == $item['product_id'] ? (int)$item['quantity'] : 0;
+                                                                
+                                                                $stock_label = "";
+                                                                if ($allow_inventory) {
+                                                                    if ($is_out_of_stock) {
+                                                                        $stock_label = " (Unavailable";
+                                                                        if ($orig_qty > 0) {
+                                                                            $stock_label .= " | In Order: $orig_qty";
+                                                                        }
+                                                                        $stock_label .= ")";
+                                                                    } else {
+                                                                        $stock_label = " (Stock: $stock";
+                                                                        if ($orig_qty > 0) {
+                                                                            $stock_label .= " | In Order: $orig_qty";
+                                                                        }
+                                                                        $stock_label .= ")";
+                                                                    }
+                                                                }
                                                             ?>
                                                                 <option value="<?= $p['id'] ?>"
                                                                     data-lkr-price="<?= $p['lkr_price'] ?>"
                                                                     data-description="<?= htmlspecialchars($p['description']) ?>"
                                                                     data-base-name="<?= htmlspecialchars($p['name']) ?>"
+                                                                    data-stock="<?= $allow_inventory ? ($stock + $orig_qty) : 999999 ?>"
+                                                                    class="<?= $is_out_of_stock ? 'out-of-stock-option' : '' ?>"
+                                                                    <?= ($is_out_of_stock && $p['id'] != $item['product_id']) ? 'disabled' : '' ?>
                                                                     <?= $p['id'] == $item['product_id'] ? 'selected' : '' ?>>
-                                                                    <?= htmlspecialchars($p['name']) ?>
+                                                                    <?= htmlspecialchars($p['name']) . $stock_label ?>
                                                                 </option>
                                                             <?php endwhile; ?>
                                                         </select>
@@ -666,12 +694,23 @@ $deliveryFeeStmt->close();
                                                         <?php
                                                         $productsResult->data_seek(0);
                                                         while ($p = $productsResult->fetch_assoc()): 
+                                                            $stock = (int)$p['stock_quantity'];
+                                                            $allow_inventory = isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1;
+                                                            $is_out_of_stock = $allow_inventory && ($stock <= 0);
+                                                            
+                                                            $stock_label = "";
+                                                            if ($allow_inventory) {
+                                                                $stock_label = $is_out_of_stock ? " (Unavailable)" : " (Stock: $stock)";
+                                                            }
                                                         ?>
                                                             <option value="<?= $p['id'] ?>"
                                                                 data-lkr-price="<?= $p['lkr_price'] ?>"
                                                                 data-description="<?= htmlspecialchars($p['description']) ?>"
-                                                                data-base-name="<?= htmlspecialchars($p['name']) ?>">
-                                                                <?= htmlspecialchars($p['name']) ?>
+                                                                data-base-name="<?= htmlspecialchars($p['name']) ?>"
+                                                                data-stock="<?= $allow_inventory ? $stock : 999999 ?>"
+                                                                class="<?= $is_out_of_stock ? 'out-of-stock-option' : '' ?>"
+                                                                <?= $is_out_of_stock ? 'disabled' : '' ?>>
+                                                                <?= htmlspecialchars($p['name']) . $stock_label ?>
                                                             </option>
                                                         <?php endwhile; ?>
                                                     </select>
@@ -1189,13 +1228,22 @@ const ProductManager = {
         const quantityInput = row.querySelector('.quantity');
         const description = selectedOption.getAttribute('data-description') || '';
         const price = parseFloat(selectedOption.getAttribute('data-lkr-price') || 0);
+        const stock = parseInt(selectedOption.getAttribute('data-stock') || 0);
 
         priceField.value = isNaN(price) ? '0.00' : price.toFixed(2);
         descriptionField.value = description;
 
-        // Enable fields
-        quantityInput.disabled = false;
-        quantityInput.removeAttribute('max');
+        // Enable fields with stock validation
+        if (stock > 0) {
+            quantityInput.disabled = false;
+            quantityInput.max = stock;
+            if (parseInt(quantityInput.value) > stock) {
+                quantityInput.value = stock;
+            }
+        } else {
+            quantityInput.disabled = true;
+            quantityInput.value = 0;
+        }
 
         priceField.disabled = false;
         row.querySelector('.discount').disabled = false;
@@ -1261,7 +1309,15 @@ const ProductManager = {
         
         let quantity = parseInt(qtyInput.value) || 1;
 
-        qtyInput.removeAttribute('max');
+        // Stock validation
+        if (selectedOption && selectedOption.value !== "") {
+            const stock = parseInt(selectedOption.getAttribute('data-stock') || 0);
+            if (quantity > stock) {
+                qtyInput.value = stock;
+                quantity = stock;
+            }
+            qtyInput.max = stock;
+        }
 
         if (discount > (price * quantity)) {
             discount = price * quantity;

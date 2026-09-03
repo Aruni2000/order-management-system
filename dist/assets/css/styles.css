@@ -1104,47 +1104,6 @@ Additional CSS for Order Creation page - (create_order.php) End
     background-color: #f8f9fa;
   }
   
-  /* Status badges */
-  .status-badge {
-    display: inline-block;
-    padding: 4px 8px;
-    border-radius: 4px;
-    font-size: 12px;
-    font-weight: 600;
-    text-transform: capitalize;
-  }
-  
-  .status-complete {
-    background-color: #d1fae5;
-    color: #065f46;
-  }
-  
-  .status-canceled {
-    background-color: #fee2e2;
-    color: #b91c1c;
-  }
-  
-  .status-dispatched {
-    background-color: #dbeafe;
-    color: #1e40af;
-  }
-  
-  .status-pending {
-    background-color: #fef3c7;
-    color: #92400e;
-  }
-  
-  /* Payment status badges */
-  .pay-status-paid {
-    background-color: #dcfce7;
-    color: #166534;
-  }
-  
-  .pay-status-unpaid {
-    background-color: #fee2e2;
-    color: #991b1b;
-  }
-  
   /* Action buttons */
   .action-buttons {
     display: flex;

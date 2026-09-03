@@ -124,9 +124,9 @@ try {
         
         // Insert user log
         $action_type = $new_status === 'active' ? 'user_activated' : 'user_deactivated';
-        $details = "User ID " . $target_user_id . " " . ($new_status === 'active' ? 'activated' : 'deactivated');
+        $details = ($new_status === 'active' ? 'Activated' : 'Deactivated') . " User '" . $user['name'] . "'";
         
-        $log_sql = "INSERT INTO user_logs (user_id, action_type, inquiry_id, details) VALUES (?, ?, ?, ?)";
+        $log_sql = "INSERT INTO user_logs (user_id, action_type, inquiry_id, details, created_at) VALUES (?, ?, ?, ?, NOW())";
         $log_stmt = $conn->prepare($log_sql);
         
         if (!$log_stmt) {

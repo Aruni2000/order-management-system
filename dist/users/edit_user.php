@@ -54,16 +54,15 @@ function generateCSRFToken() {
 $user_data = null;
 $errorMsg = "";
 
-// Fetch tenants if user is main admin
-$tenants = [];
 $is_main_admin = isset($_SESSION['is_main_admin']) && $_SESSION['is_main_admin'] == 1;
-if ($is_main_admin) {
-    $tenant_sql = "SELECT tenant_id, company_name FROM tenants WHERE status = 'active' ORDER BY company_name ASC";
-    $tenant_result = mysqli_query($conn, $tenant_sql);
-    if ($tenant_result) {
-        while ($row = mysqli_fetch_assoc($tenant_result)) {
-            $tenants[] = $row;
-        }
+
+// Fetch active positions for dropdown
+$positions = [];
+$positions_sql = "SELECT id, name FROM positions WHERE status = 'active' ORDER BY name ASC";
+$positions_result = mysqli_query($conn, $positions_sql);
+if ($positions_result) {
+    while ($pos = mysqli_fetch_assoc($positions_result)) {
+        $positions[] = $pos;
     }
 }
 
@@ -112,15 +111,14 @@ if (isset($_GET['id']) && !empty($_GET['id'])) {
 
 <head>
     <!-- TITLE -->
-    <title>Order Management Admin Portal - Edit User</title>
+    <title>Edit User | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
 
     <?php
     include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php');
     ?>
     
     <!-- [Template CSS Files] -->
-    <link rel="stylesheet" href="../assets/css/style.css" id="main-style-link" />
-    <link rel="stylesheet" href="../assets/css/customers.css" id="main-style-link" />
+    <link rel="stylesheet" href="../assets/css/customers.css" />
     
     <!-- Custom CSS for AJAX notifications -->
    <style>
@@ -293,14 +291,6 @@ input[type="password"] {
                     <div class="page-header-title">
                         <h5 class="mb-0 font-medium">Edit User</h5>
                     </div>
-                    <div class="page-header-breadcrumb">
-                        <ul class="breadcrumb">
-                            <li class="breadcrumb-item">
-                                <a href="users.php">Users List</a>
-                            </li>
-                            <li class="breadcrumb-item active">Edit User</li>
-                        </ul>
-                    </div>
                 </div>
             </div>
             <!-- [ breadcrumb ] end -->
@@ -377,7 +367,7 @@ input[type="password"] {
                                         <i class="fas fa-id-card"></i> NIC Number<span class="required">*</span>
                                     </label>
                                     <input type="text" class="form-control" id="nic" name="nic"
-                                        placeholder="123456789V or 123456789012" 
+                                        placeholder="Enter NIC Number" 
                                         value="<?php echo htmlspecialchars($user_data['nic'] ?? ''); ?>" required>
                                     <div class="error-feedback" id="nic-error"></div>
                                     <div class="nic-hint"></div>
@@ -393,7 +383,6 @@ input[type="password"] {
                                     </select>
                                     <?php if ($userId == 1): ?>
                                         <input type="hidden" name="status" value="<?php echo htmlspecialchars($user_data['status'] ?? 'active'); ?>">
-                                        <small class="text-muted">Status cannot be changed for the primary administrator account.</small>
                                     <?php endif; ?>
                                     <div class="error-feedback" id="status-error"></div>
                                 </div>
@@ -405,58 +394,46 @@ input[type="password"] {
                                     <label for="role" class="form-label">
                                         <i class="fas fa-user-tag"></i> Role<span class="required">*</span>
                                     </label>
-                                    <select class="form-select" id="role" name="role" <?php echo ($userId == 1) ? 'disabled' : ''; ?> required>
+                                    <select class="form-select" id="role" name="role_id" <?php echo ($userId == 1) ? 'disabled' : ''; ?> required>
                                         <option value="">Select Role...</option>
                                         <?php
-                                        // Check if we have role_id or role field
-                                        $currentRole = $user_data['role'] ?? '';
                                         $currentRoleId = $user_data['role_id'] ?? '';
                                         
-                                        // Try to fetch roles from database first
-                                        $roleQuery = "SELECT * FROM roles ORDER BY name";
+                                        $roleQuery = "SELECT id, name FROM roles ORDER BY id";
                                         $roleResult = mysqli_query($conn, $roleQuery);
                                         
                                         if ($roleResult && mysqli_num_rows($roleResult) > 0) {
-                                            // Use database roles
                                             while ($role = mysqli_fetch_assoc($roleResult)) {
                                                 $selected = ($currentRoleId == $role['id']) ? 'selected' : '';
-                                                echo "<option value='{$role['name']}' {$selected}>" . htmlspecialchars($role['name']) . "</option>";
+                                                echo "<option value='{$role['id']}' {$selected}>" . htmlspecialchars($role['name']) . "</option>";
                                             }
-                                        } else {
-                                            // Use static options
-                                            echo '<option value="admin" ' . (($currentRole === 'admin') ? 'selected' : '') . '>Admin</option>';
-                                            echo '<option value="moderator" ' . (($currentRole === 'moderator') ? 'selected' : '') . '>Moderator</option>';
-                                            echo '<option value="user" ' . (($currentRole === 'user') ? 'selected' : '') . '>User</option>';
                                         }
                                         ?>
                                     </select>
                                     <?php if ($userId == 1): ?>
-                                        <input type="hidden" name="role" value="<?php echo htmlspecialchars($user_data['role_name'] ?? 'Admin'); ?>">
-                                        <small class="text-muted">Role cannot be changed for the primary administrator account.</small>
+                                        <input type="hidden" name="role_id" value="<?php echo (int)($user_data['role_id'] ?? 1); ?>">
                                     <?php endif; ?>
                                     <div class="error-feedback" id="role-error"></div>
                                 </div>
 
-                                <?php if ($is_main_admin): ?>
                                 <div class="customer-form-group">
-                                    <label for="tenant_id" class="form-label">
-                                        <i class="fas fa-building"></i> Tenant/Company
+                                    <label for="position" class="form-label">
+                                        <i class="fas fa-briefcase"></i> Position
                                     </label>
-                                    <select class="form-select" id="tenant_id" name="tenant_id" disabled>
-                                        <option value="">Select Tenant...</option>
-                                        <?php foreach ($tenants as $tenant): ?>
-                                            <option value="<?php echo $tenant['tenant_id']; ?>" <?php echo ($user_data['tenant_id'] == $tenant['tenant_id']) ? 'selected' : ''; ?>>
-                                                <?php echo htmlspecialchars($tenant['company_name']); ?>
+                                    <select class="form-select" id="position" name="position">
+                                        <option value="">Select Position (optional)...</option>
+                                        <?php 
+                                        $currentPositionId = $user_data['position_id'] ?? '';
+                                        foreach ($positions as $pos): 
+                                            $selected = ($currentPositionId == $pos['id']) ? 'selected' : '';
+                                        ?>
+                                            <option value="<?php echo $pos['id']; ?>" <?php echo $selected; ?>>
+                                                <?php echo htmlspecialchars($pos['name']); ?>
                                             </option>
                                         <?php endforeach; ?>
                                     </select>
-                                    <div class="error-feedback" id="tenant_id-error"></div>
+                                    <div class="error-feedback" id="position-error"></div>
                                 </div>
-                                <?php else: ?>
-                                <div class="customer-form-group">
-                                    <!-- Empty space to maintain layout -->
-                                </div>
-                                <?php endif; ?>
                             </div>
 
                             <!-- Fifth Row: Address (Full Width) -->
@@ -905,12 +882,8 @@ input[type="password"] {
         }
 
         function validateRole(role) {
-            if (role.trim() === '') {
+            if (role === null || String(role).trim() === '') {
                 return { valid: false, message: 'Role selection is required' };
-            }
-            const validRoles = ['admin', 'moderator', 'user'];
-            if (!validRoles.includes(role.toLowerCase())) {
-                return { valid: false, message: 'Please select a valid role' };
             }
             return { valid: true, message: '' };
         }
@@ -991,7 +964,6 @@ input[type="password"] {
             const status = $('#status').val();
             const role = $('#role').val();
             const password = $('#password').val();
-            const tenantId = $('#tenant_id').val();
             
             // Validate required fields
             const validations = [

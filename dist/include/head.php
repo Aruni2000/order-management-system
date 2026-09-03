@@ -1,7 +1,7 @@
   <!-- [Head] start -->
     <!-- [Meta] -->
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=0, minimal-ui" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta
       name="description"
@@ -17,13 +17,9 @@
 
     <!-- [Favicon] icon -->
     <?php
-    // Default favicon
-    $favicon_url = '../assets/images/favicon.png';
-    
-    // Check if we have a database connection to fetch custom favicon
+    $favicon_url = '';
     if (isset($conn) && $conn) {
         try {
-            // Filter by logged-in user's tenant_id so each tenant sees their own favicon
             $user_tenant_id = $_SESSION['tenant_id'] ?? null;
             if ($user_tenant_id) {
                 $fav_query = "SELECT fav_icon_url FROM tenants WHERE tenant_id = " . (int)$user_tenant_id . " AND status = 'active' AND fav_icon_url IS NOT NULL AND fav_icon_url != '' LIMIT 1";
@@ -31,17 +27,16 @@
                 $fav_query = "SELECT fav_icon_url FROM tenants WHERE status = 'active' AND fav_icon_url IS NOT NULL AND fav_icon_url != '' LIMIT 1";
             }
             $fav_result = $conn->query($fav_query);
-            
             if ($fav_result && $fav_result->num_rows > 0) {
                 $fav_data = $fav_result->fetch_assoc();
                 $favicon_url = $fav_data['fav_icon_url'];
             }
         } catch (Throwable $e) {
-            // Silently fail and use default if DB error
+            // Silently fail
         }
     }
+    if ($favicon_url) echo '<link rel="icon" href="' . htmlspecialchars($favicon_url) . '" type="image/x-icon" />';
     ?>
-    <link rel="icon" href="<?php echo htmlspecialchars($favicon_url); ?>" type="image/x-icon" />
 
      <!-- [Font] Family -->
      <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;500;600&display=swap" rel="stylesheet" />
@@ -60,9 +55,11 @@
 
     <!-- [Template CSS Files] -->
     <link rel="stylesheet" href="../assets/css/style.css" id="main-style-link" />
-    <link rel="stylesheet" href="../assets/css/message.css" id="main-style-link" />
+    <link rel="stylesheet" href="../assets/css/message.css" />
+    <link rel="stylesheet" href="../assets/css/status-badge-colors.css" />
     <!-- [Global Responsive Styles] -->
     <link rel="stylesheet" href="../assets/css/responsive.css" />
+    <style>html{overflow-y:scroll}</style>
 
   </head>
   <!-- [Head] end -->

@@ -58,6 +58,7 @@ $email_filter = isset($_GET['email_filter']) ? trim($_GET['email_filter']) : '';
 $phone_filter = isset($_GET['phone_filter']) ? trim($_GET['phone_filter']) : '';
 $nic_filter = isset($_GET['nic_filter']) ? trim($_GET['nic_filter']) : '';
 $role_filter = isset($_GET['role_filter']) ? trim($_GET['role_filter']) : '';
+$position_filter = isset($_GET['position_filter']) ? trim($_GET['position_filter']) : '';
 $status_filter = isset($_GET['status_filter']) ? trim($_GET['status_filter']) : '';
 $date_from = isset($_GET['date_from']) ? trim($_GET['date_from']) : '';
 $date_to = isset($_GET['date_to']) ? trim($_GET['date_to']) : '';
@@ -75,10 +76,11 @@ $countSql = "SELECT COUNT(*) as total FROM users";
 
 // Main query - updated to match your actual database schema
 $sql = "SELECT u.id as user_id, u.name as username, u.name as full_name, u.email, u.mobile as phone, 
-               u.nic, r.name as role, u.status, u.commission_per_parcel, u.percentage_drawdown, 
-               u.commission_type, u.created_at, u.updated_at, t.company_name as tenant_name
+               u.nic, r.name as role, u.status, u.position_id, p.name as position_name,
+               u.created_at, u.updated_at, t.company_name as tenant_name
         FROM users u 
         LEFT JOIN roles r ON u.role_id = r.id
+        LEFT JOIN positions p ON u.position_id = p.id
         LEFT JOIN tenants t ON u.tenant_id = t.tenant_id";
 
 // Build search conditions
@@ -134,6 +136,12 @@ if (!empty($role_filter)) {
     $searchConditions[] = "r.name = '$roleTerm'";
 }
 
+// Position filter
+if (!empty($position_filter)) {
+    $positionTerm = (int)$position_filter;
+    $searchConditions[] = "u.position_id = $positionTerm";
+}
+
 // Status filter
 if (!empty($status_filter)) {
     $statusTerm = $conn->real_escape_string($status_filter);
@@ -154,7 +162,7 @@ if (!empty($date_to)) {
 // Apply all search conditions
 if (!empty($searchConditions)) {
     $finalSearchCondition = " WHERE " . implode(' AND ', $searchConditions);
-    $countSql = "SELECT COUNT(*) as total FROM users u LEFT JOIN roles r ON u.role_id = r.id LEFT JOIN tenants t ON u.tenant_id = t.tenant_id" . $finalSearchCondition;
+    $countSql = "SELECT COUNT(*) as total FROM users u LEFT JOIN roles r ON u.role_id = r.id LEFT JOIN positions p ON u.position_id = p.id LEFT JOIN tenants t ON u.tenant_id = t.tenant_id" . $finalSearchCondition;
     $sql .= $finalSearchCondition;
 } else {
     $countSql = "SELECT COUNT(*) as total FROM users";
@@ -186,6 +194,14 @@ if ($role_result && $role_result->num_rows > 0) {
     $roles = $role_result->fetch_all(MYSQLI_ASSOC);
 }
 
+// Get positions for filter dropdown
+$positions_sql = "SELECT id, name FROM positions ORDER BY name ASC";
+$positions_result = $conn->query($positions_sql);
+$positions_list = [];
+if ($positions_result && $positions_result->num_rows > 0) {
+    $positions_list = $positions_result->fetch_all(MYSQLI_ASSOC);
+}
+
 // Get active tenants for filter dropdown (if main admin)
 $tenants_list = [];
 if ($is_main_admin) {
@@ -201,14 +217,13 @@ if ($is_main_admin) {
 <html lang="en" data-pc-preset="preset-1" data-pc-sidebar-caption="true" data-pc-direction="ltr" dir="ltr" data-pc-theme="light">
 
 <head>
-    <title>Order Management Admin Portal - User Management</title>
+    <title>User Management | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
     
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
     
     <!-- Stylesheets -->
-    <link rel="stylesheet" href="../assets/css/style.css" id="main-style-link" />
-    <link rel="stylesheet" href="../assets/css/orders.css" id="main-style-link" />
-    <link rel="stylesheet" href="../assets/css/customers.css" id="main-style-link" />
+    <link rel="stylesheet" href="../assets/css/orders.css" />
+    <link rel="stylesheet" href="../assets/css/customers.css" />
 </head>
 
 <body>
@@ -227,7 +242,6 @@ if ($is_main_admin) {
                 <div class="page-block">
                     <div class="page-header-title">
                         <h5 class="mb-0 font-medium">User Management</h5>
-                        <small class="text-muted">Administrator Access</small>
                     </div>
                 </div>
             </div>
@@ -273,6 +287,19 @@ if ($is_main_admin) {
                                     <option value="<?php echo htmlspecialchars($role['role']); ?>" 
                                             <?php echo $role_filter == $role['role'] ? 'selected' : ''; ?>>
                                         <?php echo htmlspecialchars($role['role']); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="position_filter">Position</label>
+                            <select id="position_filter" name="position_filter">
+                                <option value="">All Positions</option>
+                                <?php foreach ($positions_list as $pos): ?>
+                                    <option value="<?php echo $pos['id']; ?>" 
+                                            <?php echo $position_filter == $pos['id'] ? 'selected' : ''; ?>>
+                                        <?php echo htmlspecialchars($pos['name']); ?>
                                     </option>
                                 <?php endforeach; ?>
                             </select>
@@ -336,6 +363,7 @@ if ($is_main_admin) {
                                 <?php endif; ?>
                                 <th>Contact & NIC</th>
                                 <th>Role & Status</th>
+                                <th>Position</th>
                                 <th>Created</th>
                                 <th>Actions</th>
                             </tr>
@@ -388,11 +416,25 @@ if ($is_main_admin) {
                                             </div>
                                         </td>
                                         
+                                        <!-- Position -->
+                                        <td>
+                                            <div style="line-height: 1.4;">
+                                                <?php if (!empty($row['position_name'])): ?>
+                                                    <div style="font-weight: 500; color: #495057;">
+                                                        <i class="fas fa-briefcase" style="font-size: 12px; color: #6c757d; margin-right: 4px;"></i>
+                                                        <?php echo htmlspecialchars($row['position_name']); ?>
+                                                    </div>
+                                                <?php else: ?>
+                                                    <span style="color: #adb5bd; font-size: 12px;">—</span>
+                                                <?php endif; ?>
+                                            </div>
+                                        </td>
+                                        
                                         <!-- Created -->
                                         <td>
                                             <div style="font-size: 12px; line-height: 1.4;">
                                                 <div style="font-weight: 500;"><?php echo date('M d, Y', strtotime($row['created_at'])); ?></div>
-                                                <div style="color: #6c757d;"><?php echo date('h:i A', strtotime($row['created_at'])); ?></div>
+                                                <div style="color: #6c757d;"><?php echo date('h:i:s A', strtotime($row['created_at'])); ?></div>
                                             </div>
                                         </td>
                                         
@@ -408,9 +450,7 @@ if ($is_main_admin) {
                                                         data-user-nic="<?= htmlspecialchars($row['nic']) ?>"
                                                         data-user-role="<?= htmlspecialchars($row['role']) ?>"
                                                         data-user-status="<?= htmlspecialchars($row['status']) ?>"
-                                                        data-user-commission-type="<?= htmlspecialchars($row['commission_type']) ?>"
-                                                        data-user-commission-per-parcel="<?= htmlspecialchars($row['commission_per_parcel']) ?>"
-                                                        data-user-percentage-drawdown="<?= htmlspecialchars($row['percentage_drawdown']) ?>"
+                                                        data-user-position="<?= htmlspecialchars($row['position_name'] ?? '') ?>"
                                                         data-user-created="<?= htmlspecialchars($row['created_at']) ?>"
                                                         data-user-updated="<?= htmlspecialchars($row['updated_at']) ?>"
                                                         title="View User Details">
@@ -429,8 +469,8 @@ if ($is_main_admin) {
                                                         data-user-name="<?= htmlspecialchars($row['username']) ?>"
                                                         title="<?= $row['user_id'] == 1 ? 'Primary Admin status cannot be changed' : ($row['status'] == 'active' ? 'Deactivate User' : 'Activate User') ?>"
                                                         data-action="<?= $row['status'] == 'active' ? 'deactivate' : 'activate' ?>"
-                                                        <?= $row['user_id'] == 1 ? 'disabled style="opacity: 0.5; cursor: not-allowed; filter: grayscale(1);"' : '' ?>>
-                                                    <i class="fas <?= $row['status'] == 'active' ? 'fa-user-times' : 'fa-user-check' ?>"></i>
+                                                        <?= $row['user_id'] == 1 ? 'disabled style="display: none;"' : '' ?>>
+                                                    <i class="fas <?= $row['status'] == 'active' ? 'fa-toggle-off' : 'fa-toggle-on' ?>"></i>
                                                 </button>
                                             </div>
                                         </td>
@@ -438,7 +478,7 @@ if ($is_main_admin) {
                                 <?php endwhile; ?>
                             <?php else: ?>
                                 <tr>
-                                    <td colspan="5" class="text-center" style="padding: 40px; text-align: center; color: #666;">
+                                    <td colspan="<?php echo $is_main_admin ? 8 : 7; ?>" class="text-center" style="padding: 40px; text-align: center; color: #666;">
                                         <i class="fas fa-users" style="font-size: 2rem; margin-bottom: 10px; display: block;"></i>
                                         No users found
                                     </td>
@@ -455,20 +495,20 @@ if ($is_main_admin) {
                     </div>
                     <div class="pagination-controls">
                         <?php if ($page > 1): ?>
-                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page - 1; ?>&limit=<?php echo $limit; ?>&user_name_filter=<?php echo urlencode($user_name_filter); ?>&email_filter=<?php echo urlencode($email_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&nic_filter=<?php echo urlencode($nic_filter); ?>&role_filter=<?php echo urlencode($role_filter); ?>&status_filter=<?php echo urlencode($status_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&search=<?php echo urlencode($search); ?>&tenant_filter=<?php echo urlencode($tenant_filter); ?>'">
+                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page - 1; ?>&limit=<?php echo $limit; ?>&user_name_filter=<?php echo urlencode($user_name_filter); ?>&email_filter=<?php echo urlencode($email_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&nic_filter=<?php echo urlencode($nic_filter); ?>&role_filter=<?php echo urlencode($role_filter); ?>&position_filter=<?php echo urlencode($position_filter); ?>&status_filter=<?php echo urlencode($status_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&search=<?php echo urlencode($search); ?>&tenant_filter=<?php echo urlencode($tenant_filter); ?>'">
                                 <i class="fas fa-chevron-left"></i>
                             </button>
                         <?php endif; ?>
                         
                         <?php for ($i = max(1, $page - 2); $i <= min($totalPages, $page + 2); $i++): ?>
                             <button class="page-btn <?php echo ($i == $page) ? 'active' : ''; ?>" 
-                                    onclick="window.location.href='?page=<?php echo $i; ?>&limit=<?php echo $limit; ?>&user_name_filter=<?php echo urlencode($user_name_filter); ?>&email_filter=<?php echo urlencode($email_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&nic_filter=<?php echo urlencode($nic_filter); ?>&role_filter=<?php echo urlencode($role_filter); ?>&status_filter=<?php echo urlencode($status_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&search=<?php echo urlencode($search); ?>&tenant_filter=<?php echo urlencode($tenant_filter); ?>'">
+                                    onclick="window.location.href='?page=<?php echo $i; ?>&limit=<?php echo $limit; ?>&user_name_filter=<?php echo urlencode($user_name_filter); ?>&email_filter=<?php echo urlencode($email_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&nic_filter=<?php echo urlencode($nic_filter); ?>&role_filter=<?php echo urlencode($role_filter); ?>&position_filter=<?php echo urlencode($position_filter); ?>&status_filter=<?php echo urlencode($status_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&search=<?php echo urlencode($search); ?>&tenant_filter=<?php echo urlencode($tenant_filter); ?>'">
                                 <?php echo $i; ?>
                             </button>
                         <?php endfor; ?>
                         
                         <?php if ($page < $totalPages): ?>
-                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page + 1; ?>&limit=<?php echo $limit; ?>&user_name_filter=<?php echo urlencode($user_name_filter); ?>&email_filter=<?php echo urlencode($email_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&nic_filter=<?php echo urlencode($nic_filter); ?>&role_filter=<?php echo urlencode($role_filter); ?>&status_filter=<?php echo urlencode($status_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&search=<?php echo urlencode($search); ?>&tenant_filter=<?php echo urlencode($tenant_filter); ?>'">
+                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page + 1; ?>&limit=<?php echo $limit; ?>&user_name_filter=<?php echo urlencode($user_name_filter); ?>&email_filter=<?php echo urlencode($email_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&nic_filter=<?php echo urlencode($nic_filter); ?>&role_filter=<?php echo urlencode($role_filter); ?>&position_filter=<?php echo urlencode($position_filter); ?>&status_filter=<?php echo urlencode($status_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&search=<?php echo urlencode($search); ?>&tenant_filter=<?php echo urlencode($tenant_filter); ?>'">
                                 <i class="fas fa-chevron-right"></i>
                             </button>
                         <?php endif; ?>
@@ -506,12 +546,15 @@ if ($is_main_admin) {
                     <span class="detail-label">NIC Number:</span>
                     <span class="detail-value" id="modal-user-nic"></span>
                 </div>
-                <div class="customer-detail-row">
-                    <span class="detail-label">Role:</span>
-                    <span class="detail-value" id="modal-user-role"></span>
-                </div>
-                <div class="customer-detail-row">
-                    <span class="detail-label">Status:</span>
+                <div class="customer-detail-row">                                    <span class="detail-label">Role:</span>
+                                    <span class="detail-value" id="modal-user-role"></span>
+                                </div>
+                                <div class="customer-detail-row">
+                                    <span class="detail-label">Position:</span>
+                                    <span class="detail-value" id="modal-user-position"></span>
+                                </div>
+                                <div class="customer-detail-row">
+                                    <span class="detail-label">Status:</span>
                     <span class="detail-value">
                         <span id="modal-user-status" class="status-badge"></span>
                     </span>
@@ -555,6 +598,7 @@ function openUserModal(button) {
     const userNic = button.getAttribute('data-user-nic');
     const userRole = button.getAttribute('data-user-role');
     const userStatus = button.getAttribute('data-user-status');
+    const userPosition = button.getAttribute('data-user-position');
     const userCreated = button.getAttribute('data-user-created');
     const userUpdated = button.getAttribute('data-user-updated');
 
@@ -565,6 +609,7 @@ function openUserModal(button) {
     document.getElementById('modal-user-phone').textContent = userPhone || 'N/A';
     document.getElementById('modal-user-nic').textContent = userNic || 'N/A';
     document.getElementById('modal-user-role').textContent = userRole || 'User';
+    document.getElementById('modal-user-position').textContent = userPosition || '—';
     
     // Set status badge
     const statusElement = document.getElementById('modal-user-status');
@@ -591,7 +636,18 @@ function formatDateTime(dateString) {
     if (!dateString) return 'N/A';
     try {
         const date = new Date(dateString);
-        return date.toLocaleString();
+        if (isNaN(date.getTime())) return dateString;
+        const yyyy = date.getFullYear();
+        const mm = String(date.getMonth() + 1).padStart(2, '0');
+        const dd = String(date.getDate()).padStart(2, '0');
+        let hours = date.getHours();
+        const minutes = String(date.getMinutes()).padStart(2, '0');
+        const seconds = String(date.getSeconds()).padStart(2, '0');
+        const ampm = hours >= 12 ? 'PM' : 'AM';
+        hours = hours % 12;
+        hours = hours ? hours : 12;
+        const hh = String(hours).padStart(2, '0');
+        return `${yyyy}-${mm}-${dd} ${hh}:${minutes}:${seconds} ${ampm}`;
     } catch (e) {
         return dateString;
     }
@@ -611,10 +667,9 @@ function toggleUserStatus(button) {
         text: `You are about to ${isActive ? 'Deactivate' : 'Activate'} User: ${userName}`,
         icon: 'warning',
         showCancelButton: true,
-        customClass: {
-            confirmButton: isActive ? 'swal-danger' : 'swal-success'
-        },
-        confirmButtonText: isActive ? 'Yes, Deactivate it!' : 'Yes, Activate it!',
+        confirmButtonColor: isActive ? '#dc3545' : '#28a745',
+        cancelButtonColor: '#6c757d',
+        confirmButtonText: isActive ? 'Yes, deactivate it!' : 'Yes, activate it!',
         cancelButtonText: 'Cancel',
         reverseButtons: true
     }).then((result) => {
@@ -631,27 +686,19 @@ function toggleUserStatus(button) {
             .then(data => {
                 if (data.success) {
                     Swal.fire({
-                        icon: 'success',
                         title: 'Updated!',
-                        text: `User has been ${isActive ? 'deactivated' : 'activated'} successfully.`,
-                        showConfirmButton: false,
-                        timer: 1500
+                        text: 'User status updated successfully!',
+                        icon: 'success',
+                        timer: 1500,
+                        showConfirmButton: false
                     }).then(() => location.reload());
                 } else {
-                    Swal.fire({
-                        icon: 'error',
-                        title: 'Error!',
-                        text: data.message || 'Failed to update user status.'
-                    });
+                    toastManager.error(data.message || 'Failed to update user status');
                 }
             })
             .catch(error => {
                 console.error('Error:', error);
-                Swal.fire({
-                    icon: 'error',
-                    title: 'Error!',
-                    text: 'An error occurred while updating the user status.'
-                });
+                toastManager.error('An error occurred while updating the user status.');
             });
         }
     });

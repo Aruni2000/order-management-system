@@ -213,7 +213,7 @@ if ($grand_total_words) {
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Order Receipt - #<?php echo htmlspecialchars($order_id); ?></title>
+    <title>Order Receipt - #<?php echo htmlspecialchars($order_id); ?> | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
     <style>
         body {
             font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;

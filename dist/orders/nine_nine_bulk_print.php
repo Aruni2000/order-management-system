@@ -6,7 +6,10 @@ if (!session_id()) {
     session_start();
 }
 
-if (!isset($_SESSION['logged_in']) && !isset($_SESSION['ClientUserID'])) {
+if ((!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) && !isset($_SESSION['ClientUserID'])) {
+    if (ob_get_level()) {
+        ob_end_clean();
+    }
     header("Location: /OMS/dist/pages/login.php");
     exit();
 }
@@ -186,11 +189,10 @@ function getTenantData($tId, $tenants_list) {
     if (!empty($tId) && isset($tenants_list[$tId])) {
         return $tenants_list[$tId];
     }
-    if (!empty($tenants_list)) {
-        return reset($tenants_list);
-    }
+    // Tenant not found (inactive/missing): return neutral placeholder
+    // instead of falling back to the first active tenant's branding
     return [
-        'company_name' => '', 'tenant_address' => '', 'phone' => '', 'tenant_email' => '', 'logo_url' => ''
+        'company_name' => 'Company Name', 'tenant_address' => 'Address not set', 'tenant_email' => '', 'phone' => '', 'logo_url' => ''
     ];
 }
 
@@ -215,7 +217,7 @@ function formatProducts($order_id, $products_by_order)
     
     $product_list = [];
     foreach ($products_by_order[$order_id] as $item) {
-        $product_list[] = $item['product_id'] . ' - ' . $item['product_name'] . ' (' . $item['total_quantity'] . ')';
+        $product_list[] = $item['product_name'] . ' (' . $item['total_quantity'] . ')';
     }
     
     return implode(', ', $product_list);
@@ -226,7 +228,7 @@ function formatProducts($order_id, $products_by_order)
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Bulk Print - <?php echo count($orders); ?> Labels</title>
+<title>Bulk Print - <?php echo count($orders); ?> Labels | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
 
 <style>
 @page { 
@@ -252,7 +254,7 @@ body {
 
 .small { 
     font-size: 10px; 
-    color: #555; 
+    color: black; 
 }
 
 hr {
@@ -322,8 +324,8 @@ window.onload = function() {
                     <?php endif; ?>
                 </td>
                 <td style="text-align:right;">
-                    <b>Order: <?php echo htmlspecialchars($o['order_id']); ?></b><br>
-                    <span class="small"><?php echo htmlspecialchars($o['created_at'] ?: date("Y-m-d")); ?></span><br>
+                    <b>Order ID: <?php echo str_pad($o['order_id'], 5, '0', STR_PAD_LEFT); ?></b><br>
+                    <span class="small"><?php echo htmlspecialchars($o['created_at'] ? date("Y-m-d", strtotime($o['created_at'])) : date("Y-m-d")); ?></span><br>
                     <span class="small"><?php echo htmlspecialchars($o['courier_name'] ?: "-"); ?></span><br>
                     <?php if (!empty($o['pay_status']) && $o['pay_status'] === 'paid'): ?>
                         <span style="color: green; font-weight: bold; font-size: 11px; display: inline-block; margin-top: 3px; padding: 2px 6px; background-color: #d4edda; border-radius: 3px;">
@@ -336,34 +338,36 @@ window.onload = function() {
 
         <!-- Billing From Details -->
         <div style="font-size:10px; margin-top:5px;">
-            <?php echo htmlspecialchars($bData['company_name']); ?><br>
+            <b><?php echo htmlspecialchars($bData['company_name']); ?></b><br>
             <?php echo nl2br(htmlspecialchars($bData['tenant_address'] ?? '')); ?><br>
-            Phone: <?php echo htmlspecialchars($bData['phone'] ?? ''); ?><br>
-            Email: <?php echo htmlspecialchars($bData['tenant_email'] ?? ''); ?>
+            <?php echo htmlspecialchars($bData['phone'] ?? ''); ?> 
+            <?php if (!empty($bData['tenant_email'])): ?>| <?php echo htmlspecialchars($bData['tenant_email'] ?? ''); ?> <?php endif; ?>
         </div>
 
         <hr>
 
         <!-- Customer Details -->
-        <b><?php echo htmlspecialchars($o['name']); ?></b><br>
-        Phone: <?php echo htmlspecialchars($o['phone']); ?><br>
-        <?php if (!empty($o['phone_2'])): ?>
-            Phone 2: <?php echo htmlspecialchars($o['phone_2']); ?><br>
-        <?php endif; ?>
+        <div style="font-size:10px; line-height:1.3;">
+            <b>Name:</b> <?php echo htmlspecialchars(ucwords(strtolower($o['name']))); ?> <br>
+            <b>Phone:</b> <?php echo htmlspecialchars($o['phone']); ?><br>
+            <?php if (!empty($o['phone_2'])): ?>
+                <b>Phone 2:</b> <?php echo htmlspecialchars($o['phone_2']); ?><br>
+            <?php endif; ?>
 
-        <?php
-            $addr = $o['o_addr1'] ?: $o['c_addr1'];
-            $addr2 = $o['o_addr2'] ?: $o['c_addr2'];
-        ?>
-        Address: <?php echo htmlspecialchars(trim($addr . " " . $addr2)); ?><br>
-        <?php if (!empty($o['city_name'])): ?>
-            City: <?php echo htmlspecialchars($o['city_name']); ?><br>
-        <?php endif; ?>
+            <?php
+                $addr = $o['o_addr1'] ?: $o['c_addr1'];
+                $addr2 = $o['o_addr2'] ?: $o['c_addr2'];
+            ?>
+            <b>Address:</b> <?php echo htmlspecialchars(trim($addr . " " . $addr2)); ?><br>
+            <?php if (!empty($o['city_name'])): ?>
+                <b>City:</b> <?php echo htmlspecialchars($o['city_name']); ?><br>
+            <?php endif; ?>
+        </div>
 
         <hr>
 
         <!-- Products -->
-        <b>Products:</b><br>
+        <b style="font-size:10px;">Products:</b><br>
         <span class="small"><?php echo htmlspecialchars(formatProducts($o['order_id'], $products_by_order)); ?></span>
 
         <hr>

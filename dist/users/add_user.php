@@ -59,6 +59,16 @@ if ($is_main_admin) {
     }
 }
 
+// Fetch active positions for dropdown
+$positions = [];
+$positionsQuery = "SELECT id, name FROM positions WHERE status = 'active' ORDER BY name ASC";
+$positionsResult = mysqli_query($conn, $positionsQuery);
+if ($positionsResult) {
+    while ($pos = mysqli_fetch_assoc($positionsResult)) {
+        $positions[] = $pos;
+    }
+}
+
 ?>
 
 <!doctype html>
@@ -66,15 +76,14 @@ if ($is_main_admin) {
 
 <head>
     <!-- TITLE -->
-    <title>Order Management Admin Portal - Add New User</title>
+    <title>Add New User | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
 
     <?php
     include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php');
     ?>
     
     <!-- [Template CSS Files] -->
-    <link rel="stylesheet" href="../assets/css/style.css" id="main-style-link" />
-    <link rel="stylesheet" href="../assets/css/customers.css" id="main-style-link" />
+    <link rel="stylesheet" href="../assets/css/customers.css" />
     
     <!-- Custom CSS for AJAX notifications -->
    <style>
@@ -312,7 +321,7 @@ input[type="password"] {
                                         <i class="fas fa-id-card"></i> NIC Number<span class="required">*</span>
                                     </label>
                                     <input type="text" class="form-control" id="nic" name="nic"
-                                        placeholder="123456789V or 123456789012" required>
+                                        placeholder="Enter NIC Number" required>
                                     <div class="error-feedback" id="nic-error"></div>
                                     <div class="nic-hint"></div>
                                 </div>
@@ -335,17 +344,13 @@ input[type="password"] {
                                     <label for="role" class="form-label">
                                         <i class="fas fa-user-tag"></i> Role<span class="required">*</span>
                                     </label>
-                                    <select class="form-select" id="role" name="role" required>
+                                    <select class="form-select" id="role" name="role_id" required>
                                         <option value="">Select Role...</option>
                                         <?php
                                         if ($roleResult && mysqli_num_rows($roleResult) > 0) {
                                             while ($role = mysqli_fetch_assoc($roleResult)) {
-                                                echo "<option value='{$role['name']}'>" . htmlspecialchars($role['name']) . "</option>";
+                                                echo "<option value='{$role['id']}'>" . htmlspecialchars($role['name']) . "</option>";
                                             }
-                                        } else {
-                                            echo '<option value="admin">Admin</option>';
-                                            echo '<option value="moderator">Moderator</option>';
-                                            echo '<option value="user">User</option>';
                                         }
                                         ?>
                                     </select>
@@ -367,11 +372,20 @@ input[type="password"] {
                                     </select>
                                     <div class="error-feedback" id="tenant_id-error"></div>
                                 </div>
-                                <?php else: ?>
-                                <div class="customer-form-group">
-                                    <!-- Empty space to maintain layout -->
-                                </div>
                                 <?php endif; ?>
+
+                                <div class="customer-form-group">
+                                    <label for="position" class="form-label">
+                                        <i class="fas fa-briefcase"></i> Position
+                                    </label>
+                                    <select class="form-select" id="position" name="position">
+                                        <option value="">Select Position (optional)...</option>
+                                        <?php foreach ($positions as $pos): ?>
+                                            <option value="<?php echo $pos['id']; ?>"><?php echo htmlspecialchars($pos['name']); ?></option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                    <div class="error-feedback" id="position-error"></div>
+                                </div>
                             </div>
 
                             <!-- Fifth Row: Address (Full Width) -->
@@ -819,12 +833,8 @@ input[type="password"] {
         }
 
         function validateRole(role) {
-            if (role.trim() === '') {
+            if (role === null || String(role).trim() === '') {
                 return { valid: false, message: 'Role selection is required' };
-            }
-            const validRoles = ['admin', 'moderator', 'user'];
-            if (!validRoles.includes(role.toLowerCase())) {
-                return { valid: false, message: 'Please select a valid role' };
             }
             return { valid: true, message: '' };
         }

@@ -92,28 +92,10 @@ try {
     $nic = trim(strtoupper($_POST['nic'] ?? ''));
     $address = trim($_POST['address'] ?? '');
     $status = strtolower($_POST['status'] ?? 'active');
-    $role = $_POST['role'] ?? '';
+    $role_id = isset($_POST['role_id']) ? (int)$_POST['role_id'] : 0;
     $input_tenant_id = $_POST['tenant_id'] ?? null;
+    $position_id = !empty($_POST['position']) ? (int)$_POST['position'] : null;
     $is_main_admin = isset($_SESSION['is_main_admin']) && $_SESSION['is_main_admin'] == 1;
-    
-    // Convert role to role_id
-    $role_mapping = [];
-    $roleQuery = "SELECT id, name FROM roles";
-    $roleResult = $conn->query($roleQuery);
-    if ($roleResult && $roleResult->num_rows > 0) {
-        while ($row = $roleResult->fetch_assoc()) {
-            $role_mapping[strtolower($row['name'])] = ['id' => $row['id'], 'name' => $row['name']];
-        }
-    }
-    
-    // Fallback if database roles are empty (using initial defaults)
-    if (empty($role_mapping)) {
-        $role_mapping = [
-            'admin' => ['id' => 1, 'name' => 'Admin'],
-            'user' => ['id' => 2, 'name' => 'User'],
-            'moderator' => ['id' => 3, 'name' => 'Moderator'],
-        ];
-    }
     
     // Essential server-side validation (security-critical only)
     $fieldErrors = [];
@@ -126,7 +108,28 @@ try {
     if (empty($mobile)) $fieldErrors['mobile'] = "Mobile number is required.";
     if (empty($nic)) $fieldErrors['nic'] = "NIC number is required.";
     if (empty($address)) $fieldErrors['address'] = "Address is required.";
-    if (!isset($role_mapping[strtolower($role)])) $fieldErrors['role'] = "Please select a valid role.";
+    
+    // Validate role against the roles table
+    $role_name = '';
+    if ($role_id <= 0) {
+        $fieldErrors['role'] = "Please select a valid role.";
+    } else {
+        $roleStmt = $conn->prepare("SELECT id, name FROM roles WHERE id = ? LIMIT 1");
+        if ($roleStmt) {
+            $roleStmt->bind_param("i", $role_id);
+            $roleStmt->execute();
+            $roleRow = $roleStmt->get_result()->fetch_assoc();
+            $roleStmt->close();
+            if ($roleRow) {
+                $role_name = $roleRow['name'];
+            } else {
+                $fieldErrors['role'] = "Please select a valid role.";
+            }
+        } else {
+            error_log("Failed to prepare role lookup statement: " . $conn->error);
+            $fieldErrors['role'] = "Unable to verify role. Please try again.";
+        }
+    }
     
     // Validate tenant selection if main admin
     if ($is_main_admin && empty($input_tenant_id)) {
@@ -179,15 +182,8 @@ try {
     // Hash the password
     $hashed_password = password_hash($password, PASSWORD_BCRYPT);
     
-    // Get role info
-    $role_id = $role_mapping[strtolower($role)]['id'];
-    $role_name = $role_mapping[strtolower($role)]['name'];
+    // role_id and role_name already set from validation above
     
-    // Set commission defaults (if your table has these fields)
-    $commission_type = 'none';
-    $commission_per_parcel = 0.00;
-    $percentage_drawdown = 0.00;
-
     // Get tenant_id
     if ($is_main_admin && !empty($input_tenant_id)) {
         $tenant_id = intval($input_tenant_id);
@@ -205,20 +201,36 @@ try {
         $tenant_id = $_SESSION['tenant_id'] ?? null;
     }
 
-    // Prepare insert query
-    $stmt = $conn->prepare("INSERT INTO users (name, email, password, mobile, nic, address, status, role_id, 
-                            commission_type, commission_per_parcel, percentage_drawdown, tenant_id, created_at) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())");
-    
-    if ($stmt === false) {
-        $conn->rollback();
-        jsonResponse(false, 'Database error occurred. Please try again.');
+    // Prepare insert query - with or without position_id
+    if ($position_id !== null) {
+        $stmt = $conn->prepare("INSERT INTO users (name, email, password, mobile, nic, address, status, role_id, 
+                                position_id, tenant_id, created_at) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())");
+        
+        if ($stmt === false) {
+            $conn->rollback();
+            jsonResponse(false, 'Database error occurred. Please try again.');
+        }
+        
+        $stmt->bind_param("sssssssiii", 
+            $name, $email, $hashed_password, $mobile, $nic, $address, 
+            $status, $role_id, $position_id, $tenant_id
+        );
+    } else {
+        $stmt = $conn->prepare("INSERT INTO users (name, email, password, mobile, nic, address, status, role_id, 
+                                tenant_id, created_at) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())");
+        
+        if ($stmt === false) {
+            $conn->rollback();
+            jsonResponse(false, 'Database error occurred. Please try again.');
+        }
+        
+        $stmt->bind_param("sssssssii", 
+            $name, $email, $hashed_password, $mobile, $nic, $address, 
+            $status, $role_id, $tenant_id
+        );
     }
-    
-    $stmt->bind_param("sssssssissdi", 
-        $name, $email, $hashed_password, $mobile, $nic, $address, 
-        $status, $role_id, $commission_type, $commission_per_parcel, $percentage_drawdown, $tenant_id
-    );
 
     // Execute insert
     if ($stmt->execute()) {
@@ -227,7 +239,16 @@ try {
         $stmt->close();
         
         // Log user creation
-        $logDetails = "New user account created - Name: {$name}, Email: {$email}, Role: {$role_name}";
+        $positionLabel = '';
+        if ($position_id) {
+            $posStmt = $conn->prepare("SELECT name FROM positions WHERE id = ?");
+            $posStmt->bind_param("i", $position_id);
+            $posStmt->execute();
+            $posName = $posStmt->get_result()->fetch_assoc()['name'] ?? null;
+            $posStmt->close();
+            $positionLabel = $posName ? " (Position: $posName)" : "";
+        }
+        $logDetails = "New user account created - Name: {$name}, Email: {$email}, Role: {$role_name}{$positionLabel}";
         logUserAction($conn, $currentUserId, 'user_create', $newUserId, $logDetails);
         
         $conn->commit();

@@ -437,8 +437,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                         if ($updateOrderStmt->affected_rows > 0) {
                             $successCount++;
                             
+                            // INVENTORY
+                            $inventoryUpdatedCount = 0;
+                            if (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1) {
+                                // Get order items to update inventory
+                                $getItemsSql = "SELECT product_id, quantity FROM order_items WHERE order_id = ?";
+                                $itemsStmt = $conn->prepare($getItemsSql);
+                                $itemsStmt->bind_param("i", $trackingData['order_id']);
+                                $itemsStmt->execute();
+                                $itemsResult = $itemsStmt->get_result();
+                                
+                                while ($item = $itemsResult->fetch_assoc()) {
+                                    $productId = $item['product_id'];
+                                    $quantity = $item['quantity'];
+    
+                                    // Update stock - Increment stock for returned items
+                                    $updateStockSql = "UPDATE products SET stock_quantity = stock_quantity + ? WHERE id = ?";
+                                    $stockStmt = $conn->prepare($updateStockSql);
+                                    $stockStmt->bind_param("ii", $quantity, $productId);
+                                    if ($stockStmt->execute()) {
+                                        $inventoryUpdatedCount++;
+                                    }
+                                    $stockStmt->close();
+                                }
+                                $itemsStmt->close();
+                            }
+                            
                             // Log the successful status update with the requested format
-                            $logDetails = "Return CSV bulk handover order updated with tracking: {$trackingData['tracking_number']}, Order ID: {$trackingData['order_id']}";
+                            $logDetails = "Return CSV bulk handover order updated with tracking: {$trackingData['tracking_number']}, Order ID: {$trackingData['order_id']}, Inventory Restored Items: $inventoryUpdatedCount";
                             
                             if (!logUserAction($conn, $currentUserId, 'return_csv', $trackingData['order_id'], $logDetails)) {
                                 // Log the error but don't stop processing
@@ -519,14 +545,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
     data-pc-theme="light">
 
 <head>
-    <title>Order Management Admin Portal - Return CSV Upload</title>
+    <title>Return CSV Upload | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
 
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
 
     <!-- Stylesheets -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css">
-    <link rel="stylesheet" href="../assets/css/style.css" id="main-style-link" />
-    <link rel="stylesheet" href="../assets/css/leads.css" id="main-style-link" />
+    <link rel="stylesheet" href="../assets/css/leads.css" />
 </head>
 
 <body>
@@ -546,7 +570,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                     <div class="page-header-title">
                         <h5 class="mb-0 font-medium">
                             Return Handover Management
-                            <i class="fas fa-info-circle text-primary" style="cursor: pointer; font-size: 16px; margin-left: 8px;" onclick="openInfoModal()" title="How to use this page"></i>
+                            <i class="fas fa-info-circle text-primary" style="cursor: pointer; font-size: 16px; margin-left: 8px; color: #3b82f6;" onclick="openInfoModal()" title="How to use this page"></i>
                         </h5>
                     </div>
                 </div>
@@ -627,6 +651,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                         <div class="template-download-section">
                             <a href="/OMS/dist/templates/return_csv.php" class="template-download-btn">
                                 Download CSV Template
+                            </a>
+                            <a href="/OMS/dist/orders/return_scanner.php" class="template-download-btn" style="margin-left: 10px;">
+                                <i class="fas fa-barcode"></i> Return Scanner
                             </a>
                         </div>
 
@@ -714,7 +741,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
         </div>
 
         <div style="background: #fef3c7; border-radius: 6px; padding: 10px 12px; font-size: 13px; color: #92400e;">
-            💡 Use the template. Only one column needed — just tracking numbers.
+            💡 Use the template. Only one column needed — just tracking numbers.<br>
+            For single-order handovers, use the <strong>Return Scanner</strong>.
         </div>
 
         </div>'

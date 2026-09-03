@@ -153,10 +153,11 @@ $errors = [];
 
 if ($tenantId <= 0) $errors['tenant_id'] = 'Invalid tenant ID.';
     if (strlen($companyName) < 2) $errors['company_name'] = 'Company name is required.';
-    if (strlen($companyName) > 15) $errors['company_name'] = 'Company name is too long (maximum 15 characters).';
 if (strlen($contactPerson) < 2) $errors['contact_person'] = 'Contact person is required.';
 
-if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+if (empty($address)) $errors['address'] = 'Company address is required.';
+
+if (!empty($email) && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
     $errors['email'] = 'Invalid email address.';
 }
 
@@ -324,7 +325,7 @@ if (!$tenantChanged) {
 /* ================================
    Duplicate Email Check
 ================================ */
-if ($email !== $existingTenant['email']) {
+if (!empty($email) && $email !== $existingTenant['email']) {
     $emailStmt = $conn->prepare(
         "SELECT tenant_id FROM tenants WHERE email = ? AND tenant_id != ?"
     );

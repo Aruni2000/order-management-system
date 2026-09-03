@@ -72,7 +72,7 @@ try {
         $checkStmt->close();
         
         // Update the condition
-        $updateSql = "UPDATE order_header SET `condition` = ?, updated_at = CURRENT_TIMESTAMP WHERE order_id = ?";
+        $updateSql = "UPDATE order_header SET `condition` = ?, updated_at = updated_at WHERE order_id = ?";
         $updateStmt = $conn->prepare($updateSql);
         
         if (!$updateStmt) {

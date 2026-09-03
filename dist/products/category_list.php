@@ -72,14 +72,13 @@ $result = $conn->query($sql);
 <html lang="en" data-pc-preset="preset-1" data-pc-sidebar-caption="true" data-pc-direction="ltr" dir="ltr" data-pc-theme="light">
 
 <head>
-    <title>Order Management Admin Portal - Category Management</title>
+    <title>Category Management | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
     
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
     
     <!-- Stylesheets -->
-    <link rel="stylesheet" href="../assets/css/style.css" id="main-style-link" />
-    <link rel="stylesheet" href="../assets/css/orders.css" id="main-style-link" />
-    <link rel="stylesheet" href="../assets/css/customers.css" id="main-style-link" />
+    <link rel="stylesheet" href="../assets/css/orders.css" />
+    <link rel="stylesheet" href="../assets/css/customers.css" />
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
     <style>
         .category-name {
@@ -373,7 +372,7 @@ $result = $conn->query($sql);
                                             <div style="font-size: 13px;">
                                                 <?php echo date('Y-m-d', strtotime($row['created_at'])); ?>
                                                 <br>
-                                                <small style="color: #6c757d;"><?php echo date('H:i:s', strtotime($row['created_at'])); ?></small>
+                                                <small style="color: #6c757d;"><?php echo date('h:i:s A', strtotime($row['created_at'])); ?></small>
                                             </div>
                                         </td>
                                         <td>
@@ -461,10 +460,27 @@ $result = $conn->query($sql);
             statusElement.textContent = categoryStatus.charAt(0).toUpperCase() + categoryStatus.slice(1);
             statusElement.className = 'badge ' + (categoryStatus === 'active' ? 'status-active' : 'status-inactive');
             
-            document.getElementById('modal-category-created').textContent = categoryCreated;
+            document.getElementById('modal-category-created').textContent = formatDateTime(categoryCreated);
 
             modal.style.display = 'block';
             document.body.style.overflow = 'clip';
+        }
+
+        function formatDateTime(dateString) {
+            if (!dateString) return '-';
+            const date = new Date(dateString);
+            if (isNaN(date.getTime())) return dateString;
+            const yyyy = date.getFullYear();
+            const mm = String(date.getMonth() + 1).padStart(2, '0');
+            const dd = String(date.getDate()).padStart(2, '0');
+            let hours = date.getHours();
+            const minutes = String(date.getMinutes()).padStart(2, '0');
+            const seconds = String(date.getSeconds()).padStart(2, '0');
+            const ampm = hours >= 12 ? 'PM' : 'AM';
+            hours = hours % 12;
+            hours = hours ? hours : 12;
+            const hh = String(hours).padStart(2, '0');
+            return `${yyyy}-${mm}-${dd} ${hh}:${minutes}:${seconds} ${ampm}`;
         }
 
         function closeCategoryModal() {
@@ -485,10 +501,9 @@ $result = $conn->query($sql);
                 text: `You are about to ${isActive ? 'Deactivate' : 'Activate'} Category: ${categoryName}`,
                 icon: 'warning',
                 showCancelButton: true,
-                customClass: {
-                    confirmButton: isActive ? 'swal-danger' : 'swal-success'
-                },
-                confirmButtonText: isActive ? 'Yes, Deactivate it!' : 'Yes, Activate it!',
+                confirmButtonColor: isActive ? '#dc3545' : '#28a745',
+                cancelButtonColor: '#6c757d',
+                confirmButtonText: isActive ? 'Yes, deactivate it!' : 'Yes, activate it!',
                 cancelButtonText: 'Cancel',
                 reverseButtons: true
             }).then((result) => {
@@ -505,27 +520,19 @@ $result = $conn->query($sql);
                     .then(data => {
                         if (data.success) {
                             Swal.fire({
-                                icon: 'success',
                                 title: 'Updated!',
-                                text: `Category has been ${isActive ? 'deactivated' : 'activated'} successfully.`,
-                                showConfirmButton: false,
-                                timer: 1500
+                                text: 'Category status updated successfully!',
+                                icon: 'success',
+                                timer: 1500,
+                                showConfirmButton: false
                             }).then(() => location.reload());
                         } else {
-                            Swal.fire({
-                                icon: 'error',
-                                title: 'Error!',
-                                text: data.message || 'Failed to update category status.'
-                            });
+                            toastManager.error(data.message || 'Failed to update category status');
                         }
                     })
                     .catch(error => {
                         console.error('Error:', error);
-                        Swal.fire({
-                            icon: 'error',
-                            title: 'Error!',
-                            text: 'An error occurred while updating the category status.'
-                        });
+                        toastManager.error('An error occurred while updating the category status.');
                     });
                 }
             });

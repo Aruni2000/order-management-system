@@ -208,8 +208,8 @@ if (isset($order['pay_status']) && $order['pay_status'] !== 'paid') {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Order Print - <?php echo $order_id; ?></title>
-    <link rel="stylesheet" href="../assets/css/print.css" id="main-style-link" />
+    <title>Order Print - <?php echo $order_id; ?> | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
+    <link rel="stylesheet" href="../assets/css/print.css" />
 
 </head>
 

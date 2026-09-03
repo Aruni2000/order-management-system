@@ -204,14 +204,12 @@ $result = $conn->query($sql);
 <html lang="en" data-pc-preset="preset-1" data-pc-sidebar-caption="true" data-pc-direction="ltr" dir="ltr" data-pc-theme="light">
 
 <head>
-    <title>Leads Management - All Leads</title>
+    <title>Leads Management - All Leads | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
     
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
     
     <!-- Stylesheets -->
-    <link rel="stylesheet" href="../assets/css/style.css" id="main-style-link" />
-    <link rel="stylesheet" href="../assets/css/orders.css" id="main-style-link" />
-    <link rel="stylesheet" href="../assets/css/status-badge-colors.css" id="main-style-link" />
+    <link rel="stylesheet" href="../assets/css/orders.css" />
     <style>
 .print-btn {
     background-color: #28a745;
@@ -235,11 +233,6 @@ $result = $conn->query($sql);
 
 .actions {
     white-space: nowrap;
-}
-.status-badge.pay-status-paid,
-.status-badge.pay-status-unpaid {
-    font-size: 0.65rem;
-    padding: 2px 8px;
 }
 </style>
 </head>

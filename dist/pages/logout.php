@@ -1,6 +1,26 @@
 <?php
 session_start(); // Start the session
 
+// Include the database connection file
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
+
+// Log logout action
+if (isset($_SESSION['user_id'])) {
+    try {
+        $log_action = 'user_logout';
+        $log_details = "User successfully logged out.";
+        $log_sql = "INSERT INTO user_logs (user_id, action_type, details, created_at) VALUES (?, ?, ?, NOW())";
+        $log_stmt = $conn->prepare($log_sql);
+        if ($log_stmt) {
+            $log_stmt->bind_param("iss", $_SESSION['user_id'], $log_action, $log_details);
+            $log_stmt->execute();
+            $log_stmt->close();
+        }
+    } catch (Exception $e) {
+        error_log("Failed to log logout action: " . $e->getMessage());
+    }
+}
+
 // Unset all session variables
 $_SESSION = array();
 

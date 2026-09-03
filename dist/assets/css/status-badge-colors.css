@@ -1,31 +1,74 @@
-/* Status Badge Colors */
+/* ====================================
+   STATUS BADGE STYLES - SINGLE SOURCE OF TRUTH
+   A unified system for all status badges across the platform.
+   Uses gradient pill design for consistency.
+   ==================================== */
+
+/* ------------------------------------
+   BASE BADGE CLASS
+   ------------------------------------ */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.status-badge:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* ------------------------------------
+   RESPONSIVE: smaller on mobile
+   ------------------------------------ */
+@media (max-width: 480px) {
+  .status-badge {
+    font-size: 0.65rem;
+    padding: 3px 7px;
+  }
+}
+
+/* ====================================
+   ORDER STATUS BADGES
+   ==================================== */
+
+/* Yellow — Pending / Processing / Hold */
 .status-pending,
 .status-hold,
 .status-processing,
 .status-pickup,
 .status-pending-deliver {
-  background-color: #fef3c7 !important;
-  color: #92400e !important;
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  color: #92400e;
+  border: 1px solid #fcd34d;
 }
 
-.status-transfer {
-  background-color: #e0f2fe !important;
-  color: #1d4ed8 !important;
-}
-
+/* Blue — Dispatched / Transfer */
 .status-dispatched,
-.status-courier-dispatched {
-  background-color: #dbeafe !important;
-  color: #1e40af !important;
+.status-courier-dispatched,
+.status-transfer {
+  background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+  color: #1e40af;
+  border: 1px solid #93c5fd;
 }
 
+/* Green — Waiting / Delivered / Completed */
 .status-waiting,
 .status-delivered,
 .status-completed {
-  background-color: #dcfce7 !important;
-  color: #166534 !important;
+  background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%);
+  color: #166534;
+  border: 1px solid #86efac;
 }
 
+/* Red — Cancelled / Return / Damaged / No Answer */
 .status-cancelled,
 .status-return,
 .status-return-pending,
@@ -35,51 +78,171 @@
 .status-damaged,
 .status-rearrange,
 .status-no-answer {
-  background-color: #fee2e2 !important;
-  color: #991b1b !important;
+  background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+  color: #991b1b;
+  border: 1px solid #fca5a5;
 }
 
+/* Gray — Removed / Default / Unknown */
 .status-removed,
 .status-default {
-  background-color: #f3f4f6 !important;
-  color: #4b5563 !important;
+  background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%);
+  color: #4b5563;
+  border: 1px solid #d1d5db;
+}
+
+/* Legacy aliases (from styles.css) */
+.status-complete {
+  background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%);
+  color: #166534;
+  border: 1px solid #86efac;
+}
+
+.status-canceled {
+  background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+  color: #991b1b;
+  border: 1px solid #fca5a5;
+}
+
+/* ====================================
+   PAYMENT STATUS BADGES
+   ==================================== */
+
+.pay-status-paid {
+  background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%);
+  color: #166534;
+  border: 1px solid #86efac;
+}
+
+.pay-status-partial {
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  color: #92400e;
+  border: 1px solid #fcd34d;
+}
+
+.pay-status-unpaid {
+  background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+  color: #991b1b;
+  border: 1px solid #fca5a5;
+}
+
+/* ====================================
+   CALL STATUS / ANSWER STATUS
+   ==================================== */
+
+.call-answered {
+  background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%);
+  color: #166534;
+  border: 1px solid #86efac;
+}
+
+.call-no-answer {
+  background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+  color: #991b1b;
+  border: 1px solid #fca5a5;
+}
+
+/* ====================================
+   SUCCESS RATE BADGES
+   ==================================== */
+
+.rate-excellent {
+  background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%);
+  color: #166534;
+  border: 1px solid #86efac;
+}
+
+.rate-good {
+  background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+  color: #1d4ed8;
+  border: 1px solid #93c5fd;
+}
+
+.rate-average {
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  color: #92400e;
+  border: 1px solid #fcd34d;
+}
+
+.rate-bad {
+  background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+  color: #991b1b;
+  border: 1px solid #fca5a5;
+}
+
+.rate-new {
+  background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%);
+  color: #4b5563;
+  border: 1px solid #d1d5db;
+}
+
+/* ====================================
+   ZONE TYPE BADGES
+   ==================================== */
+
+.zone-type-suburb {
+  background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+  color: #1e40af;
+  border: 1px solid #93c5fd;
+}
+
+.zone-type-outstation {
+  background: linear-gradient(135deg, #ffedd5 0%, #fed7aa 100%);
+  color: #9a3412;
+  border: 1px solid #fdba74;
+}
+
+.zone-type-remote {
+  background: linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 100%);
+  color: #7c3aed;
+  border: 1px solid #c4b5fd;
+}
+
+/* ====================================
+   ACTIVE / INACTIVE STATUS
+   ==================================== */
+
+.status-active {
+  background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%);
+  color: #166534;
+  border: 1px solid #86efac;
+}
+
+.status-inactive {
+  background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%);
+  color: #4b5563;
+  border: 1px solid #d1d5db;
+}
+
+/* ====================================
+   UTILITY / MISC BADGES
+   ==================================== */
+
+.status-badge-warning {
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  color: #92400e;
+  border: 1px solid #fcd34d;
+}
+
+.status-badge-info {
+  background: linear-gradient(135deg, #e0f2fe 0%, #bfdbfe 100%);
+  color: #1d4ed8;
+  border: 1px solid #93c5fd;
 }
 
 /* ====================================
    COURIER STATUS BADGES
    ==================================== */
 
-/* None (is_default=0) — gray neutral */
-.status-none {
-  background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%) !important;
-  color: #4b5563 !important;
-  border: 1px solid #d1d5db !important;
+.status-courier-dispatched {
+  background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+  color: #1e40af;
+  border: 1px solid #93c5fd;
 }
 
 /* Default Courier (is_default=1) — gold/amber highlight */
 .status-default-courier {
-  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%) !important;
-  color: #92400e !important;
-  border: 1px solid #fcd34d !important;
-}
-
-/* API Parcel Courier (is_default=2) — blue technical */
-.status-api {
-  background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%) !important;
-  color: #1e40af !important;
-  border: 1px solid #93c5fd !important;
-}
-
-/* Existing API Parcel (is_default=3) — purple integration */
-.status-existing-api {
-  background: linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 100%) !important;
-  color: #6b21a8 !important;
-  border: 1px solid #c4b5fd !important;
-}
-
-/* Unknown — red danger fallback */
-.status-unknown {
-  background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%) !important;
-  color: #991b1b !important;
-  border: 1px solid #fca5a5 !important;
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  color: #92400e;
+  border: 1px solid #fcd34d;
 }

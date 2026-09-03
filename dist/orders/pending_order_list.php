@@ -243,13 +243,12 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
     data-pc-theme="light">
 
 <head>
-    <title>Order Management Admin Portal - Pending Orders</title>
+    <title>Pending Orders | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
 
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
 
     <!-- Stylesheets -->
-    <link rel="stylesheet" href="../assets/css/style.css" id="main-style-link" />
-    <link rel="stylesheet" href="../assets/css/orders.css" id="main-style-link" />
+    <link rel="stylesheet" href="../assets/css/orders.css" />
     <style>
         /* NEW: Issue Date Styling */
 .issued-time {
@@ -296,11 +295,6 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
             white-space: normal;
         }
     }
-    .status-badge.pay-status-paid,
-    .status-badge.pay-status-unpaid {
-    font-size: 0.65rem;
-    padding: 2px 8px;
-}
 
 /* Info Box - Clean minimal alert matching system design */
 .info-box {
@@ -562,7 +556,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                             if (isset($row['created_at']) && !empty($row['created_at'])) {
                                                 $createdAt = new DateTime($row['created_at']);
                                                 echo '<span class="issued-date">' . $createdAt->format('Y-m-d') . '</span>';
-                                                echo '<span class="issued-time-only">' . $createdAt->format('H:i:s') . '</span>';
+                                                echo '<span class="issued-time-only">' . $createdAt->format('h:i:s A') . '</span>';
                                             } else {
                                                 echo '<span style="color: #999; font-style: italic;">N/A</span>';
                                             }
@@ -700,10 +694,10 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                         <?php endif; ?>
 
 
-                                        <button class="action-btn dispatch-btn" title="Mark as Dispatched"
+                                        <!-- <button class="action-btn dispatch-btn" title="Mark as Dispatched"
                                             onclick="openDispatchModal('<?php echo isset($row['order_id']) ? htmlspecialchars($row['order_id']) : ''; ?>')">
                                             <i class="fas fa-truck"></i>
-                                        </button>
+                                        </button> -->
 
                                         <button
                                             class="action-btn <?php echo ($row['call_log'] == 0) ? 'answer-btn' : 'no-answer-btn'; ?>"
