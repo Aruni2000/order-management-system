@@ -51,7 +51,6 @@ try {
     // Get and sanitize form data
     $name = sanitizeInput($_POST['name'] ?? '');
     $status = sanitizeInput($_POST['status'] ?? '');
-    $lkr_price = sanitizeInput($_POST['lkr_price'] ?? '');
     $product_code = sanitizeInput($_POST['product_code'] ?? '');
     $description = sanitizeInput($_POST['description'] ?? '');
     
@@ -64,7 +63,7 @@ try {
     // -------------------------------------------------------------------------
     // REQUIRED FIELDS VALIDATION
     // -------------------------------------------------------------------------
-    if (empty($name) || empty($status) || empty($lkr_price) || empty($product_code) || empty($description) || $category_id <= 0) {
+    if (empty($name) || empty($status) || empty($product_code) || empty($description) || $category_id <= 0) {
         $response['message'] = 'Required fields are missing';
 
         if (empty($description)) {
@@ -105,8 +104,8 @@ try {
     }
 
     // Prepare insert query
-    $insertQuery = "INSERT INTO products (name, description, lkr_price, status, product_code, stock_quantity, low_stock_threshold, category_id) 
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+    $insertQuery = "INSERT INTO products (name, description, status, product_code, stock_quantity, low_stock_threshold, category_id) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?)";
     $insertStmt = $conn->prepare($insertQuery);
 
     if (!$insertStmt) {
@@ -114,7 +113,7 @@ try {
     }
 
     // Bind parameters
-    $insertStmt->bind_param("ssdssiii", $name, $description, $lkr_price, $status, $product_code, $stock_quantity, $low_stock_threshold, $category_id);
+    $insertStmt->bind_param("ssssiii", $name, $description, $status, $product_code, $stock_quantity, $low_stock_threshold, $category_id);
 
     // Execute the query
     if ($insertStmt->execute()) {
@@ -136,7 +135,7 @@ try {
                 }
                 $catStmt->close();
             }
-            $details = "Created Product - Name: {$name}, Code: {$product_code}, Price: LKR {$lkr_price}, Status: {$status}, Stock: {$stock_quantity}, Stock Warning Level: {$low_stock_threshold}, Category: '{$catName}'";
+            $details = "Created Product - Name: {$name}, Code: {$product_code}, Status: {$status}, Stock: {$stock_quantity}, Stock Warning Level: {$low_stock_threshold}, Category: '{$catName}'";
 
             $logQuery = "INSERT INTO user_logs (user_id, action_type, inquiry_id, details, created_at) 
                          VALUES (?, ?, ?, ?, NOW())";

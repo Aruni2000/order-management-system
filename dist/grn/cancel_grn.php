@@ -58,6 +58,12 @@ try {
     }
     $updateGrn->close();
 
+    // Mark associated batch records as cancelled (they were never activated)
+    $cancelBatch = $conn->prepare("UPDATE batches SET status = 'cancelled' WHERE grn_id = ?");
+    $cancelBatch->bind_param("i", $grn_id);
+    $cancelBatch->execute();
+    $cancelBatch->close();
+
     // Log action
     if (isset($_SESSION['user_id'])) {
         $logStmt = $conn->prepare("INSERT INTO user_logs (user_id, action_type, inquiry_id, details) VALUES (?, ?, ?, ?)");

@@ -249,7 +249,7 @@ $fe_conn->close();
     data-pc-theme="light">
 
 <head>
-    <title>Login</title>
+    <title>Login | OMS</title>
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
     <link rel="stylesheet" href="../assets/css/login.css" />
     <script>

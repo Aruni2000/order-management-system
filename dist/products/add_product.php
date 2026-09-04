@@ -25,18 +25,13 @@ function generateCSRFToken() {
 
 
 
-// Fetch all categories for the dropdown logic
-$mainCategories = [];
-$subCategories = [];
+// Fetch all categories for the single Category dropdown
+$categories = [];
 try {
-    $catRes = $conn->query("SELECT id, name, parent_id FROM categories WHERE status = 'active' ORDER BY name ASC");
+    $catRes = $conn->query("SELECT id, name FROM categories WHERE status = 'active' ORDER BY name ASC");
     if ($catRes) {
         while ($row = $catRes->fetch_assoc()) {
-            if (empty($row['parent_id']) || $row['parent_id'] == 0) {
-                $mainCategories[] = $row;
-            } else {
-                $subCategories[] = $row;
-            }
+            $categories[] = $row;
         }
     }
 } catch (Exception $e) {
@@ -269,44 +264,19 @@ try {
                                 </div>
                             </div>
                             
-                            <!-- Second Row: Main Category and Sub Category -->
+                            <!-- Category and Product Code -->
                             <div class="form-row">
                                 <div class="product-form-group">
-                                    <label for="main_category_id" class="form-label">
-                                        <i class="fas fa-tags"></i> Main Category<span class="required">*</span>
+                                    <label for="category_id" class="form-label">
+                                        <i class="fas fa-tags"></i> Category<span class="required">*</span>
                                     </label>
-                                    <select class="form-select" id="main_category_id" name="main_category_id" data-placeholder="Search main category..." required>
+                                    <select class="form-select" id="category_id" name="category_id" data-placeholder="Search category..." required>
                                         <option value=""></option>
-                                        <?php foreach ($mainCategories as $cat): ?>
+                                        <?php foreach ($categories as $cat): ?>
                                             <option value="<?php echo $cat['id']; ?>"><?php echo htmlspecialchars($cat['name']); ?></option>
                                         <?php endforeach; ?>
                                     </select>
-                                    <div class="error-feedback" id="main_category_id-error"></div>
-                                </div>
-
-                                <div class="product-form-group">
-                                    <label for="sub_category_id" class="form-label">
-                                        <i class="fas fa-level-down-alt"></i> Sub Category (Optional)
-                                    </label>
-                                    <select class="form-select" id="sub_category_id" name="sub_category_id" data-placeholder="Search sub category (optional)...">
-                                        <option value=""></option>
-                                    </select>
-                                    <div class="error-feedback" id="sub_category_id-error"></div>
-                                </div>
-
-                                <!-- Actual category_id that will be submitted -->
-                                <input type="hidden" id="category_id" name="category_id" value="">
-                            </div>
-
-                            <!-- Second Row: Price and Product Code -->
-                            <div class="form-row">
-                                <div class="product-form-group">
-                                    <label for="lkr_price" class="form-label">
-                                        <i class="fas fa-rupee-sign"></i> Price (LKR)<span class="required">*</span>
-                                    </label>
-                                    <input type="number" class="form-control" id="lkr_price" name="lkr_price"
-                                        placeholder="0.00" required min="0"  step="0.01">
-                                    <div class="error-feedback" id="lkr_price-error"></div>
+                                    <div class="error-feedback" id="category_id-error"></div>
                                 </div>
 
                                 <div class="product-form-group">
@@ -319,18 +289,12 @@ try {
                                 </div>
                             </div>
 
-                            <!-- Stock Quantity and Stock Warning Level - only if enabled -->
+                            <!-- Stock is managed via GRN/orders; new products start at 0 -->
+                            <input type="hidden" name="stock_quantity" value="0">
+
+                            <!-- Stock Warning Level - only if enabled -->
                             <?php if (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1): ?>
                             <div class="form-row">
-                                <div class="product-form-group">
-                                    <label for="stock_quantity" class="form-label">
-                                        <i class="fas fa-cubes"></i> Stock Quantity<span class="required">*</span>
-                                    </label>
-                                    <input type="number" class="form-control" id="stock_quantity" name="stock_quantity"
-                                        placeholder="0" required min="0" step="1" value="0">
-                                    <div class="error-feedback" id="stock_quantity-error"></div>
-                                </div>
-
                                 <div class="product-form-group">
                                     <label for="low_stock_threshold" class="form-label">
                                         <i class="fas fa-exclamation-circle"></i> Stock Warning Level<span class="required">*</span>
@@ -341,7 +305,6 @@ try {
                                 </div>
                             </div>
                             <?php else: ?>
-                            <input type="hidden" name="stock_quantity" value="0">
                             <input type="hidden" name="low_stock_threshold" value="0">
                             <?php endif; ?>
 
@@ -395,11 +358,9 @@ try {
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 
     <script>
-        // Categories data for JS logic
-        const subCategories = <?php echo json_encode($subCategories); ?>;
         $(document).ready(function() {
-            // Initialize Select2 for categories with placeholder refinement
-            $('#main_category_id, #sub_category_id').select2({
+            // Initialize Select2 for category with placeholder refinement
+            $('#category_id').select2({
                 placeholder: function() {
                     return $(this).data('placeholder');
                 },
@@ -535,11 +496,9 @@ try {
         // Form reset function
         function resetForm() {
             $('#addProductForm')[0].reset();
-            $('#sub_category_id').html('<option value="">Select sub category</option>');
-            $('#category_id').val('');
             
             // Refresh Select2
-            $('#main_category_id, #sub_category_id, #status').trigger('change');
+            $('#category_id, #status').trigger('change');
             
             clearAllValidations();
             updateCharCount();
@@ -580,15 +539,6 @@ try {
                 }
             });
             
-            $('#lkr_price').on('blur', function() {
-                const validation = validatePrice($(this).val());
-                if (!validation.valid) {
-                    showError('lkr_price', validation.message);
-                } else {
-                    showSuccess('lkr_price');
-                }
-            });
-            
             $('#product_code').on('blur', function() {
                 const validation = validateProductCode($(this).val());
                 if (!validation.valid) {
@@ -609,43 +559,16 @@ try {
                 }
             });
 
-            $('#main_category_id').on('change', function() {
-                const mainId = $(this).val();
-                
-                // Update Sub Category dropdown
-                const $subSelect = $('#sub_category_id');
-                $subSelect.html('<option value=""></option>');
-                
-                if (mainId) {
-                    const filteredSubs = subCategories.filter(sub => sub.parent_id == mainId);
-                    filteredSubs.forEach(sub => {
-                        $subSelect.append(`<option value="${sub.id}">${sub.name}</option>`);
-                    });
-                    showSuccess('main_category_id');
+            $('#category_id').on('change', function() {
+                const catValue = $(this).val();
+                if (catValue) {
+                    showSuccess('category_id');
                 } else {
-                    showError('main_category_id', 'Please select a main category');
+                    showError('category_id', 'Please select a category');
                 }
-                
-                // Refresh Select2 for sub category
-                $subSelect.trigger('change');
-                
-                updateFinalCategoryId();
-            });
-
-            $('#sub_category_id').on('change', function() {
-                updateFinalCategoryId();
             });
         }
 
-        function updateFinalCategoryId() {
-            const mainId = $('#main_category_id').val();
-            const subId = $('#sub_category_id').val();
-            
-            // Final value is sub_id if selected, else main_id
-            const finalId = subId ? subId : mainId;
-            $('#category_id').val(finalId);
-        }
-        
         // Setup other event listeners
         function setupEventListeners() {
             // Character counter for description
@@ -692,33 +615,9 @@ try {
             return { valid: true, message: '' };
         }
 
-        function validatePrice(price) {
-            if (price.trim() === '' || isNaN(price)) {
-                return { valid: false, message: 'Price is required and must be a valid number' };
-            }
-            
-            const numPrice = parseFloat(price);
-            
-            if (numPrice < 0) {
-                return { valid: false, message: 'Price cannot be negative' };
-            }
-            
-            if (numPrice > 99999999.99) {
-                return { valid: false, message: 'Price is too high (maximum 99,999,999.99)' };
-            }
-            
-            // Check for too many decimal places
-            if (price.includes('.') && price.split('.')[1].length > 2) {
-                return { valid: false, message: 'Price can have maximum 2 decimal places' };
-            }
-            
-            return { valid: true, message: '' };
-        }
-
         function validateCategory(categoryId) {
-            const mainId = $('#main_category_id').val();
-            if (!mainId) {
-                return { valid: false, message: 'Please select a main category' };
+            if (!categoryId) {
+                return { valid: false, message: 'Please select a category' };
             }
             return { valid: true, message: '' };
         }
@@ -797,17 +696,15 @@ try {
             
             // Get all field values
             const name = $('#name').val();
-            const price = $('#lkr_price').val();
             const productCode = $('#product_code').val();
             const description = $('#description').val();
             
             // Validate required fields
             const validations = [
                 { field: 'name', validator: validateName, value: name },
-                { field: 'lkr_price', validator: validatePrice, value: price },
                 { field: 'product_code', validator: validateProductCode, value: productCode },
                 { field: 'description', validator: validateDescription, value: description },
-                { field: 'main_category_id', validator: validateCategory, value: $('#category_id').val() }
+                { field: 'category_id', validator: validateCategory, value: $('#category_id').val() }
             ];
             
             validations.forEach(function(validation) {

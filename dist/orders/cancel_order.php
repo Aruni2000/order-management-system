@@ -89,22 +89,63 @@ $check_sql = "SELECT order_id, status, customer_id, total_amount
         
         // Restore inventory
         if (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1) {
-            $getItemsSql = "SELECT product_id, quantity FROM order_items WHERE order_id = ? AND status != 'canceled'";
+            $getItemsSql = "SELECT product_id, quantity, item_id FROM order_items WHERE order_id = ? AND status != 'canceled'";
             $items_stmt = $conn->prepare($getItemsSql);
             $items_stmt->bind_param("s", $order_id);
             $items_stmt->execute();
             $items_result = $items_stmt->get_result();
-            
+
+            // Prepare batch-restore statement
+            $update_batch_sql = "UPDATE batches SET remaining_qty = remaining_qty + ? WHERE batch_id = ?";
+            $batch_stmt = null;
+            // Only prepare if order_item_batches references could exist
+            $is_batch_aware = false;
+            $checkHasBatchesSql = "SELECT 1 FROM order_item_batches WHERE order_id = ? LIMIT 1";
+            $checkHasBatchesStmt = $conn->prepare($checkHasBatchesSql);
+            $checkHasBatchesStmt->bind_param("s", $order_id);
+            $checkHasBatchesStmt->execute();
+            $is_batch_aware = $checkHasBatchesStmt->get_result()->num_rows > 0;
+            $checkHasBatchesStmt->close();
+
+            if ($is_batch_aware) {
+                $batch_stmt = $conn->prepare($update_batch_sql);
+            }
+
             $update_stock_sql = "UPDATE products SET stock_quantity = stock_quantity + ? WHERE id = ?";
             $stock_stmt = $conn->prepare($update_stock_sql);
-            
+
             while ($item = $items_result->fetch_assoc()) {
-                $stock_stmt->bind_param("ii", $item['quantity'], $item['product_id']);
+                $product_id = $item['product_id'];
+                $qty = $item['quantity'];
+                $item_id = $item['item_id'];
+
+                if ($is_batch_aware) {
+                    // Restore each specific batch that fulfilled this order item
+                    $oibSql = "SELECT batch_id, quantity FROM order_item_batches WHERE order_item_id = ?";
+                    $oibStmt = $conn->prepare($oibSql);
+                    $oibStmt->bind_param("i", $item_id);
+                    $oibStmt->execute();
+                    $oibResult = $oibStmt->get_result();
+                    $restored_qty = 0;
+                    while ($oib = $oibResult->fetch_assoc()) {
+                        $batch_stmt->bind_param("ii", $oib['quantity'], $oib['batch_id']);
+                        if (!$batch_stmt->execute()) {
+                            throw new Exception('Failed to restore batch stock.');
+                        }
+                        $restored_qty += $oib['quantity'];
+                    }
+                    $oibStmt->close();
+                    // Ensure product total is restored by the original item quantity
+                    $qty = $qty; // keep full item qty for product rollup
+                }
+
+                $stock_stmt->bind_param("ii", $qty, $product_id);
                 if (!$stock_stmt->execute()) {
-                    throw new Exception('Failed to restore stock for product ID: ' . $item['product_id']);
+                    throw new Exception('Failed to restore stock for product ID: ' . $product_id);
                 }
             }
             $items_stmt->close();
+            if ($batch_stmt) $batch_stmt->close();
             $stock_stmt->close();
         }
         

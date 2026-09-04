@@ -153,6 +153,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $discounts = $_POST['order_product_discount'] ?? [];
         $product_descriptions = $_POST['order_product_description'] ?? [];
         $item_ids = $_POST['order_item_id'] ?? []; // Get existing item IDs
+        $product_batches = $_POST['order_product_batch'] ?? []; // Selected price group per row
 
         $subtotal_before_discounts = 0;
         $total_discount = 0;
@@ -168,6 +169,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $disc = parse_numeric($discounts[$key] ?? 0);
             $desc = $product_descriptions[$key] ?? '';
             $item_id = !empty($item_ids[$key]) ? intval($item_ids[$key]) : null;
+            // Selected price group from the batch dropdown (used for FIFO deduction)
+            $batch_price = parse_numeric($product_batches[$key] ?? 0);
+            
+            // Editing requires a real, confirmable batch price group for each product (no master fallback)
+            if ($batch_price <= 0) {
+                throw new Exception("Please select a price/batch for a product in the order.");
+            }
             
             $line_total = $price * $qty;
             $subtotal_before_discounts += $line_total;
@@ -178,6 +186,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 'item_id' => $item_id,
                 'product_id' => $pid,
                 'price' => $price,
+                'batch_price' => $batch_price,
                 'qty' => $qty,
                 'discount' => $disc,
                 'desc' => $desc,
@@ -271,13 +280,82 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             total_amount, pay_status, status, description
         ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)";
         $insertStmt = $conn->prepare($insertItemSql);
-        
-        // Prepare stock management statements
+
+        // Helper: restore a specific item's batches back into inventory
+        $restoreItemBatches = function($item_id) use ($conn) {
+            $oibSql = "SELECT batch_id, quantity FROM order_item_batches WHERE order_item_id = ?";
+            $oibStmt = $conn->prepare($oibSql);
+            $oibStmt->bind_param("i", $item_id);
+            $oibStmt->execute();
+            $oibResult = $oibStmt->get_result();
+            $updBatch = $conn->prepare("UPDATE batches SET remaining_qty = remaining_qty + ? WHERE batch_id = ?");
+            while ($oib = $oibResult->fetch_assoc()) {
+                $updBatch->bind_param("ii", $oib['quantity'], $oib['batch_id']);
+                $updBatch->execute();
+            }
+            $updBatch->close();
+            $oibStmt->close();
+        };
+
+        // Helper: FIFO-deduct stock for (product_id, qty, price) tied to an order item.
+        // Returns 'ok' (batch group consumed), 'none' (no batches at this price ->
+        // caller falls back to product-total deduction), or 'insufficient' (batches
+        // exist at this price but qty cannot be fulfilled -> caller blocks).
+        $deductStockFifo = function($product_id, $qty, $price, $order_item_id, $order_id) use ($conn) {
+            // Select confirmed batches at the price, oldest first
+            $batchSql = "SELECT batch_id, remaining_qty FROM batches
+                         WHERE product_id = ? AND selling_price = ? AND status = 'confirmed' AND remaining_qty > 0
+                         ORDER BY received_date ASC, batch_id ASC
+                         FOR UPDATE";
+            $batchStmt = $conn->prepare($batchSql);
+            $batchStmt->bind_param("id", $product_id, $price);
+            $batchStmt->execute();
+            $batchResult = $batchStmt->get_result();
+            $batchList = [];
+            $available = 0;
+            while ($br = $batchResult->fetch_assoc()) {
+                $batchList[] = ['batch_id' => intval($br['batch_id']), 'remaining_qty' => intval($br['remaining_qty'])];
+                $available += intval($br['remaining_qty']);
+            }
+            $batchStmt->close();
+
+            if (!empty($batchList)) {
+                if ($available < $qty) {
+                    return 'insufficient'; // caller throws
+                }
+                $need = $qty;
+                $updBatch = $conn->prepare("UPDATE batches SET remaining_qty = remaining_qty - ? WHERE batch_id = ? AND remaining_qty >= ?");
+                $insOib = $conn->prepare("INSERT INTO order_item_batches (order_item_id, order_id, batch_id, quantity) VALUES (?, ?, ?, ?)");
+                foreach ($batchList as $b) {
+                    if ($need <= 0) break;
+                    $take = min($need, $b['remaining_qty']);
+                    $updBatch->bind_param("iii", $take, $b['batch_id'], $take);
+                    $updBatch->execute();
+                    $insOib->bind_param("iiii", $order_item_id, $order_id, $b['batch_id'], $take);
+                    $insOib->execute();
+                    $need -= $take;
+                }
+                $updBatch->close();
+                $insOib->close();
+                return 'ok';
+            }
+            return 'none';
+        };
+
+        // Prepare product stock statements
         $restoreStockSql = "UPDATE products SET stock_quantity = stock_quantity + ? WHERE id = ?";
         $restoreStockStmt = $conn->prepare($restoreStockSql);
 
         $deductStockSql = "UPDATE products SET stock_quantity = stock_quantity - ? WHERE id = ? AND stock_quantity >= ?";
         $deductStockStmt = $conn->prepare($deductStockSql);
+
+        $deductProduct = function($qty, $product_id, $product_name) use ($conn, $deductStockStmt) {
+            $deductStockStmt->bind_param("iii", $qty, $product_id, $qty);
+            $deductStockStmt->execute();
+            if ($deductStockStmt->affected_rows === 0) {
+                throw new Exception("Insufficient stock for product: " . $product_name . " (ID: " . $product_id . ")");
+            }
+        };
 
         // Process each item
         foreach ($order_items as $item) {
@@ -288,17 +366,30 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 if ($old_item) {
                     // Stock management - only if enabled
                     if (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1) {
-                        // Restore old stock
+                        // Restore old stock to product total
                         $restoreStockStmt->bind_param("ii", $old_item['quantity'], $old_item['product_id']);
                         $restoreStockStmt->execute();
+                        // Restore old batches
+                        $restoreItemBatches($item['item_id']);
+                        // Remove old batch consumption records before re-deduction
+                        $delOib = $conn->prepare("DELETE FROM order_item_batches WHERE order_item_id = ?");
+                        $delOib->bind_param("i", $item['item_id']);
+                        $delOib->execute();
+                        $delOib->close();
                         
-                        // Deduct new stock
-                        $deductStockStmt->bind_param("iii", $item['qty'], $item['product_id'], $item['qty']);
-                        $deductStockStmt->execute();
-                        
-                        if ($deductStockStmt->affected_rows === 0) {
-                            throw new Exception("Insufficient stock for product ID: " . $item['product_id']);
+                        // Deduct new stock (FIFO where possible)
+                        $fifoResult = $deductStockFifo($item['product_id'], $item['qty'], $item['batch_price'], $item['item_id'], $order_id);
+                        $productName = 'Product #' . $item['product_id'];
+                        $pnStmt = $conn->prepare("SELECT name FROM products WHERE id = ?");
+                        $pnStmt->bind_param("i", $item['product_id']);
+                        $pnStmt->execute();
+                        if ($pnRow = $pnStmt->get_result()->fetch_assoc()) { $productName = $pnRow['name']; }
+                        $pnStmt->close();
+                        if ($fifoResult === 'insufficient' || $fifoResult === 'none') {
+                            // Batch shortfall OR no batch group at the selected price -> block
+                            throw new Exception("Insufficient stock for product: " . $productName . " (ID: " . $item['product_id'] . ")");
                         }
+                        $deductProduct($item['qty'], $item['product_id'], $productName);
                     }
                     
                     // Update the item
@@ -311,21 +402,27 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 }
             } else {
                 // NEW ITEM - INSERT IT
-                if (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1) {
-                    // Deduct stock for the new item
-                    $deductStockStmt->bind_param("iii", $item['qty'], $item['product_id'], $item['qty']);
-                    $deductStockStmt->execute();
-                    
-                    if ($deductStockStmt->affected_rows === 0) {
-                        throw new Exception("Insufficient stock for product ID: " . $item['product_id']);
-                    }
-                }
-
                 $insertStmt->bind_param("iididsss",
                     $order_id, $item['product_id'], $item['price'], $item['qty'], 
                     $item['discount'], $item['total'], $pay_status, $item['desc']
                 );
                 $insertStmt->execute();
+                $new_item_id = $conn->insert_id;
+
+                if (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1) {
+                    // Deduct stock (FIFO where possible)
+                    $fifoResult = $deductStockFifo($item['product_id'], $item['qty'], $item['batch_price'], $new_item_id, $order_id);
+                    $productName = 'Product #' . $item['product_id'];
+                    $pnStmt = $conn->prepare("SELECT name FROM products WHERE id = ?");
+                    $pnStmt->bind_param("i", $item['product_id']);
+                    $pnStmt->execute();
+                    if ($pnRow = $pnStmt->get_result()->fetch_assoc()) { $productName = $pnRow['name']; }
+                    $pnStmt->close();
+                    if ($fifoResult === 'insufficient' || $fifoResult === 'none') {
+                        throw new Exception("Insufficient stock for product: " . $productName . " (ID: " . $item['product_id'] . ")");
+                    }
+                    $deductProduct($item['qty'], $item['product_id'], $productName);
+                }
             }
         }
         
@@ -336,7 +433,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 if (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1) {
                     $restoreStockStmt->bind_param("ii", $old_item['quantity'], $old_item['product_id']);
                     $restoreStockStmt->execute();
+                    $restoreItemBatches($item_id);
                 }
+                $delOib2 = $conn->prepare("DELETE FROM order_item_batches WHERE order_item_id = ?");
+                $delOib2->bind_param("i", $item_id);
+                $delOib2->execute();
+                $delOib2->close();
                 $deleteStmt = $conn->prepare("DELETE FROM order_items WHERE item_id = ? AND order_id = ?");
                 $deleteStmt->bind_param("is", $item_id, $order_id);
                 $deleteStmt->execute();

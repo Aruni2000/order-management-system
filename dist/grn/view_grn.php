@@ -6,6 +6,14 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     exit();
 }
 
+function generateCSRFToken() {
+    if (!isset($_SESSION['csrf_token'])) {
+        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+    }
+    return $_SESSION['csrf_token'];
+}
+$csrf_token = generateCSRFToken();
+
 include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
 $grn_id = isset($_GET['id']) ? intval($_GET['id']) : 0;
@@ -16,33 +24,43 @@ if ($grn_id <= 0) {
 
 // Fetch GRN header with supplier
 $grn = null;
-$grnResult = $conn->query("SELECT g.*, s.name as supplier_name, s.contact_person, s.phone as supplier_phone, s.email as supplier_email, s.address as supplier_address,
+$grnStmt = $conn->prepare("SELECT g.*, s.name as supplier_name, s.contact_person, s.phone as supplier_phone, s.email as supplier_email, s.address as supplier_address,
     u.name as created_by_name
     FROM grn g
     LEFT JOIN suppliers s ON g.supplier_id = s.id
     LEFT JOIN users u ON g.created_by = u.id
-    WHERE g.grn_id = $grn_id");
+    WHERE g.grn_id = ?");
+$grnStmt->bind_param("i", $grn_id);
+$grnStmt->execute();
+$grnResult = $grnStmt->get_result();
 if ($grnResult && $grnResult->num_rows > 0) {
     $grn = $grnResult->fetch_assoc();
 }
+$grnStmt->close();
 
 if (!$grn) {
     header("Location: grn_list.php");
     exit();
 }
 
-// Fetch GRN items with product info
+// Fetch GRN items with product info and batch remaining stock
 $items = [];
-$itemsResult = $conn->query("SELECT gi.*, p.name as product_name, p.product_code, p.stock_quantity as current_stock
+$itemsStmt = $conn->prepare("SELECT gi.*, p.name as product_name, p.product_code, p.stock_quantity as product_total_stock,
+    b.remaining_qty as batch_remaining_qty, b.status as batch_status
     FROM grn_items gi
     LEFT JOIN products p ON gi.product_id = p.id
-    WHERE gi.grn_id = $grn_id
+    LEFT JOIN batches b ON (b.grn_item_id = gi.id OR (b.grn_id = gi.grn_id AND b.batch_number = gi.batch_number))
+    WHERE gi.grn_id = ?
     ORDER BY gi.id ASC");
+$itemsStmt->bind_param("i", $grn_id);
+$itemsStmt->execute();
+$itemsResult = $itemsStmt->get_result();
 if ($itemsResult) {
     while ($row = $itemsResult->fetch_assoc()) {
         $items[] = $row;
     }
 }
+$itemsStmt->close();
 ?>
 <!doctype html>
 <html lang="en" data-pc-preset="preset-1" data-pc-sidebar-caption="true" data-pc-direction="ltr" dir="ltr" data-pc-theme="light">
@@ -196,29 +214,49 @@ if ($itemsResult) {
                                         <th>Product Name</th>
                                         <th>Product Code</th>
                                         <th>Batch No.</th>
-                                        <th>Quantity</th>
+                                        <th>Received Qty</th>
                                         <th>Buying Price</th>
                                         <th>Selling Price</th>
                                         <th>Subtotal</th>
-                                        <th>Current Stock</th>
+                                        <th>Batch Remaining Stock</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     <?php if (!empty($items)): ?>
                                         <?php $idx = 1; foreach ($items as $item): ?>
+                                            <?php 
+                                                $recQty = intval($item['quantity']);
+                                                $remQty = isset($item['batch_remaining_qty']) ? intval($item['batch_remaining_qty']) : $recQty;
+                                            ?>
                                             <tr>
                                                 <td><?= $idx++ ?></td>
                                                 <td><strong><?= htmlspecialchars($item['product_name'] ?? 'Unknown') ?></strong></td>
                                                 <td><code><?= htmlspecialchars($item['product_code'] ?? '-') ?></code></td>
-                                                <td><?= htmlspecialchars($item['batch_number'] ?? '-') ?></td>
-                                                <td><strong><?= number_format($item['quantity']) ?></strong></td>
+                                                <td><span style="font-family: monospace; font-size: 12px; font-weight: 600; color: #1e293b;"><?= htmlspecialchars($item['batch_number'] ?? '-') ?></span></td>
+                                                <td><strong><?= number_format($recQty) ?></strong></td>
                                                 <td>Rs. <?= number_format($item['buying_price'], 2) ?></td>
                                                 <td>Rs. <?= number_format($item['selling_price'], 2) ?></td>
-                                                <td><strong>Rs. <?= number_format($item['quantity'] * $item['buying_price'], 2) ?></strong></td>
+                                                <td><strong>Rs. <?= number_format($recQty * $item['buying_price'], 2) ?></strong></td>
                                                 <td>
-                                                    <span class="status-badge status-active" style="padding: 2px 8px; font-size: 12px;">
-                                                        <?= number_format($item['current_stock'] ?? 0) ?>
-                                                    </span>
+                                                    <?php if ($grn['status'] === 'confirmed'): ?>
+                                                        <?php if ($remQty > 0): ?>
+                                                            <span class="status-badge status-active" style="padding: 3px 10px; font-size: 12px; font-weight: 600;">
+                                                                <?= number_format($remQty) ?> <small style="opacity: 0.8;">/ <?= number_format($recQty) ?></small>
+                                                            </span>
+                                                        <?php else: ?>
+                                                            <span class="status-badge status-inactive" style="padding: 3px 10px; font-size: 12px; font-weight: 600;">
+                                                                0 / <?= number_format($recQty) ?> (Depleted)
+                                                            </span>
+                                                        <?php endif; ?>
+                                                    <?php elseif ($grn['status'] === 'draft'): ?>
+                                                        <span class="status-badge status-pending" style="padding: 3px 10px; font-size: 12px;">
+                                                            Pending (<?= number_format($recQty) ?>)
+                                                        </span>
+                                                    <?php else: ?>
+                                                        <span class="status-badge status-inactive" style="padding: 3px 10px; font-size: 12px;">
+                                                            Cancelled
+                                                        </span>
+                                                    <?php endif; ?>
                                                 </td>
                                             </tr>
                                         <?php endforeach; ?>
@@ -268,7 +306,7 @@ if ($itemsResult) {
                                     <i class="fas fa-times-circle"></i> Cancel GRN
                                 </button>
                             <?php endif; ?>
-                            <button type="button" class="btn-secondary" onclick="window.print()" style="background: #475569;">
+                            <button type="button" class="btn-secondary" onclick="window.open('grn_print.php?id=<?= $grn_id ?>', '_blank')" style="background: #475569;">
                                 <i class="fas fa-print"></i> Print GRN
                             </button>
                         </div>
@@ -299,7 +337,7 @@ if ($itemsResult) {
                 fetch('confirm_grn.php', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ grn_id: <?= $grn_id ?> })
+                    body: JSON.stringify({ grn_id: <?= $grn_id ?>, csrf_token: '<?= $csrf_token ?>' })
                 })
                 .then(r => r.json())
                 .then(data => {
@@ -330,7 +368,7 @@ if ($itemsResult) {
                 fetch('cancel_grn.php', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ grn_id: <?= $grn_id ?> })
+                    body: JSON.stringify({ grn_id: <?= $grn_id ?>, csrf_token: '<?= $csrf_token ?>' })
                 })
                 .then(r => r.json())
                 .then(data => {

@@ -441,16 +441,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                             $inventoryUpdatedCount = 0;
                             if (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1) {
                                 // Get order items to update inventory
-                                $getItemsSql = "SELECT product_id, quantity FROM order_items WHERE order_id = ?";
+                                $getItemsSql = "SELECT product_id, quantity, item_id FROM order_items WHERE order_id = ?";
                                 $itemsStmt = $conn->prepare($getItemsSql);
                                 $itemsStmt->bind_param("i", $trackingData['order_id']);
                                 $itemsStmt->execute();
                                 $itemsResult = $itemsStmt->get_result();
-                                
+
+                                // Check whether this order used batch-level deduction
+                                $checkAutoBatchesSql = "SELECT 1 FROM order_item_batches WHERE order_id = ? LIMIT 1";
+                                $checkAutoBatchesStmt = $conn->prepare($checkAutoBatchesSql);
+                                $checkAutoBatchesStmt->bind_param("i", $trackingData['order_id']);
+                                $checkAutoBatchesStmt->execute();
+                                $isBatchAware = $checkAutoBatchesStmt->get_result()->num_rows > 0;
+                                $checkAutoBatchesStmt->close();
+
+                                $updateBatch = null;
+                                if ($isBatchAware) {
+                                    $updateBatch = $conn->prepare("UPDATE batches SET remaining_qty = remaining_qty + ? WHERE batch_id = ?");
+                                }
+
                                 while ($item = $itemsResult->fetch_assoc()) {
                                     $productId = $item['product_id'];
                                     $quantity = $item['quantity'];
-    
+
+                                    // Restore specific batches that fulfilled this item
+                                    if ($isBatchAware) {
+                                        $oibSql = "SELECT batch_id, quantity FROM order_item_batches WHERE order_item_id = ?";
+                                        $oibStmt = $conn->prepare($oibSql);
+                                        $oibStmt->bind_param("i", $item['item_id']);
+                                        $oibStmt->execute();
+                                        $oibResult = $oibStmt->get_result();
+                                        while ($oib = $oibResult->fetch_assoc()) {
+                                            $updateBatch->bind_param("ii", $oib['quantity'], $oib['batch_id']);
+                                            $updateBatch->execute();
+                                        }
+                                        $oibStmt->close();
+                                    }
+
                                     // Update stock - Increment stock for returned items
                                     $updateStockSql = "UPDATE products SET stock_quantity = stock_quantity + ? WHERE id = ?";
                                     $stockStmt = $conn->prepare($updateStockSql);
@@ -460,6 +487,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                                     }
                                     $stockStmt->close();
                                 }
+                                if ($updateBatch) $updateBatch->close();
                                 $itemsStmt->close();
                             }
                             

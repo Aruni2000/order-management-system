@@ -62,17 +62,27 @@ try {
     // Start transaction
     $conn->begin_transaction();
 
-    // Update stock for each item
-    $updateStock = $conn->prepare("UPDATE products SET stock_quantity = stock_quantity + ? WHERE id = ?");
-    while ($item = $itemsResult->fetch_assoc()) {
-        $qty = intval($item['quantity']);
-        $pid = intval($item['product_id']);
-        $updateStock->bind_param("ii", $qty, $pid);
-        if (!$updateStock->execute()) {
-            throw new Exception("Failed to update stock for product ID " . $pid);
+    // Update stock for each item (only if allow_inventory is enabled)
+    if (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1) {
+        $updateStock = $conn->prepare("UPDATE products SET stock_quantity = stock_quantity + ? WHERE id = ?");
+        while ($item = $itemsResult->fetch_assoc()) {
+            $qty = intval($item['quantity']);
+            $pid = intval($item['product_id']);
+            $updateStock->bind_param("ii", $qty, $pid);
+            if (!$updateStock->execute()) {
+                throw new Exception("Failed to update stock for product ID " . $pid);
+            }
         }
+        $updateStock->close();
     }
-    $updateStock->close();
+
+    // Activate batch records for this GRN (draft -> confirmed) and set remaining_qty
+    $activateBatch = $conn->prepare("UPDATE batches SET status = 'confirmed', remaining_qty = received_qty, received_date = (SELECT received_date FROM grn WHERE grn_id = ?) WHERE grn_id = ? AND status = 'draft'");
+    $activateBatch->bind_param("ii", $grn_id, $grn_id);
+    if (!$activateBatch->execute()) {
+        throw new Exception("Failed to activate batch records.");
+    }
+    $activateBatch->close();
 
     // Update GRN status
     $updateGrn = $conn->prepare("UPDATE grn SET status = 'confirmed' WHERE grn_id = ?");

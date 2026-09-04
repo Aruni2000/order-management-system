@@ -445,6 +445,7 @@ $product_prices = $_POST['order_product_price'];
 $product_quantities = $_POST['order_product_quantity'] ?? [];
 $discounts = $_POST['order_product_discount'] ?? [];
 $product_descriptions = $_POST['order_product_description'] ?? [];
+$product_batches = $_POST['order_product_batch'] ?? [];
 
 $subtotal_before_discounts = 0;
 $total_discount = 0;
@@ -459,6 +460,7 @@ foreach ($products as $key => $product_id) {
     $quantity = intval($product_quantities[$key] ?? 1);
     $discount = floatval($discounts[$key] ?? 0); // This is TOTAL discount for all items in this row
     $description = $product_descriptions[$key] ?? '';
+    $batch_price = floatval($product_batches[$key] ?? 0); // Selected price group (from batch dropdown)
     
     // Ensure quantity is at least 1
     if ($quantity < 1) {
@@ -483,7 +485,8 @@ foreach ($products as $key => $product_id) {
         'quantity' => $quantity,
         'original_price' => $original_price,
         'discount' => $discount, // This is the TOTAL discount for this row
-        'description' => $description
+        'description' => $description,
+        'batch_price' => $batch_price
     ];
 }
             if (empty($order_items)) {
@@ -591,38 +594,65 @@ if (!$stmt) {
     throw new Exception("Failed to prepare order items insert query: " . $conn->error);
 }
 
+// Helper closure for FIFO batch consumption within a price group
+$consumeBatches = function($product_id, $quantity, $batch_price, $order_id, $order_item_id, $conn) {
+    $consumed = []; // list of [batch_id, qty]
+    $available_total = 0;
+
+    if ($batch_price > 0) {
+        // Select confirmed batches at the given selling price, oldest first (FIFO)
+        $batchSql = "SELECT batch_id, remaining_qty FROM batches
+                     WHERE product_id = ? AND selling_price = ? AND status = 'confirmed' AND remaining_qty > 0
+                     ORDER BY received_date ASC, batch_id ASC
+                     FOR UPDATE";
+        $batchStmt = $conn->prepare($batchSql);
+        if ($batchStmt) {
+            $batchStmt->bind_param("id", $product_id, $batch_price);
+            $batchStmt->execute();
+            $batchResult = $batchStmt->get_result();
+            $batches = [];
+            while ($b = $batchResult->fetch_assoc()) {
+                $available_total += intval($b['remaining_qty']);
+                $batches[] = ['batch_id' => intval($b['batch_id']), 'remaining_qty' => intval($b['remaining_qty'])];
+            }
+            $batchStmt->close();
+
+            if ($available_total < $quantity) {
+                return ['error' => 'Insufficient stock at that price'];
+            }
+
+            // Deduct FIFO
+            $need = $quantity;
+            $updateBatch = $conn->prepare("UPDATE batches SET remaining_qty = remaining_qty - ? WHERE batch_id = ? AND remaining_qty >= ?");
+            foreach ($batches as $b) {
+                if ($need <= 0) break;
+                $take = min($need, $b['remaining_qty']);
+                $updateBatch->bind_param("iii", $take, $b['batch_id'], $take);
+                $updateBatch->execute();
+                $consumed[] = ['batch_id' => $b['batch_id'], 'qty' => $take];
+                $need -= $take;
+            }
+            $updateBatch->close();
+
+            // Record consumed batches
+            $insertOib = $conn->prepare("INSERT INTO order_item_batches (order_item_id, order_id, batch_id, quantity) VALUES (?, ?, ?, ?)");
+            foreach ($consumed as $c) {
+                $insertOib->bind_param("iiii", $order_item_id, $order_id, $c['batch_id'], $c['qty']);
+                $insertOib->execute();
+            }
+            $insertOib->close();
+        }
+    }
+    return ['consumed' => $consumed];
+};
+
 foreach ($order_items as $item) {
     // ✅ FIXED: Calculate total_amount: (unit_price × quantity) - total_discount
     $row_total_price = $item['original_price'] * $item['quantity'];
     $item_total = $row_total_price - $item['discount']; // Discount is already total for this row
+    $item['batch_price'] = isset($item['batch_price']) ? floatval($item['batch_price']) : 0;
     
-    // Check and deduct stock atomically to prevent overselling and race conditions
-    if (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1) {
-        $updateStockSql = "UPDATE products SET stock_quantity = stock_quantity - ? WHERE id = ? AND stock_quantity >= ?";
-        $stockStmt = $conn->prepare($updateStockSql);
-        $stockStmt->bind_param("iii", $item['quantity'], $item['product_id'], $item['quantity']);
-        
-        if (!$stockStmt->execute()) {
-            throw new Exception("Failed to update stock for product ID: " . $item['product_id']);
-        }
-        
-        if ($stockStmt->affected_rows === 0) {
-            // Fetch product name for better error message
-            $getNameSql = "SELECT name FROM products WHERE id = ?";
-            $nameStmt = $conn->prepare($getNameSql);
-            $nameStmt->bind_param("i", $item['product_id']);
-            $nameStmt->execute();
-            $productResult = $nameStmt->get_result();
-            $productName = "Unknown product";
-            if ($productResult && $productRow = $productResult->fetch_assoc()) {
-                $productName = $productRow['name'];
-            }
-            $nameStmt->close();
-            throw new Exception("Insufficient stock for product: " . $productName);
-        }
-        $stockStmt->close();
-    }
-    
+    // Insert order item FIRST so we have order_item_id for the batch join table
     $stmt->bind_param(
         "iiidissss",
         $order_id,                      // order_id
@@ -638,6 +668,79 @@ foreach ($order_items as $item) {
     
     if (!$stmt->execute()) {
         throw new Exception("Failed to insert order item: " . $stmt->error);
+    }
+    $order_item_id = $conn->insert_id;
+
+    // Deduct stock (only if allow_inventory is enabled)
+    if (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1) {
+        $batchConsumed = ['consumed' => []];
+        if ($item['batch_price'] > 0) {
+            $batchConsumed = $consumeBatches($item['product_id'], $item['quantity'], $item['batch_price'], $order_id, $order_item_id, $conn);
+            if (isset($batchConsumed['error'])) {
+                // Fetch product name for better error message
+                $getNameSql = "SELECT name FROM products WHERE id = ?";
+                $nameStmt = $conn->prepare($getNameSql);
+                $nameStmt->bind_param("i", $item['product_id']);
+                $nameStmt->execute();
+                $productResult = $nameStmt->get_result();
+                $productName = "Unknown product";
+                if ($productResult && $productRow = $productResult->fetch_assoc()) {
+                    $productName = $productRow['name'];
+                }
+                $nameStmt->close();
+                throw new Exception("Insufficient stock for product: " . $productName);
+            }
+        } else {
+            // No batch price provided: fall back to product-total deduction (legacy / no-batch product)
+            $batchConsumed['consumed'] = [];
+        }
+
+        // Update product total stock by the consumed quantity (batch-level source of truth)
+        if (empty($batchConsumed['consumed'])) {
+            // Fallback (no batches): deduct from product total directly
+            $updateStockSql = "UPDATE products SET stock_quantity = stock_quantity - ? WHERE id = ? AND stock_quantity >= ?";
+            $stockStmt = $conn->prepare($updateStockSql);
+            $stockStmt->bind_param("iii", $item['quantity'], $item['product_id'], $item['quantity']);
+            if (!$stockStmt->execute()) {
+                throw new Exception("Failed to update stock for product ID: " . $item['product_id']);
+            }
+            if ($stockStmt->affected_rows === 0) {
+                $getNameSql = "SELECT name FROM products WHERE id = ?";
+                $nameStmt = $conn->prepare($getNameSql);
+                $nameStmt->bind_param("i", $item['product_id']);
+                $nameStmt->execute();
+                $productResult = $nameStmt->get_result();
+                $productName = "Unknown product";
+                if ($productResult && $productRow = $productResult->fetch_assoc()) {
+                    $productName = $productRow['name'];
+                }
+                $nameStmt->close();
+                throw new Exception("Insufficient stock for product: " . $productName);
+            }
+            $stockStmt->close();
+        } else {
+            // Deduct product total by the amount consumed across batches (kept in sync)
+            $updateStockSql = "UPDATE products SET stock_quantity = stock_quantity - ? WHERE id = ? AND stock_quantity >= ?";
+            $stockStmt = $conn->prepare($updateStockSql);
+            $stockStmt->bind_param("iii", $item['quantity'], $item['product_id'], $item['quantity']);
+            if (!$stockStmt->execute()) {
+                throw new Exception("Failed to update stock for product ID: " . $item['product_id']);
+            }
+            if ($stockStmt->affected_rows === 0) {
+                $getNameSql = "SELECT name FROM products WHERE id = ?";
+                $nameStmt = $conn->prepare($getNameSql);
+                $nameStmt->bind_param("i", $item['product_id']);
+                $nameStmt->execute();
+                $productResult = $nameStmt->get_result();
+                $productName = "Unknown product";
+                if ($productResult && $productRow = $productResult->fetch_assoc()) {
+                    $productName = $productRow['name'];
+                }
+                $nameStmt->close();
+                throw new Exception("Insufficient stock for product: " . $productName);
+            }
+            $stockStmt->close();
+        }
     }
 }
 
@@ -767,9 +870,31 @@ foreach ($order_items as $item) {
                     
                     // Only proceed with API call if we have a valid city
                     if ($proceed_with_api) {
+                        // Fetch product names for FDE parcel description
+                        $product_names = [];
+                        if (!empty($order_items)) {
+                            $product_ids = array_column($order_items, 'product_id');
+                            $placeholders = str_repeat('?,', count($product_ids) - 1) . '?';
+                            $nameStmt = $conn->prepare("SELECT id, name FROM products WHERE id IN ($placeholders)");
+                            $nameStmt->bind_param(str_repeat('s', count($product_ids)), ...$product_ids);
+                            $nameStmt->execute();
+                            $nameResult = $nameStmt->get_result();
+                            while ($nameRow = $nameResult->fetch_assoc()) {
+                                $product_names[$nameRow['id']] = $nameRow['name'];
+                            }
+                            $nameStmt->close();
+                        }
+
+                        $desc_parts = [];
+                        foreach ($order_items as $item) {
+                            $pname = $product_names[$item['product_id']] ?? 'Item';
+                            $desc_parts[] = $pname . ' (' . $item['quantity'] . ')';
+                        }
+                        $parcel_description = implode(', ', $desc_parts);
+                        $parcel_description = strlen($parcel_description) > 100 ? substr($parcel_description, 0, 97) . '...' : $parcel_description;
+
                         // Prepare data for FDE New Parcel API
                         $parcel_weight = '1'; // Default weight
-                        $parcel_description = 'Order #' . $order_id . ' - ' . count($order_items) . ' items';
                         
                         // Calculate API amount based on payment status
                         // If order is marked as 'Paid', send 0 to API, otherwise send total_amount
@@ -925,9 +1050,31 @@ foreach ($order_items as $item) {
                             $trackingData = $trackingResult->fetch_assoc();
                             $tracking_id = $trackingData['tracking_id'];
                             
+                            // Fetch product names for FDE parcel description
+                            $product_names = [];
+                            if (!empty($order_items)) {
+                                $product_ids = array_column($order_items, 'product_id');
+                                $placeholders = str_repeat('?,', count($product_ids) - 1) . '?';
+                                $nameStmt = $conn->prepare("SELECT id, name FROM products WHERE id IN ($placeholders)");
+                                $nameStmt->bind_param(str_repeat('s', count($product_ids)), ...$product_ids);
+                                $nameStmt->execute();
+                                $nameResult = $nameStmt->get_result();
+                                while ($nameRow = $nameResult->fetch_assoc()) {
+                                    $product_names[$nameRow['id']] = $nameRow['name'];
+                                }
+                                $nameStmt->close();
+                            }
+
+                            $desc_parts = [];
+                            foreach ($order_items as $item) {
+                                $pname = $product_names[$item['product_id']] ?? 'Item';
+                                $desc_parts[] = $pname . ' (' . $item['quantity'] . ')';
+                            }
+                            $parcel_description = implode(', ', $desc_parts);
+                            $parcel_description = strlen($parcel_description) > 100 ? substr($parcel_description, 0, 97) . '...' : $parcel_description;
+
                             // Prepare data for FDE Existing Parcel API
                             $parcel_weight = '1'; // Default weight
-                            $parcel_description = 'Order #' . $order_id . ' - ' . count($order_items) . ' items';
                             
                             // Calculate API amount based on payment status
                             // If order is marked as 'Paid', send 0 to API, otherwise send total_amount

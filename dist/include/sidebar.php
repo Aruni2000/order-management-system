@@ -283,13 +283,18 @@ $safe_company_name = htmlspecialchars($company_name, ENT_QUOTES, 'UTF-8');
           </ul>
         </li>
 
+        <?php if (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1): ?>
         <li class="pc-item pc-hasmenu">
           <a href="#!" class="pc-link"><span class="pc-micon"> <i data-feather="clipboard"></i></span><span class="pc-mtext">GRN</span><span class="pc-arrow"><i class="ti ti-chevron-right"></i></span></a>
           <ul class="pc-submenu">
             <li class="pc-item"><a class="pc-link" href="../grn/create_grn.php">Create GRN</a></li>
             <li class="pc-item"><a class="pc-link" href="../grn/grn_list.php">All GRN</a></li>
+              <li class="pc-item"><a class="pc-link" href="../grn/draft_grn_list.php">Draft GRNs</a></li>
+            <li class="pc-item"><a class="pc-link" href="../grn/confirmed_grn_list.php">Confirmed GRNs</a></li>
+            <li class="pc-item"><a class="pc-link" href="../grn/cancelled_grn_list.php">Cancelled GRNs</a></li>
           </ul>
         </li>
+        <?php endif; ?>
 
         <li class="pc-item pc-caption"><label>Lead Management</label></li>
         <li class="pc-item pc-hasmenu">

@@ -108,7 +108,7 @@ function checkCourierStatus($conn, $tenant_id) {
 $courierStatus = checkCourierStatus($conn, $selected_tenant_id);
 
 // Fetch necessary data for the form
-$sql = "SELECT id, name, description, lkr_price, stock_quantity, low_stock_threshold FROM products WHERE status = 'active' ORDER BY name ASC";
+$sql = "SELECT id, name, description, stock_quantity, low_stock_threshold FROM products WHERE status = 'active' ORDER BY name ASC";
 $result = $conn->query($sql);
 
 
@@ -308,6 +308,14 @@ if ($is_main_admin === 1 && $role_id === 1) {
     font-weight: 600;
 }
 
+.batch-col {
+    min-width: 150px;
+}
+
+.batch-col select {
+    min-width: 150px;
+}
+
 .duplicate-product-alert {
     background-color: #fff3cd;
     border: 1px solid #ffc107;
@@ -478,6 +486,17 @@ if ($is_main_admin === 1 && $role_id === 1) {
     font-style: italic;
 }
 
+/* Simple success rate label (plain colored text, no badge pill) */
+.success-rate-label {
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+.success-rate-label[data-rate="rate-excellent"] { color: #16a34a; }
+.success-rate-label[data-rate="rate-good"] { color: #2563eb; }
+.success-rate-label[data-rate="rate-average"] { color: #d97706; }
+.success-rate-label[data-rate="rate-bad"] { color: #dc2626; }
+.success-rate-label[data-rate="rate-new"] { color: #6b7280; }
+
 </style>
 <body>
     <!-- LOADER -->
@@ -618,7 +637,7 @@ if ($is_main_admin === 1 && $role_id === 1) {
 
             <!-- [ Main Content ] start -->
              <div class="order-container">
-                <form method="post" action="process_order.php" id="orderForm">
+                <form method="post" action="process_order.php" id="orderForm" target="_blank" onsubmit="setTimeout(function() { window.location.reload(); }, 1500);">
                     <!-- Hidden tenant field -->
                     <input type="hidden" name="tenant_id" value="<?php echo $selected_tenant_id; ?>">
                     <!-- Order Details Section -->
@@ -681,6 +700,7 @@ if ($is_main_admin === 1 && $role_id === 1) {
                             <div class="form-group">
                                 <label class="form-label">Phone</label>
                                 <input type="tel" class="form-control" name="customer_phone" id="customer_phone" placeholder="Enter Phone Number">
+                                <div id="customer_success_rate" style="margin-top: 6px; display: none;"></div>
                             </div>
 
                             <div class="form-group">
@@ -727,6 +747,7 @@ if ($is_main_admin === 1 && $role_id === 1) {
                                             <th class="action-col">Action</th>
                                             <th class="product-col">Product</th>
                                             <th class="description-col">Description</th>
+                                            <th class="batch-col">Price</th>
                                             <th class="quantity-col">Quantity</th>
                                             <th class="price-col">Price</th>
                                             <th class="discount-col">Discount</th>
@@ -751,11 +772,10 @@ if ($is_main_admin === 1 && $role_id === 1) {
                                                         
                                                         $stock_label = "";
                                                         if ($allow_inventory) {
-                                                            $stock_label = $is_out_of_stock ? " (Unavailable)" : " (Stock: $stock)";
+                                                            $stock_label = $is_out_of_stock ? " (Out of Stock)" : " (Stock: $stock)";
                                                         }
                                                     ?>
                                                         <option value="<?= $row['id'] ?>"
-                                                            data-lkr-price="<?= $row['lkr_price'] ?>"
                                                             data-description="<?= htmlspecialchars($row['description']) ?>"
                                                             data-stock="<?= $allow_inventory ? $stock : 999999 ?>"
                                                             class="<?= $is_out_of_stock ? 'out-of-stock-option' : '' ?>"
@@ -766,7 +786,12 @@ if ($is_main_admin === 1 && $role_id === 1) {
                                                 </select>
                                             </td>
                                             <td class="description-col">
-                                                <input type="text" name="order_product_description[]" class="form-control product-description">
+                                                <input type="text" name="order_product_description[]" class="form-control product-description" disabled>
+                                            </td>
+                                            <td class="batch-col">
+                                                <select name="order_product_batch[]" class="form-select batch-select" style="min-width: 150px;" disabled>
+                                                    <option value="">-- Select Price --</option>
+                                                </select>
                                             </td>
                                             <td class="quantity-col">
                                                 <input type="number" 
@@ -774,16 +799,17 @@ if ($is_main_admin === 1 && $role_id === 1) {
                                                        class="form-control quantity" 
                                                        value="1" 
                                                        min="1" 
-                                                       step="1">
+                                                       step="1"
+                                                       disabled>
                                             </td>
                                             <td class="price-col">
                                                 <div class="input-group">
                                                     <span class="input-group-text">Rs.</span>
-                                                    <input type="number" name="order_product_price[]" class="form-control price" value="0.00" step="0.01">
+                                                    <input type="number" name="order_product_price[]" class="form-control price" value="0.00" step="0.01" disabled>
                                                 </div>
                                             </td>
                                             <td class="discount-col">
-                                                <input type="number" name="order_product_discount[]" class="form-control discount" value="0" min="0" step="1">
+                                                <input type="number" name="order_product_discount[]" class="form-control discount" value="0.00" min="0" step="0.01" disabled>
                                             </td>
                                             <td class="subtotal-col">
                                                 <div class="input-group">
@@ -828,7 +854,6 @@ if ($is_main_admin === 1 && $role_id === 1) {
                                         <span class="totals-value">
                                             Rs. <span id="total_display">0.00</span>
                                             <input type="hidden" id="total_amount" name="total_amount" value="0.00">
-                                            <input type="hidden" id="lkr_total_amount" name="lkr_price" value="0.00">
                                         </span>
                                     </div>
                                 </div>
@@ -954,67 +979,6 @@ if ($is_main_admin === 1 && $role_id === 1) {
         window.location.href = '?tenant_id=' + tenantId;
     }
 
-    // ========== ORDER SUCCESS MODAL ==========
-    let lastCreatedOrderId = null;
-    let lastCreatedTenantId = null;
-    let orderSuccessShown = false;
-
-    function showOrderSuccessModal(orderId) {
-        lastCreatedOrderId = orderId;
-        document.getElementById('successOrderId').textContent = orderId;
-        const modal = document.getElementById('orderSuccessModal');
-        if (modal) {
-            modal.style.display = 'flex';
-            orderSuccessShown = true;
-            document.body.style.overflow = 'hidden';
-        }
-    }
-
-    function closeOrderSuccessModal() {
-        const modal = document.getElementById('orderSuccessModal');
-        if (modal) modal.style.display = 'none';
-        orderSuccessShown = false;
-        document.body.style.overflow = '';
-    }
-
-    function dismissOrderSuccessModal() {
-        closeOrderSuccessModal();
-        const tenantInput = document.querySelector('input[name="tenant_id"]');
-        const tenant = lastCreatedTenantId || (tenantInput ? tenantInput.value : '') || '';
-        window.location.href = 'create_order.php?tenant_id=' + encodeURIComponent(tenant);
-    }
-
-    // Dismiss (close + return to a fresh create-order form) on backdrop click / Escape
-    document.addEventListener('click', function(event) {
-        const modal = document.getElementById('orderSuccessModal');
-        if (orderSuccessShown && modal && event.target === modal) {
-            dismissOrderSuccessModal();
-        }
-    });
-
-    document.addEventListener('keydown', function(event) {
-        if (event.key === 'Escape' && orderSuccessShown) {
-            dismissOrderSuccessModal();
-        }
-    });
-
-    function viewCreatedOrder() {
-        if (lastCreatedOrderId) {
-            window.open('download_order.php?id=' + lastCreatedOrderId, '_blank');
-        }
-    }
-
-    function createAnotherOrder() {
-        closeOrderSuccessModal();
-        const tenantInput = document.querySelector('input[name="tenant_id"]');
-        const tenant = lastCreatedTenantId || (tenantInput ? tenantInput.value : '') || '';
-        window.location.href = 'create_order.php?tenant_id=' + encodeURIComponent(tenant);
-    }
-
-    function goToAllOrders() {
-        window.location.href = 'all_orders.php';
-    }
-
 document.addEventListener('DOMContentLoaded', function() {
     // ========== GLOBAL VARIABLES ==========
     let deliveryFee = <?php echo $deliveryFee; ?>;
@@ -1123,6 +1087,60 @@ const PhoneValidator = {
             
             FormValidator.validateAndToggleSubmit();
         }, 500);
+    }
+};
+
+// ========== SUCCESS RATE MODULE ==========
+// Shows the customer's order success rate (condition) based on the entered phone number
+const SuccessRate = {
+    timeout: null,
+    containerId: 'customer_success_rate',
+
+    update: () => {
+        const rawPhone = document.getElementById('customer_phone').value.trim();
+        const phone = rawPhone.replace(/[^0-9]/g, '').slice(0, 10);
+        const container = document.getElementById(SuccessRate.containerId);
+
+        if (!container) return;
+
+        // Only check complete 10-digit phone numbers
+        if (phone.length !== 10) {
+            SuccessRate.clear();
+            return;
+        }
+
+        // Get tenant_id from hidden field
+        const tenantId = document.querySelector('input[name="tenant_id"]').value;
+
+        // Debounce the request
+        if (SuccessRate.timeout) clearTimeout(SuccessRate.timeout);
+        SuccessRate.timeout = setTimeout(async () => {
+            try {
+                const response = await fetch(`get_customer_success_rate.php?phone=${encodeURIComponent(phone)}&tenant_id=${tenantId}`);
+                const data = await response.json();
+
+                if (data.found) {
+                    container.style.display = 'block';
+                    container.innerHTML = `<span class="success-rate-label" data-rate="${data.css_class}">Success Rate: ${data.label}</span>`;
+                } else {
+                    SuccessRate.clear();
+                }
+            } catch (error) {
+                console.error('Error fetching success rate:', error);
+            }
+        }, 500);
+    },
+
+    clear: () => {
+        if (SuccessRate.timeout) {
+            clearTimeout(SuccessRate.timeout);
+            SuccessRate.timeout = null;
+        }
+        const container = document.getElementById(SuccessRate.containerId);
+        if (container) {
+            container.style.display = 'none';
+            container.innerHTML = '';
+        }
     }
 };
 
@@ -1248,6 +1266,7 @@ const CustomerManager = {
         ValidationUtils.clearErrors();
         ValidationUtils.clearErrors('phone-validation-error');
         ValidationUtils.clearErrors('email-validation-error');
+        SuccessRate.clear();
         isExistingCustomer = false;
         CustomerManager.toggleFields(false);
         FormValidator.validateAndToggleSubmit();
@@ -1354,8 +1373,9 @@ const CustomerManager = {
 
   // ========== PRODUCT MANAGEMENT WITH QUANTITY ==========
 const ProductManager = {
-    // NEW FUNCTION: Check if product already exists in the order
-    checkDuplicateProduct: (productId, currentRow) => {
+    // Check if the same product exists in the order at the SAME selling price.
+    // Same product at a different price group is allowed (different batch price).
+    checkDuplicateProductAndPrice: (productId, price, currentRow) => {
         if (!productId) return null;
         
         let existingRow = null;
@@ -1364,7 +1384,10 @@ const ProductManager = {
             if (row === currentRow) return;
             
             const productSelect = row.querySelector('.product-select');
-            if (productSelect && productSelect.value === productId) {
+            const batchSelect = row.querySelector('.batch-select');
+            if (!productSelect || productSelect.value !== productId) return;
+            if (!batchSelect || !batchSelect.value) return;
+            if (parseFloat(batchSelect.value) === price) {
                 existingRow = row;
             }
         });
@@ -1424,59 +1447,144 @@ const ProductManager = {
         const productSelect = row.querySelector('.product-select');
         const selectedOption = productSelect.options[productSelect.selectedIndex];
         
-        if (!productSelect.value) return;
-
-        // DUPLICATE CHECK: Check if product already exists
-        const productId = productSelect.value;
-        const productName = selectedOption.text;
-        
-        const existingRow = ProductManager.checkDuplicateProduct(productId, row);
-        
-        if (existingRow) {
-            // Show alert message
-            ProductManager.showDuplicateAlert(productName, existingRow);
-            
-            // Reset the current row's product selection
-            productSelect.value = '';
+        if (!productSelect.value) {
             row.querySelector('.product-description').value = '';
+            row.querySelector('.product-description').disabled = true;
             row.querySelector('.price').value = '0.00';
-            row.querySelector('.discount').value = '0';
             row.querySelector('.quantity').value = '1';
+            row.querySelector('.discount').value = '0.00';
             row.querySelector('.subtotal').value = '0.00';
-            
+
+            const batchSelect = row.querySelector('.batch-select');
+            if (batchSelect) {
+                batchSelect.innerHTML = '<option value="">-- Select Price --</option>';
+                batchSelect.disabled = true;
+            }
+            row.querySelector('.quantity').disabled = true;
+            row.querySelector('.price').disabled = true;
+            row.querySelector('.discount').disabled = true;
+
             ProductManager.updateTotals();
             FormValidator.validateAndToggleSubmit();
-            return; // Stop further execution
+            return;
         }
 
-        // Continue with normal product selection if no duplicate
+        const productId = productSelect.value;
+        const productName = selectedOption.text;
+
+        // Continue with normal product selection
         const priceField = row.querySelector('.price');
         const descriptionField = row.querySelector('.product-description');
         const quantityInput = row.querySelector('.quantity');
+        const batchSelect = row.querySelector('.batch-select');
+        const tenantId = document.querySelector('input[name="tenant_id"]').value;
         const description = selectedOption.getAttribute('data-description') || '';
-        const price = parseFloat(selectedOption.getAttribute('data-lkr-price') || 0);
-        const stock = parseInt(selectedOption.getAttribute('data-stock') || 0);
 
-        priceField.value = isNaN(price) ? '0.00' : price.toFixed(2);
         descriptionField.value = description;
+        descriptionField.disabled = false;
 
-        // Enable fields
+        // Reset batch/price/quantity until a price group is chosen
+        priceField.value = '0.00';
+        priceField.disabled = true;
+        batchSelect.innerHTML = '<option value="">-- Select Price --</option>';
+        batchSelect.disabled = true;
+        quantityInput.disabled = true;
+        quantityInput.value = 1;
+        row.querySelector('.discount').disabled = true;
+        row.querySelector('.discount').value = '0.00';
+
+        // Load available price groups from batches
+        fetch('get_product_batches.php?product_id=' + encodeURIComponent(productId) + '&tenant_id=' + encodeURIComponent(tenantId))
+            .then(response => response.json())
+            .then(data => {
+                if (data.success && data.prices && data.prices.length > 0) {
+                    let opts = '<option value="">-- Select Price --</option>';
+                    data.prices.forEach(p => {
+                        const lbl = p.formatted_label || ('Rs. ' + Number(p.selling_price).toFixed(2) + ' (Stock: ' + p.stock + ')');
+                        opts += '<option value="' + p.selling_price + '" data-stock="' + p.stock + '">' + lbl + '</option>';
+                    });
+                    batchSelect.innerHTML = opts;
+                    batchSelect.disabled = false;
+                    FormValidator.validateAndToggleSubmit();
+                } else {
+                    // No batches available
+                    batchSelect.innerHTML = '<option value="">-- No Price --</option>';
+                    batchSelect.disabled = true;
+                    priceField.value = '0.00';
+                    priceField.disabled = true;
+                    quantityInput.disabled = true;
+                    row.querySelector('.discount').disabled = true;
+                    ProductManager.updateRowTotal(row);
+                    ProductManager.checkForProducts();
+                    FormValidator.validateAndToggleSubmit();
+                }
+            })
+            .catch(() => {
+                // On error, disable pricing
+                batchSelect.innerHTML = '<option value="">-- No Price --</option>';
+                batchSelect.disabled = true;
+                priceField.value = '0.00';
+                priceField.disabled = true;
+                quantityInput.disabled = true;
+                row.querySelector('.discount').disabled = true;
+                ProductManager.updateRowTotal(row);
+                ProductManager.checkForProducts();
+                FormValidator.validateAndToggleSubmit();
+            });
+    },
+
+    selectBatch: (row) => {
+        const batchSelect = row.querySelector('.batch-select');
+        const selectedOption = batchSelect.options[batchSelect.selectedIndex];
+        const priceField = row.querySelector('.price');
+        const quantityInput = row.querySelector('.quantity');
+
+        if (!batchSelect.value) {
+            priceField.value = '0.00';
+            priceField.disabled = true;
+            quantityInput.disabled = true;
+            quantityInput.value = 1;
+            row.querySelector('.discount').disabled = true;
+            ProductManager.updateRowTotal(row);
+            return;
+        }
+
+        const price = parseFloat(batchSelect.value) || 0;
+        priceField.value = price.toFixed(2);
+        priceField.disabled = false;
+        quantityInput.disabled = false;
+        row.querySelector('.discount').disabled = false;
+
+        // Duplicate check: block same product at the SAME selling price.
+        // Same product at a different price group is allowed.
+        const productId = row.querySelector('.product-select').value;
+        const existingRow = ProductManager.checkDuplicateProductAndPrice(productId, price, row);
+        if (existingRow) {
+            const productName = row.querySelector('.product-select').options[row.querySelector('.product-select').selectedIndex].text || 'Product';
+            ProductManager.showDuplicateAlert(productName, existingRow);
+            batchSelect.value = '';
+            priceField.value = '0.00';
+            priceField.disabled = true;
+            quantityInput.disabled = true;
+            quantityInput.value = 1;
+            row.querySelector('.discount').disabled = true;
+            ProductManager.updateRowTotal(row);
+            ProductManager.checkForProducts();
+            FormValidator.validateAndToggleSubmit();
+            return;
+        }
+
+        const stock = parseInt(selectedOption.getAttribute('data-stock') || 0);
         if (stock > 0) {
-            quantityInput.disabled = false;
             quantityInput.max = stock;
             if (parseInt(quantityInput.value) > stock) {
                 quantityInput.value = stock;
             }
-        } else {
-            quantityInput.disabled = true;
-            quantityInput.value = 0;
         }
-
-        priceField.disabled = false;
-        row.querySelector('.discount').disabled = false;
 
         ProductManager.updateRowTotal(row);
         ProductManager.checkForProducts();
+        FormValidator.validateAndToggleSubmit();
     },
 
 updateRowTotal: (row) => {
@@ -1486,6 +1594,8 @@ updateRowTotal: (row) => {
     const qtyInput = row.querySelector('.quantity');
     const productSelect = row.querySelector('.product-select');
     const selectedOption = productSelect.options[productSelect.selectedIndex];
+    const batchSelect = row.querySelector('.batch-select');
+    const selectedBatch = batchSelect ? batchSelect.options[batchSelect.selectedIndex] : null;
     
     if (qtyInput.value !== "" && parseInt(qtyInput.value) < 1) {
         qtyInput.value = 1;
@@ -1493,8 +1603,17 @@ updateRowTotal: (row) => {
     
     let quantity = parseInt(qtyInput.value) || 1;
 
-    // Stock validation
-    if (selectedOption && selectedOption.value !== "") {
+    // Stock validation - use the selected batch/price group stock when available
+    if (selectedBatch && selectedBatch.value !== "") {
+        const stock = parseInt(selectedBatch.getAttribute('data-stock') || 0);
+        if (stock > 0) {
+            if (quantity > stock) {
+                qtyInput.value = stock;
+                quantity = stock;
+            }
+            qtyInput.max = stock;
+        }
+    } else if (selectedOption && selectedOption.value !== "") {
         const stock = parseInt(selectedOption.getAttribute('data-stock') || 0);
         if (quantity > stock) {
             qtyInput.value = stock;
@@ -1577,17 +1696,16 @@ updateRowTotal: (row) => {
 
     document.getElementById('total_display').textContent = total.toFixed(2);
     document.getElementById('total_amount').value = total.toFixed(2);
-    document.getElementById('lkr_total_amount').value = total.toFixed(2);
 },
 
-    validate: () => {
+    validate: (showErrors = false) => {
         ValidationUtils.clearErrors('product-validation-error');
         let isValid = true;
 
         document.querySelectorAll('#order_table tbody tr').forEach(row => {
             const productSelect = row.querySelector('.product-select');
             const descriptionInput = row.querySelector('.product-description');
-            const priceInput = row.querySelector('.price');
+            const batchSelect = row.querySelector('.batch-select');
 
             if (productSelect.value !== '') {
                 if (!descriptionInput.value.trim()) {
@@ -1595,9 +1713,10 @@ updateRowTotal: (row) => {
                     isValid = false;
                 }
 
-                const price = parseFloat(priceInput.value) || 0;
-                if (price <= 0) {
-                    ValidationUtils.showError(priceInput, 'Price must be greater than 0', 'product-validation-error');
+                if (batchSelect && !batchSelect.disabled && !batchSelect.value) {
+                    if (showErrors) {
+                        ValidationUtils.showError(batchSelect, 'Please select a price/batch', 'product-validation-error');
+                    }
                     isValid = false;
                 }
             }
@@ -1611,10 +1730,10 @@ updateRowTotal: (row) => {
         document.querySelectorAll('#order_table tbody tr').forEach(row => {
             const productSelect = row.querySelector('.product-select');
             const descriptionInput = row.querySelector('.product-description');
-            const priceInput = row.querySelector('.price');
-            const price = parseFloat(priceInput.value) || 0;
+            const batchSelect = row.querySelector('.batch-select');
 
-            if (productSelect.value !== '' && descriptionInput.value.trim() !== '' && price > 0) {
+            const batchOk = !batchSelect || batchSelect.value !== '';
+            if (productSelect.value !== '' && descriptionInput.value.trim() !== '' && batchOk) {
                 hasValid = true;
             }
         });
@@ -1630,19 +1749,27 @@ updateRowTotal: (row) => {
                 input.value = '0.00';
                 input.disabled = true;
             } else if (input.classList.contains('discount')) {
-                input.value = '0';
+                input.value = '0.00';
                 input.disabled = true;
             } else if (input.classList.contains('quantity')) {
                 input.value = '1';
                 input.disabled = true;
             } else if (input.classList.contains('subtotal')) {
                 input.value = '0.00';
+            } else if (input.classList.contains('product-description')) {
+                input.value = '';
+                input.disabled = true;
             } else {
                 input.value = '';
             }
         });
         
         newRow.querySelector('.product-select').value = '';
+        const newBatch = newRow.querySelector('.batch-select');
+        if (newBatch) {
+            newBatch.innerHTML = '<option value="">-- Select Price --</option>';
+            newBatch.disabled = true;
+        }
         document.querySelector('#order_table tbody').appendChild(newRow);
     },
 
@@ -1658,7 +1785,12 @@ updateRowTotal: (row) => {
             row.querySelector('.product-description').value = '';
             row.querySelector('.quantity').value = '1';
             row.querySelector('.price').value = '0.00';
-            row.querySelector('.discount').value = '0';
+            const batchSel = row.querySelector('.batch-select');
+            if (batchSel) {
+                batchSel.innerHTML = '<option value="">-- Select Price --</option>';
+                batchSel.disabled = true;
+            }
+            row.querySelector('.discount').value = '0.00';
             row.querySelector('.subtotal').value = '0.00';
             ProductManager.checkForProducts();
             ProductManager.updateTotals();
@@ -1962,6 +2094,9 @@ window.CustomerModal = {
                 ValidationUtils.clearErrors('phone-validation-error');
                 ValidationUtils.clearErrors('email-validation-error');
 
+                // Show the customer's success rate for the selected phone number
+                SuccessRate.update();
+
                 modal.style.display = "none";
                 FormValidator.validateAndToggleSubmit();
             });
@@ -2035,6 +2170,7 @@ window.CustomerModal = {
             // Phone validation listeners
             document.getElementById('customer_phone').addEventListener('input', () => {
                 PhoneValidator.validatePhoneField('customer_phone', 'customer_phone_2');
+                SuccessRate.update();
             });
 
             document.getElementById('customer_phone_2').addEventListener('input', () => {
@@ -2051,6 +2187,7 @@ window.CustomerModal = {
 
             document.getElementById('customer_phone').addEventListener('blur', () => {
                 PhoneValidator.validatePhoneField('customer_phone', 'customer_phone_2');
+                SuccessRate.update();
             });
 
             document.getElementById('customer_phone_2').addEventListener('blur', () => {
@@ -2064,6 +2201,7 @@ window.CustomerModal = {
                     this.value = this.value.slice(0, 10);
                 }
                 PhoneValidator.validatePhoneField('customer_phone', 'customer_phone_2');
+                SuccessRate.update();
             });
 
             document.getElementById('customer_phone_2').addEventListener('input', function(e) {
@@ -2081,6 +2219,7 @@ window.CustomerModal = {
                 const numericOnly = pastedText.replace(/[^0-9]/g, '').slice(0, 10);
                 this.value = numericOnly;
                 PhoneValidator.validatePhoneField('customer_phone', 'customer_phone_2');
+                SuccessRate.update();
             });
 
             document.getElementById('customer_phone_2').addEventListener('paste', function(e) {
@@ -2099,6 +2238,10 @@ window.CustomerModal = {
             document.addEventListener('change', (e) => {
                 if (e.target.classList.contains('product-select')) {
                     ProductManager.updatePrice(e.target.closest('tr'));
+                    FormValidator.validateAndToggleSubmit();
+                }
+                if (e.target.classList.contains('batch-select')) {
+                    ProductManager.selectBatch(e.target.closest('tr'));
                     FormValidator.validateAndToggleSubmit();
                 }
             });
@@ -2141,18 +2284,14 @@ window.CustomerModal = {
 
             // Form submission
             document.getElementById('orderForm').addEventListener('submit', (e) => {
-                e.preventDefault();
-                
-                if (!FormValidator.validateAndToggleSubmit()) {
+                    if (!FormValidator.validateAndToggleSubmit()) {
                     let issues = [];
                     if (!CustomerManager.validate()) issues.push('Customer information');
                     if (!DateValidator.validate()) issues.push('Order dates');
-                    if (!ProductManager.validate()) issues.push('Product information');
+                    if (!ProductManager.validate(true)) issues.push('Product information');
                     if (!ProductManager.hasValidProduct()) issues.push('At least one complete product');
-                
-                    if (document.querySelectorAll('.email-validation-error').length > 0) {
-                        isValid = false;
-                    }
+
+                    e.preventDefault();
 
                     toastManager.warning('Please fix the following issues:\n- ' + issues.join('\n- '));
                     return false;
@@ -2161,34 +2300,7 @@ window.CustomerModal = {
                 // Disable submit button to prevent double-submits
                 const submitButton = document.getElementById('submit_order');
                 submitButton.disabled = true;
-                const originalText = submitButton.innerHTML;
                 submitButton.innerHTML = '<i class="feather icon-loader"></i> Creating Order...';
-
-                const form = document.getElementById('orderForm');
-                const formData = new FormData(form);
-                formData.append('ajax', '1');
-
-                fetch('process_order.php', {
-                    method: 'POST',
-                    body: formData
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.status === 'success') {
-                        lastCreatedTenantId = formData.get('tenant_id');
-                        showOrderSuccessModal(data.order_id);
-                    } else {
-                        toastManager.error(data.message || 'Error creating order');
-                        submitButton.disabled = false;
-                        submitButton.innerHTML = originalText;
-                    }
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    toastManager.error('An unexpected error occurred.');
-                    submitButton.disabled = false;
-                    submitButton.innerHTML = originalText;
-                });
             });
         }
     };

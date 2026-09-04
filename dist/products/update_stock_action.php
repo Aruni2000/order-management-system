@@ -22,6 +22,12 @@ include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 // Set content type to JSON
 header('Content-Type: application/json');
 
+// Check if inventory management is enabled
+if (!isset($_SESSION['allow_inventory']) || $_SESSION['allow_inventory'] != 1) {
+    echo json_encode(['success' => false, 'message' => 'Inventory management is disabled.']);
+    exit();
+}
+
 // Check if request method is POST
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
@@ -42,6 +48,8 @@ try {
     $product_id = (int)$input['product_id'];
     $operation = $input['operation'];
     $adjustment = (int)$input['adjustment_value'];
+    $batch_id = isset($input['batch_id']) ? (int)$input['batch_id'] : 0;
+    $reason = isset($input['reason']) ? trim((string)$input['reason']) : '';
     $user_id = $_SESSION['user_id'];
     
     // Validate values
@@ -55,6 +63,14 @@ try {
     }
     if (!in_array($operation, ['increase', 'decrease'])) {
         echo json_encode(['success' => false, 'message' => 'Invalid operation type']);
+        exit();
+    }
+    if ($batch_id <= 0) {
+        echo json_encode(['success' => false, 'message' => 'A batch must be selected']);
+        exit();
+    }
+    if ($reason === '') {
+        echo json_encode(['success' => false, 'message' => 'A reason for the stock adjustment is required']);
         exit();
     }
     
@@ -79,13 +95,48 @@ try {
     $product = $result->fetch_assoc();
     $old_stock = $product['stock_quantity'];
     $checkStmt->close();
-    
-    // Calculate new stock
+
+    // Check batch exists, belongs to product, and supports the operation
+    $batchSql = "SELECT batch_id, batch_number, remaining_qty, status FROM batches WHERE batch_id = ? AND product_id = ?";
+    $batchStmt = $conn->prepare($batchSql);
+    if (!$batchStmt) {
+        echo json_encode(['success' => false, 'message' => 'Database prepare error: ' . $conn->error]);
+        exit();
+    }
+    $batchStmt->bind_param("ii", $batch_id, $product_id);
+    $batchStmt->execute();
+    $batchResult = $batchStmt->get_result();
+
+    if ($batchResult->num_rows === 0) {
+        $batchStmt->close();
+        echo json_encode(['success' => false, 'message' => 'Batch not found for this product']);
+        exit();
+    }
+
+    $batch = $batchResult->fetch_assoc();
+    $batchStmt->close();
+
+    if ($batch['status'] !== 'confirmed') {
+        echo json_encode(['success' => false, 'message' => 'Selected batch is not confirmed']);
+        exit();
+    }
+
+    if ($operation === 'decrease' && (int)$batch['remaining_qty'] < $adjustment) {
+        echo json_encode(['success' => false, 'message' => 'Batch remaining stock is insufficient (available: ' . $batch['remaining_qty'] . ')']);
+        exit();
+    }
+
+    $old_batch_qty = (int)$batch['remaining_qty'];
+    $batch_number = $batch['batch_number'];
+
+    // Calculate new product stock
     if ($operation === 'increase') {
         $new_stock = $old_stock + $adjustment;
+        $new_batch_qty = $old_batch_qty + $adjustment;
         $description = "Increased by " . $adjustment;
     } else {
         $new_stock = max(0, $old_stock - $adjustment);
+        $new_batch_qty = max(0, $old_batch_qty - $adjustment);
         $description = "Decreased by " . $adjustment;
     }
     
@@ -93,7 +144,22 @@ try {
     $conn->autocommit(FALSE);
     
     try {
-        // Update stock
+        // Update batch remaining quantity
+        $updateBatchSql = "UPDATE batches SET remaining_qty = ? WHERE batch_id = ?";
+        $updateBatchStmt = $conn->prepare($updateBatchSql);
+        
+        if (!$updateBatchStmt) {
+            throw new Exception('Batch update prepare error: ' . $conn->error);
+        }
+        
+        $updateBatchStmt->bind_param("ii", $new_batch_qty, $batch_id);
+        
+        if (!$updateBatchStmt->execute()) {
+            throw new Exception('Failed to update batch quantity: ' . $updateBatchStmt->error);
+        }
+        $updateBatchStmt->close();
+
+        // Update product stock
         $updateSql = "UPDATE products SET stock_quantity = ? WHERE id = ?";
         $updateStmt = $conn->prepare($updateSql);
         
@@ -110,7 +176,9 @@ try {
         
         // Log the action
         $action_type = 'product_stock_updated';
-        $details = "Updated Stock for Product '{$product['name']}' " . $description . " (from {$old_stock} to {$new_stock})";
+        $details = "Updated Stock for Product '{$product['name']}' " . $description
+            . " (from {$old_stock} to {$new_stock}), Batch #" . ($batch_number ?: $batch_id)
+            . " (from {$old_batch_qty} to {$new_batch_qty}), Reason: {$reason}";
         
         $logSql = "INSERT INTO user_logs (user_id, action_type, inquiry_id, details, created_at) VALUES (?, ?, ?, ?, NOW())";
         $logStmt = $conn->prepare($logSql);
@@ -133,8 +201,11 @@ try {
             'success' => true,
             'message' => 'Stock ' . $operation . 'd successfully',
             'product_id' => $product_id,
+            'batch_id' => $batch_id,
             'old_stock' => $old_stock,
             'new_stock' => $new_stock,
+            'old_batch_qty' => $old_batch_qty,
+            'new_batch_qty' => $new_batch_qty,
             'adjustment' => $adjustment
         ]);
         

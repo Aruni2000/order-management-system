@@ -1,11 +1,25 @@
 <?php
+/**
+ * Draft GRNs List
+ * Standalone page displaying GRNs with status 'draft' (confirm/cancel actions available).
+ * Modeled after the order management pages (e.g. pending_order_list.php).
+ * Includes search, filters, pagination, and modal view functionality.
+ */
+
+// Start session management
 session_start();
+
+// Authentication check - redirect if not logged in
 if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
-    if (ob_get_level()) ob_end_clean();
+    // Clear output buffers before redirect
+    if (ob_get_level()) {
+        ob_end_clean();
+    }
     header("Location: /OMS/dist/pages/login.php");
     exit();
 }
 
+// CSRF token for confirm/cancel POST requests
 function generateCSRFToken() {
     if (!isset($_SESSION['csrf_token'])) {
         $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
@@ -14,20 +28,14 @@ function generateCSRFToken() {
 }
 $csrf_token = generateCSRFToken();
 
+// Include database connection
 include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
-// Page configuration - override these in a wrapper page (e.g. draft_grn_list.php)
-// before including this file to show a single GRN status
-$grn_page_title = $grn_page_title ?? 'Goods Received Notes (GRN)';
-$grn_fixed_status = $grn_fixed_status ?? '';
-$grn_clear_url = $grn_clear_url ?? 'grn_list.php';
-
+/**
+ * SEARCH AND PAGINATION PARAMETERS
+ */
 $search = isset($_GET['search']) ? trim($_GET['search']) : '';
 $supplier_filter = isset($_GET['supplier_filter']) ? intval($_GET['supplier_filter']) : 0;
-$status_filter = isset($_GET['status_filter']) ? trim($_GET['status_filter']) : '';
-if ($grn_fixed_status !== '') {
-    $status_filter = $grn_fixed_status;
-}
 $date_from = isset($_GET['date_from']) ? trim($_GET['date_from']) : '';
 $date_to = isset($_GET['date_to']) ? trim($_GET['date_to']) : '';
 $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 10;
@@ -43,9 +51,12 @@ if ($supResult) {
     }
 }
 
-$countSql = "SELECT COUNT(*) as total FROM grn g LEFT JOIN suppliers s ON g.supplier_id = s.id WHERE 1=1";
-$sql = "SELECT g.*, s.name as supplier_name FROM grn g LEFT JOIN suppliers s ON g.supplier_id = s.id WHERE 1=1";
+// Count query - draft GRNs only
+$countSql = "SELECT COUNT(*) as total FROM grn g LEFT JOIN suppliers s ON g.supplier_id = s.id WHERE g.status = 'draft'";
+// Main query - draft GRNs only
+$sql = "SELECT g.*, s.name as supplier_name FROM grn g LEFT JOIN suppliers s ON g.supplier_id = s.id WHERE g.status = 'draft'";
 
+// Build search conditions
 $conditions = [];
 if (!empty($search)) {
     $t = $conn->real_escape_string($search);
@@ -53,10 +64,6 @@ if (!empty($search)) {
 }
 if ($supplier_filter > 0) {
     $conditions[] = "g.supplier_id = $supplier_filter";
-}
-if (!empty($status_filter)) {
-    $st = $conn->real_escape_string($status_filter);
-    $conditions[] = "g.status = '$st'";
 }
 if (!empty($date_from)) {
     $df = $conn->real_escape_string($date_from);
@@ -73,6 +80,7 @@ if (!empty($conditions)) {
     $sql .= $where;
 }
 
+// Execute queries
 $countResult = $conn->query($countSql);
 $totalRows = 0;
 if ($countResult && $countResult->num_rows > 0) {
@@ -85,7 +93,7 @@ $result = $conn->query($sql);
 <!doctype html>
 <html lang="en" data-pc-preset="preset-1" data-pc-sidebar-caption="true" data-pc-direction="ltr" dir="ltr" data-pc-theme="light">
 <head>
-    <title><?= htmlspecialchars($grn_page_title) ?> | <?= htmlspecialchars($_SESSION['company_name'] ?? 'OMS') ?></title>
+    <title>Draft GRNs | <?= htmlspecialchars($_SESSION['company_name'] ?? 'OMS') ?></title>
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
     <link rel="stylesheet" href="../assets/css/orders.css" />
     <link rel="stylesheet" href="../assets/css/customers.css" />
@@ -100,10 +108,11 @@ $result = $conn->query($sql);
 
     <div class="pc-container">
         <div class="pc-content">
+            <!-- Page Header -->
             <div class="page-header">
                 <div class="page-block">
                     <div class="page-header-title">
-                        <h5 class="mb-0 font-medium"><?= htmlspecialchars($grn_page_title) ?></h5>
+                        <h5 class="mb-0 font-medium">Draft GRNs</h5>
                     </div>
                 </div>
             </div>
@@ -130,18 +139,6 @@ $result = $conn->query($sql);
                             </select>
                         </div>
 
-                        <?php if ($grn_fixed_status === ''): ?>
-                        <div class="form-group">
-                            <label for="status_filter">Status</label>
-                            <select id="status_filter" name="status_filter">
-                                <option value="">All Status</option>
-                                <option value="draft" <?php echo ($status_filter == 'draft') ? 'selected' : ''; ?>>Draft</option>
-                                <option value="confirmed" <?php echo ($status_filter == 'confirmed') ? 'selected' : ''; ?>>Confirmed</option>
-                                <option value="cancelled" <?php echo ($status_filter == 'cancelled') ? 'selected' : ''; ?>>Cancelled</option>
-                            </select>
-                        </div>
-                        <?php endif; ?>
-
                         <div class="form-group">
                             <label for="date_from">Date From</label>
                             <input type="date" id="date_from" name="date_from" value="<?php echo htmlspecialchars($date_from); ?>">
@@ -157,7 +154,7 @@ $result = $conn->query($sql);
                                 <button type="submit" class="search-btn">
                                     <i class="fas fa-search"></i> Search
                                 </button>
-                                <button type="button" class="search-btn" onclick="window.location.href='<?= $grn_clear_url ?>'" style="background: #6c757d;">
+                                <button type="button" class="search-btn" onclick="window.location.href='draft_grn_list.php'" style="background: #6c757d;">
                                     <i class="fas fa-times"></i> Clear
                                 </button>
                             </div>
@@ -169,7 +166,7 @@ $result = $conn->query($sql);
                 <div class="order-count-container">
                     <div class="order-count-number"><?php echo number_format($totalRows); ?></div>
                     <div class="order-count-dash">-</div>
-                    <div class="order-count-subtitle"><?= $grn_fixed_status !== '' ? htmlspecialchars($grn_page_title) : 'Total GRNs' ?></div>
+                    <div class="order-count-subtitle">Total Draft GRNs</div>
                 </div>
 
                 <!-- GRNs Table -->
@@ -208,13 +205,7 @@ $result = $conn->query($sql);
                                             </span>
                                         </td>
                                         <td>
-                                            <?php if ($row['status'] == 'draft'): ?>
-                                                <span class="status-badge status-pending">Draft</span>
-                                            <?php elseif ($row['status'] == 'confirmed'): ?>
-                                                <span class="status-badge status-completed">Confirmed</span>
-                                            <?php else: ?>
-                                                <span class="status-badge status-cancelled">Cancelled</span>
-                                            <?php endif; ?>
+                                            <span class="status-badge status-pending">Draft</span>
                                         </td>
                                         <td>
                                             <div class="action-buttons-group">
@@ -222,20 +213,18 @@ $result = $conn->query($sql);
                                                     onclick="openGrnModal('<?php echo $row['grn_id']; ?>')">
                                                     <i class="fas fa-eye"></i>
                                                 </button>
-                                                <?php if ($row['status'] == 'draft' && $grn_fixed_status === 'draft'): ?>
-                                                    <button class="action-btn paid-btn confirm-grn-btn"
-                                                        data-id="<?php echo $row['grn_id']; ?>"
-                                                        data-number="<?php echo htmlspecialchars($row['grn_number']); ?>"
-                                                        title="Confirm GRN (Update Stock)">
-                                                        <i class="fas fa-check"></i>
-                                                    </button>
-                                                    <button class="action-btn unpaid-btn cancel-grn-btn"
-                                                        data-id="<?php echo $row['grn_id']; ?>"
-                                                        data-number="<?php echo htmlspecialchars($row['grn_number']); ?>"
-                                                        title="Cancel GRN">
-                                                        <i class="fas fa-times"></i>
-                                                    </button>
-                                                <?php endif; ?>
+                                                <button class="action-btn paid-btn confirm-grn-btn"
+                                                    data-id="<?php echo $row['grn_id']; ?>"
+                                                    data-number="<?php echo htmlspecialchars($row['grn_number']); ?>"
+                                                    title="Confirm GRN (Update Stock)">
+                                                    <i class="fas fa-check"></i>
+                                                </button>
+                                                <button class="action-btn unpaid-btn cancel-grn-btn"
+                                                    data-id="<?php echo $row['grn_id']; ?>"
+                                                    data-number="<?php echo htmlspecialchars($row['grn_number']); ?>"
+                                                    title="Cancel GRN">
+                                                    <i class="fas fa-times"></i>
+                                                </button>
                                             </div>
                                         </td>
                                     </tr>
@@ -244,7 +233,7 @@ $result = $conn->query($sql);
                                 <tr>
                                     <td colspan="7" style="text-align: center; padding: 40px; color: #64748b;">
                                         <i class="fas fa-clipboard-list" style="font-size: 2.2rem; display: block; margin-bottom: 12px; color: #94a3b8;"></i>
-                                        No Goods Received Notes (GRN) found
+                                        No draft GRNs found
                                     </td>
                                 </tr>
                             <?php endif; ?>
@@ -260,7 +249,6 @@ $result = $conn->query($sql);
                     <div class="pagination-controls">
                         <?php
                         $qp = $_GET; unset($qp['page']);
-                        if ($grn_fixed_status !== '') { unset($qp['status_filter']); }
                         $qs = http_build_query($qp);
                         $base = '?' . ($qs ? $qs . '&' : '');
                         ?>

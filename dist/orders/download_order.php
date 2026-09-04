@@ -20,7 +20,6 @@ if (!isset($_GET['id']) || empty($_GET['id'])) {
 }
 
 $order_id = $_GET['id'];
-$show_payment_details = isset($_GET['show_payment']) && $_GET['show_payment'] === 'true';
 
 // Access Control Variables
 $is_main_admin = isset($_SESSION['is_main_admin']) ? (int)$_SESSION['is_main_admin'] : 0;
@@ -62,13 +61,16 @@ $order_query = "SELECT
                 oh.delivery_fee, 
                 oh.pay_by AS order_pay_by, 
                 oh.pay_date AS order_pay_date, 
-                oh.slip AS payment_slip
+                oh.slip AS payment_slip,
+                cr.courier_name,
+                cr.phone_number AS courier_phone
                 
             FROM order_header oh
             LEFT JOIN city_table city ON oh.city_id = city.city_id
             LEFT JOIN payments p ON oh.order_id = p.order_id
             LEFT JOIN users r ON p.pay_by = r.id
             LEFT JOIN users u ON oh.user_id = u.id
+            LEFT JOIN couriers cr ON oh.courier_id = cr.courier_id
             WHERE oh.order_id = ?";
 
 // Add Access Control Clauses
@@ -264,6 +266,7 @@ $conditionLabel = $conditionLabels[$conditionVal] ?? 'New';
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Order #<?php echo $order_id; ?> | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
     <link rel="stylesheet" href="../assets/css/orders.css" />
+    <link rel="icon" href="../assets/images/favicon.png" type="image/x-icon" />
     <style>
         .od-wrapper { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 0; }
 
@@ -359,6 +362,10 @@ $conditionLabel = $conditionLabels[$conditionVal] ?? 'New';
         .od-items-table .text-right { text-align: right; }
         .od-items-table .text-center { text-align: center; }
         .od-items-table .fw-600 { font-weight: 600; }
+        .od-items-table .item-status {
+            font-size: 0.65rem; padding: 2px 6px; border-radius: 10px;
+            font-weight: 600; text-transform: uppercase;
+        }
 
         .od-totals { margin-top: 8px; }
         .od-total-row {
@@ -435,12 +442,6 @@ $conditionLabel = $conditionLabels[$conditionVal] ?? 'New';
             <span class="od-badge od-badge-outline">
                 <i class="fas fa-coins"></i> <?php echo strtoupper($currency); ?>
             </span>
-            <span class="od-badge <?php
-                $condClasses = [0=>'cond-excellent', 1=>'cond-good', 2=>'cond-average', 3=>'cond-bad', 4=>'cond-new'];
-                echo $condClasses[$conditionVal] ?? 'cond-new';
-            ?>">
-                <i class="fas fa-star"></i> <?php echo $conditionLabel; ?>
-            </span>
         </div>
     </div>
 
@@ -450,11 +451,11 @@ $conditionLabel = $conditionLabels[$conditionVal] ?? 'New';
         <div class="od-grid-4">
             <div class="od-field">
                 <span class="od-field-label">Issue Date</span>
-                <span class="od-field-value"><i class="fas fa-clock" style="color:#6b7280;margin-right:4px;font-size:0.75rem;"></i><?php echo date('d M Y h:i:s A', strtotime($order['created_at'])); ?></span>
+                <span class="od-field-value"><i class="fas fa-clock" style="color:#6b7280;margin-right:4px;font-size:0.75rem;"></i><?php echo date('M d, Y h:i:s A', strtotime($order['created_at'])); ?></span>
             </div>
             <div class="od-field">
                 <span class="od-field-label">Due Date</span>
-                <span class="od-field-value"><i class="fas fa-calendar-check" style="color:#f59e0b;margin-right:4px;font-size:0.75rem;"></i><?php echo date('d M Y', strtotime($order['due_date'])); ?></span>
+                <span class="od-field-value"><i class="fas fa-calendar-check" style="color:#f59e0b;margin-right:4px;font-size:0.75rem;"></i><?php echo date('M d, Y', strtotime($order['due_date'])); ?></span>
             </div>
             <div class="od-field">
                 <span class="od-field-label">Created By</span>
@@ -510,6 +511,7 @@ $conditionLabel = $conditionLabels[$conditionVal] ?? 'New';
                         <th class="text-right" width="10%">Discount</th>
                         <?php endif; ?>
                         <th class="text-right" width="12%">Total</th>
+                        <th class="text-center" width="8%">Status</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -518,6 +520,7 @@ $conditionLabel = $conditionLabels[$conditionVal] ?? 'New';
                         $up = floatval($item['unit_price'] ?? 0);
                         $disc = floatval($item['discount'] ?? 0);
                         $tot = floatval($item['total_amount'] ?? 0);
+                        $itemStatus = $item['status'] ?? 'pending';
                     ?>
                     <tr>
                         <td><?php echo $i++; ?></td>
@@ -529,6 +532,9 @@ $conditionLabel = $conditionLabels[$conditionVal] ?? 'New';
                         <td class="text-right" style="color:<?php echo $disc > 0 ? '#059669' : '#9ca3af'; ?>;"><?php echo $disc > 0 ? $currencySymbol . ' ' . number_format($disc, 2) : '-'; ?></td>
                         <?php endif; ?>
                         <td class="text-right fw-600"><?php echo $currencySymbol . ' ' . number_format($tot, 2); ?></td>
+                        <td class="text-center">
+                            <span class="item-status <?php echo getStatusBadge($itemStatus); ?>"><?php echo ucfirst(str_replace('_',' ',$itemStatus)); ?></span>
+                        </td>
                     </tr>
                     <?php endforeach; ?>
                 </tbody>
@@ -589,7 +595,7 @@ $conditionLabel = $conditionLabels[$conditionVal] ?? 'New';
             <?php if (!empty($order['order_pay_date'])): ?>
             <div class="od-field" style="margin-bottom:8px;">
                 <span class="od-field-label">Payment Date</span>
-                <span class="od-field-value"><?php echo date('d M Y h:i:s A', strtotime($order['order_pay_date'])); ?></span>
+                <span class="od-field-value"><?php echo date('M d, Y h:i:s A', strtotime($order['order_pay_date'])); ?></span>
             </div>
             <?php endif; ?>
             <?php if (!empty($order['paid_by_name'])): ?>
@@ -612,9 +618,37 @@ $conditionLabel = $conditionLabels[$conditionVal] ?? 'New';
             <?php endif; ?>
         </div>
 
-        <!-- Call Status / Success Rate -->
+        <!-- Shipping & Dispatch / Success Rate -->
         <div class="od-section">
-            <div class="od-section-title"><i class="fas fa-headset"></i> Call & Success Rate</div>
+            <div class="od-section-title"><i class="fas fa-truck"></i> Shipping & Dispatch</div>
+            <div class="od-field" style="margin-bottom:8px;">
+                <span class="od-field-label">Order Status</span>
+                <span class="od-field-value"><span class="od-badge <?php echo getStatusBadge($orderStatus); ?>"><?php echo ucfirst(str_replace('_',' ',$orderStatus)); ?></span></span>
+            </div>
+            <?php if (!empty($order['courier_name'])): ?>
+            <div class="od-field" style="margin-bottom:8px;">
+                <span class="od-field-label">Courier</span>
+                <span class="od-field-value"><i class="fas fa-shipping-fast" style="color:#3b82f6;margin-right:4px;font-size:0.75rem;"></i><?php echo htmlspecialchars($order['courier_name']); ?></span>
+            </div>
+            <?php endif; ?>
+            <?php if (!empty($order['tracking_number'])): ?>
+            <div class="od-field" style="margin-bottom:8px;">
+                <span class="od-field-label">Tracking Number</span>
+                <span class="od-field-value" style="font-family:monospace;letter-spacing:0.5px;"><?php echo htmlspecialchars($order['tracking_number']); ?></span>
+            </div>
+            <?php endif; ?>
+            <?php if (!empty($order['dispatch_note'])): ?>
+            <div class="od-field" style="margin-bottom:8px;">
+                <span class="od-field-label">Dispatch Note</span>
+                <span class="od-field-value od-muted"><?php echo htmlspecialchars($order['dispatch_note']); ?></span>
+            </div>
+            <?php endif; ?>
+            <?php if (!empty($order['cancellation_reason'])): ?>
+            <div class="od-field" style="margin-bottom:8px;">
+                <span class="od-field-label">Cancellation Reason</span>
+                <span class="od-field-value" style="color:#dc2626;"><?php echo htmlspecialchars($order['cancellation_reason']); ?></span>
+            </div>
+            <?php endif; ?>
             <div class="od-field" style="margin-bottom:8px;">
                 <span class="od-field-label">Success Rate</span>
                 <span class="od-field-value"><span class="od-badge <?php
@@ -633,15 +667,9 @@ $conditionLabel = $conditionLabels[$conditionVal] ?? 'New';
             </div>
             <?php endif; ?>
             <?php if ($order['call_log'] != 1 && !empty($order['no_answer_reason'])): ?>
-            <div class="od-field" style="margin-bottom:8px;">
+            <div class="od-field">
                 <span class="od-field-label">No Answer Reason</span>
                 <span class="od-field-value od-muted"><?php echo htmlspecialchars($order['no_answer_reason']); ?></span>
-            </div>
-            <?php endif; ?>
-            <?php if (!empty($order['cancellation_reason'])): ?>
-            <div class="od-field">
-                <span class="od-field-label">Cancellation Reason</span>
-                <span class="od-field-value" style="color:#dc2626;"><?php echo htmlspecialchars($order['cancellation_reason']); ?></span>
             </div>
             <?php endif; ?>
         </div>
@@ -664,7 +692,6 @@ function viewPaymentSlip(slipFileName) {
     const slipUrl = '/OMS/dist/uploads/payment_slips/' + encodeURIComponent(slipFileName);
     window.open(slipUrl, '_blank');
 }
-
 </script>
 </body>
 </html>

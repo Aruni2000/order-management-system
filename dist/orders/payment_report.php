@@ -109,13 +109,13 @@ if (!$hasActiveFilters) {
 }
 if (!empty($search)) {
     $escapedSearch = $conn->real_escape_string($search);
-    $searchConditions[] = "(i.order_id LIKE '%$escapedSearch%' OR c.name LIKE '%$escapedSearch%' OR i.tracking_number LIKE '%$escapedSearch%')";
+    $searchConditions[] = "(i.order_id LIKE '%$escapedSearch%' OR i.full_name LIKE '%$escapedSearch%' OR i.tracking_number LIKE '%$escapedSearch%')";
 }
 if (!empty($order_id_filter)) {
     $searchConditions[] = "i.order_id LIKE '%" . $conn->real_escape_string($order_id_filter) . "%'";
 }
 if (!empty($customer_name_filter)) {
-    $searchConditions[] = "c.name LIKE '%" . $conn->real_escape_string($customer_name_filter) . "%'";
+    $searchConditions[] = "i.full_name LIKE '%" . $conn->real_escape_string($customer_name_filter) . "%'";
 }
 if (!empty($tracking_id)) {
     $searchConditions[] = "i.tracking_number LIKE '%" . $conn->real_escape_string($tracking_id) . "%'";
@@ -635,15 +635,15 @@ $courierDisabled = ($is_main_admin == 1) && empty($tenant_id_filter);
                         <?php else: ?>
                         <tr>
                             <td colspan="7" style="text-align:center; padding: 40px;">
-                                <?php if (!$hasActiveFilters): ?>
-                                <div style="color: #6c757d; font-style: italic;">
-                                    <i class="fas fa-filter"
-                                        style="font-size: 24px; margin-bottom: 10px; display: block;"></i>
-                                    Please select a courier or status to view payment data
-                                </div>
-                                <?php else: ?>
-                                No orders found matching your criteria
-                                <?php endif; ?>
+                        <?php if (!$hasActiveFilters): ?>
+                        <div style="color: #6c757d; font-style: italic;">
+                            <i class="fas fa-filter"
+                                style="font-size: 24px; margin-bottom: 10px; display: block;"></i>
+                            Please select a courier or status to view payment data
+                        </div>
+                        <?php else: ?>
+                        No orders found matching your criteria
+                        <?php endif; ?>
                             </td>
                         </tr>
                         <?php endif; ?>

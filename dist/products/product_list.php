@@ -21,18 +21,15 @@ $search = isset($_GET['search']) ? trim($_GET['search']) : '';
 $product_id_filter = isset($_GET['product_id_filter']) ? trim($_GET['product_id_filter']) : '';
 $product_name_filter = isset($_GET['product_name_filter']) ? trim($_GET['product_name_filter']) : '';
 $product_code_filter = isset($_GET['product_code_filter']) ? trim($_GET['product_code_filter']) : '';
-$description_filter = isset($_GET['description_filter']) ? trim($_GET['description_filter']) : '';
-$price_from = isset($_GET['price_from']) ? trim($_GET['price_from']) : '';
-$price_to = isset($_GET['price_to']) ? trim($_GET['price_to']) : '';
 $status_filter = isset($_GET['status_filter']) ? trim($_GET['status_filter']) : '';
 $date_from = isset($_GET['date_from']) ? trim($_GET['date_from']) : '';
 $date_to = isset($_GET['date_to']) ? trim($_GET['date_to']) : '';
 $category_filter = isset($_GET['category_filter']) ? trim($_GET['category_filter']) : '';
 $low_stock_filter = isset($_GET['low_stock_filter']) ? trim($_GET['low_stock_filter']) : '';
 
-// Fetch all categories for filter with parent name
+// Fetch all categories for filter
 $categories = [];
-$catRes = $conn->query("SELECT c1.id, c1.name, c1.parent_id, c2.name as parent_name FROM categories c1 LEFT JOIN categories c2 ON c1.parent_id = c2.id ORDER BY COALESCE(c2.name, c1.name), c1.name ASC");
+$catRes = $conn->query("SELECT id, name FROM categories ORDER BY name ASC");
 if ($catRes) {
     while ($crow = $catRes->fetch_assoc()) {
         $categories[] = $crow;
@@ -47,11 +44,10 @@ $offset = ($page - 1) * $limit;
 // Base SQL for counting total records
 $countSql = "SELECT COUNT(*) as total FROM products p LEFT JOIN categories c ON p.category_id = c.id";
 
-// Main query - Updated to include product_code and hierarchical category name
-$sql = "SELECT p.*, c.name as category_name, pc.name as parent_category_name
+// Main query - Updated to include product_code and category name
+$sql = "SELECT p.*, c.name as category_name
         FROM products p 
-        LEFT JOIN categories c ON p.category_id = c.id
-        LEFT JOIN categories pc ON c.parent_id = pc.id";
+        LEFT JOIN categories c ON p.category_id = c.id";
 
 // Build search conditions
 $searchConditions = [];
@@ -60,11 +56,10 @@ $searchConditions = [];
 if (!empty($search)) {
     $searchTerm = $conn->real_escape_string($search);
     $searchConditions[] = "(
-                        id LIKE '%$searchTerm%' OR
+                        p.id LIKE '%$searchTerm%' OR
                         p.name LIKE '%$searchTerm%' OR 
                         p.product_code LIKE '%$searchTerm%' OR 
-                        p.description LIKE '%$searchTerm%' OR 
-                        p.lkr_price LIKE '%$searchTerm%' OR
+                        p.description LIKE '%$searchTerm%' OR
                         c.name LIKE '%$searchTerm%')";
 }
 
@@ -84,17 +79,6 @@ if (!empty($product_name_filter)) {
 if (!empty($product_code_filter)) {
     $productCodeTerm = $conn->real_escape_string($product_code_filter);
     $searchConditions[] = "p.product_code LIKE '%$productCodeTerm%'";
-}
-
-// Price range filter
-if (!empty($price_from)) {
-    $priceFromTerm = $conn->real_escape_string($price_from);
-    $searchConditions[] = "p.lkr_price >= '$priceFromTerm'";
-}
-
-if (!empty($price_to)) {
-    $priceToTerm = $conn->real_escape_string($price_to);
-    $searchConditions[] = "p.lkr_price <= '$priceToTerm'";
 }
 
 // Status filter
@@ -117,8 +101,7 @@ if (!empty($date_to)) {
 // Category filter
 if (!empty($category_filter)) {
     $catTerm = $conn->real_escape_string($category_filter);
-    // Show products in selected category OR any subcategory of this category
-    $searchConditions[] = "(p.category_id = '$catTerm' OR c.parent_id = '$catTerm')";
+    $searchConditions[] = "p.category_id = '$catTerm'";
 }
 
 // Low stock filter
@@ -251,11 +234,7 @@ $result = $conn->query($sql);
                                 <option value="">All Categories</option>
                                 <?php foreach ($categories as $cat): ?>
                                     <option value="<?php echo $cat['id']; ?>" <?php echo ($category_filter == $cat['id']) ? 'selected' : ''; ?>>
-                                        <?php 
-                                        echo $cat['parent_name'] 
-                                            ? htmlspecialchars($cat['parent_name'] . ' > ' . $cat['name']) 
-                                            : htmlspecialchars($cat['name']); 
-                                        ?>
+                                        <?php echo htmlspecialchars($cat['name']); ?>
                                     </option>
                                 <?php endforeach; ?>
                             </select>
@@ -313,8 +292,6 @@ $result = $conn->query($sql);
                                 <th>Product Name</th>
                                 <th>Category</th>
                                 <th>Product Code</th>
-                                <!-- <th>Description</th> -->
-                                <th>Price (LKR)</th>
                                 <?php if (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1): ?>
                                 <th>Stock</th>
                                 <?php endif; ?>
@@ -340,13 +317,7 @@ $result = $conn->query($sql);
                                         <!-- Category -->
                                         <td>
                                             <span class="product-category">
-                                                <?php 
-                                                if ($row['parent_category_name']) {
-                                                    echo htmlspecialchars($row['parent_category_name'] . ' ( ' . $row['category_name'] . ' )');
-                                                } else {
-                                                    echo htmlspecialchars($row['category_name'] ?? 'Uncategorized');
-                                                }
-                                                ?>
+                                                <?php echo htmlspecialchars($row['category_name'] ?? 'Uncategorized'); ?>
                                             </span>
                                         </td>
                                         
@@ -357,27 +328,8 @@ $result = $conn->query($sql);
                                             </div>
                                         </td>
                                         
-                                        <!-- Description -->
-                                        <!-- <td>
-                                            <div class="description-truncate" title="<?php echo htmlspecialchars($row['description'] ?? ''); ?>">
-                                                <?php 
-                                                $description = $row['description'] ?? '';
-                                                echo htmlspecialchars(strlen($description) > 50 ? substr($description, 0, 50) . '...' : $description); 
-                                                ?>
-                                            </div>
-                                        </td> -->
-                                        
-                                        <!-- Price -->
-                                        <td>
-                                            <div class="price-display">
-                                                <span style="font-weight: 600; color: #28a745;">
-                                                    LKR <?php echo number_format($row['lkr_price'], 2); ?>
-                                                </span>
-                                            </div>
-                                        </td>
-                                        
-                                        <?php if (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1): ?>
                                         <!-- Stock -->
+                                        <?php if (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1): ?>
                                         <td>
                                             <div class="stock-display">
                                                 <?php 
@@ -419,10 +371,9 @@ $result = $conn->query($sql);
                                                 <button type="button" class="action-btn view-btn view-product-btn"
                                                         data-product-id="<?= $row['id'] ?>"
                                                         data-product-name="<?= htmlspecialchars($row['name']) ?>"
-                                                        data-product-category="<?= htmlspecialchars($row['parent_category_name'] ? $row['parent_category_name'] . ' > ' . $row['category_name'] : ($row['category_name'] ?? 'Uncategorized')) ?>"
+                                                        data-product-category="<?= htmlspecialchars($row['category_name'] ?? 'Uncategorized') ?>"
                                                         data-product-code="<?= htmlspecialchars($row['product_code'] ?? '') ?>"
                                                         data-product-description="<?= htmlspecialchars($row['description'] ?? '') ?>"
-                                                        data-product-price="<?= htmlspecialchars($row['lkr_price']) ?>"
                                                         <?php if (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1): ?>
                                                         data-product-stock="<?= htmlspecialchars($row['stock_quantity']) ?>"
                                                         data-product-threshold="<?= htmlspecialchars($row['low_stock_threshold']) ?>"
@@ -445,6 +396,15 @@ $result = $conn->query($sql);
                                                 </button>
                                                 <?php endif; ?>
                                                 
+                                                <button type="button" class="action-btn" 
+                                                        style="background: #6f42c1; color: white;"
+                                                        title="Update Selling Price"
+                                                        data-product-id="<?= $row['id'] ?>"
+                                                        data-product-name="<?= htmlspecialchars($row['name']) ?>"
+                                                        onclick="openPriceUpdateModal(this)">
+                                                    <i class="fas fa-tag"></i>
+                                                </button>
+                                                
                                                 <button class="action-btn dispatch-btn" title="Edit Product" 
                                                         onclick="editProduct(<?php echo $row['id']; ?>)">
                                                     <i class="fas fa-edit"></i>
@@ -465,7 +425,7 @@ $result = $conn->query($sql);
                                 <?php endwhile; ?>
                             <?php else: ?>
                                 <tr>
-                                    <td colspan="8" class="text-center" style="padding: 40px; text-align: center; color: #666;">
+                                    <td colspan="<?= (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1) ? 7 : 6 ?>" class="text-center" style="padding: 40px; text-align: center; color: #666;">
                                         <i class="fas fa-box" style="font-size: 2rem; margin-bottom: 10px; display: block;"></i>
                                         No products found
                                     </td>
@@ -496,7 +456,7 @@ $result = $conn->query($sql);
                         
                         <?php for ($i = max(1, $page - 2); $i <= min($totalPages, $page + 2); $i++): ?>
                             <button class="page-btn <?php echo ($i == $page) ? 'active' : ''; ?>" 
-                                    onclick="window.location.href='<?php echo $baseLink; ?>page=<?php echo $i; ?>'">
+                                     onclick="window.location.href='<?php echo $baseLink; ?>page=<?php echo $i; ?>'">
                                 <?php echo $i; ?>
                             </button>
                         <?php endfor; ?>
@@ -540,10 +500,16 @@ $result = $conn->query($sql);
                     <span class="detail-label">Description:</span>
                     <span class="detail-value" id="modal-product-description"></span>
                 </div>
+                <?php if (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1): ?>
                 <div class="customer-detail-row">
-                    <span class="detail-label">Price (LKR):</span>
-                    <span class="detail-value" id="modal-product-price"></span>
+                    <span class="detail-label">Stock:</span>
+                    <span class="detail-value" id="modal-product-stock"></span>
                 </div>
+                <div class="customer-detail-row">
+                    <span class="detail-label">Low Stock Threshold:</span>
+                    <span class="detail-value" id="modal-product-threshold"></span>
+                </div>
+                <?php endif; ?>
                 <div class="customer-detail-row">
                     <span class="detail-label">Status:</span>
                     <span class="detail-value">
@@ -553,6 +519,21 @@ $result = $conn->query($sql);
                 <div class="customer-detail-row">
                     <span class="detail-label">Created:</span>
                     <span class="detail-value" id="modal-product-created"></span>
+                </div>
+
+                <!-- Active Batches & Pricing Breakdown -->
+                <div style="margin-top: 20px; border-top: 1px solid #e2e8f0; padding-top: 15px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <h6 style="margin: 0; font-size: 14px; font-weight: 600; color: #1e293b; display: flex; align-items: center; gap: 6px;">
+                            <i class="fas fa-layer-group" style="color: #1565C0;"></i> Active Batches & Pricing
+                        </h6>
+                        <span id="modal-batch-count" class="badge" style="background: #f1f5f9; color: #475569; font-size: 11px; padding: 4px 8px; border-radius: 12px; border: 1px solid #cbd5e1;">0 batches</span>
+                    </div>
+                    <div id="modal-batches-container" style="overflow-x: auto;">
+                        <div style="text-align: center; padding: 15px; color: #64748b; font-size: 13px;">
+                            <i class="fas fa-spinner fa-spin"></i> Loading batch details...
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -581,7 +562,8 @@ $result = $conn->query($sql);
             const productCategory = button.getAttribute('data-product-category');
             const productCode = button.getAttribute('data-product-code');
             const productDescription = button.getAttribute('data-product-description');
-            const productPrice = button.getAttribute('data-product-price');
+            const productStock = button.getAttribute('data-product-stock');
+            const productThreshold = button.getAttribute('data-product-threshold');
             const productStatus = button.getAttribute('data-product-status');
             const productCreated = button.getAttribute('data-product-created');
 
@@ -591,15 +573,80 @@ $result = $conn->query($sql);
             document.getElementById('modal-product-category').textContent = productCategory;
             document.getElementById('modal-product-code').textContent = productCode || 'N/A';
             document.getElementById('modal-product-description').textContent = productDescription || 'N/A';
-            document.getElementById('modal-product-price').textContent = 'LKR ' + parseFloat(productPrice).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+            
+            const stockEl = document.getElementById('modal-product-stock');
+            if (stockEl) stockEl.textContent = (productStock !== null && productStock !== undefined) ? productStock : 'N/A';
+
+            const thresholdEl = document.getElementById('modal-product-threshold');
+            if (thresholdEl) thresholdEl.textContent = (productThreshold !== null && productThreshold !== undefined) ? productThreshold : 'N/A';
             
             // Set status badge
             const statusElement = document.getElementById('modal-product-status');
-            statusElement.textContent = productStatus.charAt(0).toUpperCase() + productStatus.slice(1);
+            statusElement.textContent = productStatus ? (productStatus.charAt(0).toUpperCase() + productStatus.slice(1)) : '';
             statusElement.className = 'status-badge ' + (productStatus === 'active' ? 'status-active' : 'status-inactive');
             
             // Format dates
             document.getElementById('modal-product-created').textContent = formatDateTime(productCreated);
+
+            // Fetch and render Active Batches & Prices
+            const batchesContainer = document.getElementById('modal-batches-container');
+            const batchCountEl = document.getElementById('modal-batch-count');
+            batchesContainer.innerHTML = '<div style="text-align: center; padding: 15px; color: #64748b; font-size: 13px;"><i class="fas fa-spinner fa-spin"></i> Loading batch details...</div>';
+            batchCountEl.textContent = 'Loading...';
+
+            fetch('/OMS/dist/products/get_stock_batches.php?product_id=' + encodeURIComponent(productId))
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success && data.batches && data.batches.length > 0) {
+                        batchCountEl.textContent = data.batches.length + (data.batches.length === 1 ? ' batch' : ' batches');
+                        let rows = '';
+                        data.batches.forEach(b => {
+                            const sellingPrice = Number(b.selling_price).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                            rows += `
+                                <tr style="border-bottom: 1px solid #f1f5f9;">
+                                    <td style="padding: 8px 10px; font-family: monospace; font-weight: 600; color: #1e293b; font-size: 12px;">${b.batch_number}</td>
+                                    <td style="padding: 8px 10px; color: #64748b; font-size: 12px;">${b.received_date || 'N/A'}</td>
+                                    <td style="padding: 8px 10px; text-align: right; font-weight: 600; color: #059669; font-size: 12px;">Rs. ${sellingPrice}</td>
+                                    <td style="padding: 8px 10px; text-align: center;">
+                                        <span style="background: #dcfce7; color: #15803d; font-weight: 600; padding: 2px 8px; border-radius: 10px; font-size: 11px;">
+                                            ${b.remaining_qty}
+                                        </span>
+                                    </td>
+                                </tr>
+                            `;
+                        });
+                        batchesContainer.innerHTML = `
+                            <table style="width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 4px; background: #fff; border: 1px solid #e2e8f0; border-radius: 6px; overflow: hidden;">
+                                <thead>
+                                    <tr style="background: #f8fafc; border-bottom: 2px solid #e2e8f0; text-align: left;">
+                                        <th style="padding: 8px 10px; color: #475569; font-weight: 600;">Batch #</th>
+                                        <th style="padding: 8px 10px; color: #475569; font-weight: 600;">Received Date</th>
+                                        <th style="padding: 8px 10px; color: #475569; font-weight: 600; text-align: right;">Selling Price</th>
+                                        <th style="padding: 8px 10px; color: #475569; font-weight: 600; text-align: center;">Stock</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${rows}
+                                </tbody>
+                            </table>
+                        `;
+                    } else {
+                        batchCountEl.textContent = '0 batches';
+                        batchesContainer.innerHTML = `
+                            <div style="background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 6px; padding: 12px; text-align: center; color: #64748b; font-size: 13px;">
+                                <i class="fas fa-info-circle" style="margin-right: 4px; color: #94a3b8;"></i> No active stock batches found for this product.
+                            </div>
+                        `;
+                    }
+                })
+                .catch(err => {
+                    batchCountEl.textContent = 'Error';
+                    batchesContainer.innerHTML = `
+                        <div style="color: #dc3545; padding: 10px; font-size: 12px; text-align: center;">
+                            <i class="fas fa-exclamation-triangle"></i> Failed to load batch details.
+                        </div>
+                    `;
+                });
 
             // Show modal
             modal.style.display = 'block';
@@ -760,7 +807,7 @@ $result = $conn->query($sql);
 
     <!-- Stock Update Modal -->
     <div id="stockUpdateModal" class="modal">
-        <div class="modal-content" style="max-width: 500px;">
+        <div class="modal-content" style="max-width: 560px;">
             <div class="modal-header">
                 <h4>Quick Stock Update - <span id="stock-modal-title-name"></span></h4>
                 <span class="close" onclick="closeStockUpdateModal()">&times;</span>
@@ -783,9 +830,21 @@ $result = $conn->query($sql);
                     </div>
                 </div>
 
+                <div class="form-group" style="margin-bottom: 15px;">
+                    <label for="stock_batch_id" style="display: block; margin-bottom: 8px; font-weight: 500;">Batch</label>
+                    <select id="stock_batch_id" class="form-control" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;"></select>
+                    <div id="stock-batch-error" style="color: #e74c3c; font-size: 13px; margin-top: 4px; display: none;"></div>
+                </div>
+
                 <div class="form-group" style="margin-bottom: 20px;">
                     <label for="adjustment_value" style="display: block; margin-bottom: 8px; font-weight: 500;">Quantity</label>
                     <input type="number" id="adjustment_value" class="form-control" min="1" step="1" value="1" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
+                </div>
+
+                <div class="form-group" style="margin-bottom: 20px;">
+                    <label for="stock_reason" style="display: block; margin-bottom: 8px; font-weight: 500;">Reason <span style="color: #e74c3c;">*</span></label>
+                    <textarea id="stock_reason" class="form-control" rows="2" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;" placeholder="Enter reason for the stock adjustment"></textarea>
+                    <div id="stock-reason-error" style="color: #e74c3c; font-size: 13px; margin-top: 4px; display: none;"></div>
                 </div>
 
                 <div class="modal-buttons" style="display: flex; gap: 10px; justify-content: flex-end;">
@@ -796,9 +855,43 @@ $result = $conn->query($sql);
         </div>
     </div>
 
+    <!-- Selling Price Update Modal -->
+    <div id="priceUpdateModal" class="modal">
+        <div class="modal-content" style="max-width: 560px;">
+            <div class="modal-header">
+                <h4>Update Selling Price - <span id="price-modal-title-name"></span></h4>
+                <span class="close" onclick="closePriceUpdateModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div style="margin-bottom: 15px;">
+                    <label style="display: block; margin-bottom: 8px; font-weight: 500;">Current Batch Selling Prices</label>
+                    <div id="price-modal-current-prices" style="max-height: 180px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px; background: #f8fafc;">
+                        <div style="text-align: center; color: #64748b; font-size: 13px;"><i class="fas fa-spinner fa-spin"></i> Loading...</div>
+                    </div>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 20px;">
+                    <label style="display: block; margin-bottom: 8px; font-weight: 500;">New Selling Price (LKR) <span style="color: #e74c3c;">*</span></label>
+                    <input type="number" id="new_selling_price" class="form-control" min="0.01" step="0.01" placeholder="Enter new selling price" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
+                    <div id="price-error" style="color: #e74c3c; font-size: 13px; margin-top: 4px; display: none;"></div>
+                    <div style="font-size: 12px; color: #6c757d; margin-top: 5px;">
+                        <i class="fas fa-info-circle"></i> This will update the selling price for all confirmed batches of this product.
+                    </div>
+                </div>
+
+                <div class="modal-buttons" style="display: flex; gap: 10px; justify-content: flex-end;">
+                    <button type="button" class="btn btn-secondary" onclick="closePriceUpdateModal()">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="confirmPriceUpdateBtn">Update Price</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
         // Stock Update Functionality
         let currentStockValue = 0;
+        let currentBatches = [];
+        let currentSelectedProductId = 0;
 
         function openStockUpdateModal(button) {
             const productId = button.getAttribute('data-product-id');
@@ -806,6 +899,8 @@ $result = $conn->query($sql);
             const productStock = button.getAttribute('data-product-stock');
             
             currentStockValue = parseInt(productStock) || 0;
+            currentSelectedProductId = productId;
+            currentBatches = [];
             
             document.getElementById('stock-modal-title-name').textContent = productName;
             document.getElementById('stock-modal-current-stock').textContent = productStock;
@@ -813,6 +908,11 @@ $result = $conn->query($sql);
             const adjustmentInput = document.getElementById('adjustment_value');
             adjustmentInput.value = 1;
             
+            const reasonInput = document.getElementById('stock_reason');
+            if (reasonInput) reasonInput.value = '';
+            document.getElementById('stock-reason-error').style.display = 'none';
+            document.getElementById('stock-batch-error').style.display = 'none';
+
             // Explicitly set default operation to increase
             document.querySelector('input[name="stock_operation"][value="increase"]').checked = true;
 
@@ -821,54 +921,100 @@ $result = $conn->query($sql);
                 const operation = document.querySelector('input[name="stock_operation"]:checked').value;
                 updateProductStock(productId, operation, adjustmentInput.value);
             };
-            
+
+            loadStockBatches(productId);
+
             document.getElementById('stockUpdateModal').style.display = 'block';
             adjustmentInput.focus();
             adjustmentInput.select();
+        }
+
+        function loadStockBatches(productId) {
+            const batchSelect = document.getElementById('stock_batch_id');
+            batchSelect.innerHTML = '<option value="">Loading batches...</option>';
+
+            fetch('/OMS/dist/products/get_stock_batches.php?product_id=' + encodeURIComponent(productId))
+                .then(response => response.json())
+                .then(data => {
+                    if (!data.success) {
+                        batchSelect.innerHTML = '<option value="">No batches available</option>';
+                        return;
+                    }
+                    currentBatches = data.batches || [];
+
+                    if (currentBatches.length === 0) {
+                        batchSelect.innerHTML = '<option value="">No confirmed batches available</option>';
+                        // Reset quantity validation
+                        adjustmentValueChange();
+                        return;
+                    }
+
+                    batchSelect.innerHTML = '';
+                    currentBatches.forEach(batch => {
+                        const opt = document.createElement('option');
+                        opt.value = batch.batch_id;
+                        let label = 'Batch #' + (batch.batch_number || batch.batch_id) +
+                            ' (Stock: ' + batch.remaining_qty + ', Rs. ' +
+                            Number(batch.selling_price).toFixed(2) + ')';
+                        opt.textContent = label;
+                        if (batch.remaining_qty <= 0) {
+                            opt.disabled = true;
+                        }
+                        batchSelect.appendChild(opt);
+                    });
+
+                    adjustmentValueChange();
+                })
+                .catch(() => {
+                    batchSelect.innerHTML = '<option value="">Error loading batches</option>';
+                });
+        }
+
+        function getSelectedBatch() {
+            const batchSelect = document.getElementById('stock_batch_id');
+            const batchId = parseInt(batchSelect.value) || 0;
+            return currentBatches.find(b => b.batch_id === batchId) || null;
+        }
+
+        function adjustmentValueChange() {
+            const adjustmentInput = document.getElementById('adjustment_value');
+            const selectedOperation = document.querySelector('input[name="stock_operation"]:checked');
+            if (selectedOperation && selectedOperation.value === 'decrease') {
+                if (currentStockValue <= 0) {
+                    toastManager.warning('Cannot decrease stock. Current stock is already 0.');
+                    adjustmentInput.value = 1;
+                    document.querySelector('input[name="stock_operation"][value="increase"]').checked = true;
+                    return;
+                }
+                const batch = getSelectedBatch();
+                let maxAvailable = currentStockValue;
+                if (batch) {
+                    maxAvailable = Math.min(maxAvailable, batch.remaining_qty);
+                }
+                const enteredValue = parseInt(adjustmentInput.value) || 0;
+                if (enteredValue > maxAvailable) {
+                    adjustmentInput.value = maxAvailable;
+                }
+            }
         }
 
         // Validate adjustment value when decreasing stock
         document.addEventListener('DOMContentLoaded', function() {
             const adjustmentInput = document.getElementById('adjustment_value');
             const stockOperationRadios = document.querySelectorAll('input[name="stock_operation"]');
-            
+
             if (adjustmentInput) {
-                adjustmentInput.addEventListener('input', function() {
-                    const selectedOperation = document.querySelector('input[name="stock_operation"]:checked');
-                    if (selectedOperation && selectedOperation.value === 'decrease') {
-                        // Check if stock is 0 - can't decrease from 0
-                        if (currentStockValue <= 0) {
-                            toastManager.warning('Cannot decrease stock. Current stock is already 0.');
-                            this.value = 1;
-                            // Switch back to increase
-                            document.querySelector('input[name="stock_operation"][value="increase"]').checked = true;
-                            return;
-                        }
-                        const enteredValue = parseInt(this.value) || 0;
-                        if (enteredValue > currentStockValue) {
-                            this.value = currentStockValue;
-                        }
-                    }
-                });
+                adjustmentInput.addEventListener('input', adjustmentValueChange);
             }
-            
+
+            const batchSelect = document.getElementById('stock_batch_id');
+            if (batchSelect) {
+                batchSelect.addEventListener('change', adjustmentValueChange);
+            }
+
             // Re-validate when switching to decrease operation
             stockOperationRadios.forEach(radio => {
-                radio.addEventListener('change', function() {
-                    if (this.value === 'decrease') {
-                        // Check if stock is 0 - can't decrease from 0
-                        if (currentStockValue <= 0) {
-                            toastManager.warning('Cannot decrease stock. Current stock is already 0.');
-                            // Switch back to increase
-                            document.querySelector('input[name="stock_operation"][value="increase"]').checked = true;
-                            return;
-                        }
-                        const currentValue = parseInt(adjustmentInput.value) || 0;
-                        if (currentValue > currentStockValue) {
-                            adjustmentInput.value = currentStockValue;
-                        }
-                    }
-                });
+                radio.addEventListener('change', adjustmentValueChange);
             });
         });
 
@@ -878,8 +1024,26 @@ $result = $conn->query($sql);
         }
 
         function updateProductStock(productId, operation, adjustmentValue) {
-            if (adjustmentValue === '' || isNaN(adjustmentValue) || parseInt(adjustmentValue) <= 0) {
+            const adjustmentNum = parseInt(adjustmentValue) || 0;
+            if (adjustmentValue === '' || isNaN(adjustmentValue) || adjustmentNum <= 0) {
                 toastManager.warning('Please enter a valid quantity greater than 0.');
+                return;
+            }
+
+            const reason = (document.getElementById('stock_reason').value || '').trim();
+            if (reason === '') {
+                document.getElementById('stock-reason-error').textContent = 'Please enter a reason for the stock adjustment.';
+                document.getElementById('stock-reason-error').style.display = 'block';
+                toastManager.warning('Please enter a reason for the stock adjustment.');
+                return;
+            }
+
+            const batchSelect = document.getElementById('stock_batch_id');
+            const batchId = parseInt(batchSelect.value) || 0;
+            if (batchId <= 0) {
+                document.getElementById('stock-batch-error').textContent = 'Please select a batch.';
+                document.getElementById('stock-batch-error').style.display = 'block';
+                toastManager.warning('Please select a batch.');
                 return;
             }
 
@@ -887,6 +1051,15 @@ $result = $conn->query($sql);
             if (operation === 'decrease' && currentStockValue <= 0) {
                 toastManager.warning('Cannot decrease stock. Current stock is already 0.');
                 return;
+            }
+
+            // For decrease, ensure quantity does not exceed selected batch remaining stock
+            if (operation === 'decrease') {
+                const batch = getSelectedBatch();
+                if (batch && adjustmentNum > batch.remaining_qty) {
+                    toastManager.warning('Cannot decrease more than the selected batch stock (' + batch.remaining_qty + ').');
+                    return;
+                }
             }
 
             const btn = document.getElementById('confirmStockUpdateBtn');
@@ -902,7 +1075,9 @@ $result = $conn->query($sql);
                 body: JSON.stringify({
                     product_id: productId,
                     operation: operation,
-                    adjustment_value: adjustmentValue
+                    adjustment_value: adjustmentValue,
+                    batch_id: batchId,
+                    reason: reason
                 })
             })
             .then(response => response.json())
@@ -924,6 +1099,116 @@ $result = $conn->query($sql);
                 btn.disabled = false;
             });
         }
+    </script>
+
+    <script>
+        // Selling Price Update Functionality
+        let currentPriceUpdateProductId = 0;
+
+        function openPriceUpdateModal(button) {
+            const productId = button.getAttribute('data-product-id');
+            const productName = button.getAttribute('data-product-name');
+
+            currentPriceUpdateProductId = productId;
+
+            document.getElementById('price-modal-title-name').textContent = productName;
+
+            const priceInput = document.getElementById('new_selling_price');
+            priceInput.value = '';
+            document.getElementById('price-error').style.display = 'none';
+
+            const confirmBtn = document.getElementById('confirmPriceUpdateBtn');
+            confirmBtn.onclick = function() {
+                updateSellingPrice(productId, priceInput.value);
+            };
+
+            const pricesContainer = document.getElementById('price-modal-current-prices');
+            pricesContainer.innerHTML = '<div style="text-align: center; color: #64748b; font-size: 13px;"><i class="fas fa-spinner fa-spin"></i> Loading...</div>';
+
+            fetch('/OMS/dist/products/get_stock_batches.php?product_id=' + encodeURIComponent(productId))
+                .then(response => response.json())
+                .then(data => {
+                    if (!data.success || !data.batches || data.batches.length === 0) {
+                        pricesContainer.innerHTML = '<div style="text-align: center; color: #94a3b8; font-size: 13px; padding: 10px;">No confirmed batches found for this product.</div>';
+                        return;
+                    }
+
+                    let rows = '';
+                    data.batches.forEach(b => {
+                        rows += `
+                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #eef2f7; font-size: 13px;">
+                                <span style="font-family: monospace; font-weight: 600; color: #1e293b;">Batch #${b.batch_number || b.batch_id}</span>
+                                <span style="font-weight: 600; color: #059669;">Rs. ${Number(b.selling_price).toFixed(2)}</span>
+                            </div>
+                        `;
+                    });
+                    pricesContainer.innerHTML = rows;
+                })
+                .catch(() => {
+                    pricesContainer.innerHTML = '<div style="color: #dc3545; padding: 10px; font-size: 12px; text-align: center;"><i class="fas fa-exclamation-triangle"></i> Failed to load batch prices.</div>';
+                });
+
+            document.getElementById('priceUpdateModal').style.display = 'block';
+            setTimeout(() => { priceInput.focus(); }, 100);
+        }
+
+        function closePriceUpdateModal() {
+            const modal = document.getElementById('priceUpdateModal');
+            if (modal) modal.style.display = 'none';
+        }
+
+        function updateSellingPrice(productId, newPrice) {
+            if (newPrice === '' || isNaN(newPrice) || parseFloat(newPrice) <= 0) {
+                document.getElementById('price-error').textContent = 'Please enter a valid selling price greater than 0.';
+                document.getElementById('price-error').style.display = 'block';
+                toastManager.warning('Please enter a valid selling price.');
+                return;
+            }
+
+            const btn = document.getElementById('confirmPriceUpdateBtn');
+            const originalText = btn.textContent;
+            btn.textContent = 'Updating...';
+            btn.disabled = true;
+
+            fetch('/OMS/dist/products/update_selling_price.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    product_id: productId,
+                    new_selling_price: parseFloat(newPrice)
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    closePriceUpdateModal();
+                    toastManager.success('Selling price updated successfully!');
+                    setTimeout(() => { location.reload(); }, 1500);
+                } else {
+                    toastManager.error('Error updating price: ' + data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                toastManager.error('An error occurred while updating the selling price.');
+            })
+            .finally(() => {
+                btn.textContent = originalText;
+                btn.disabled = false;
+            });
+        }
+
+        // Close price modal when clicking outside
+        document.addEventListener('DOMContentLoaded', function() {
+            window.addEventListener('click', function(event) {
+                const modal = document.getElementById('priceUpdateModal');
+                if (event.target === modal) {
+                    closePriceUpdateModal();
+                }
+            });
+        });
     </script>
 
 </body>

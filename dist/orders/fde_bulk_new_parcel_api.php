@@ -72,16 +72,32 @@ function callFdeApi($apiData) {
 
 // Get parcel description and weight
 function getParcelData($orderId, $conn) {
-    $stmt = $conn->prepare("SELECT GROUP_CONCAT(description SEPARATOR ', ') as description_text, SUM(quantity) as total_qty FROM order_items WHERE order_id = ?");
+    // Fetch product names and quantities for description
+    $stmt = $conn->prepare("
+        SELECT p.name as product_name, oi.quantity 
+        FROM order_items oi 
+        JOIN products p ON oi.product_id = p.id 
+        WHERE oi.order_id = ?
+    ");
     $stmt->bind_param("i", $orderId);
     $stmt->execute();
-    $result = $stmt->get_result()->fetch_assoc();
-    
-    $desc = $result['description_text'] ?? 'General Items';
+    $result = $stmt->get_result();
+
+    $desc_parts = [];
+    while ($row = $result->fetch_assoc()) {
+        $desc_parts[] = $row['product_name'] . ' (' . $row['quantity'] . ')';
+    }
+    $desc = implode(', ', $desc_parts);
+    $desc = !empty($desc) ? $desc : 'General Items';
     $desc = strlen($desc) > 100 ? substr($desc, 0, 97) . '...' : $desc;
-    $weight = max(0.5, min(10, ($result['total_qty'] ?? 1) * 0.5));
-    
-    return ['description' => $desc, 'weight' => number_format($weight, 1)];
+
+    // Always use 1 kg as default weight
+    $weight = 1.0;
+
+    return [
+        'description' => $desc,
+        'weight' => number_format($weight, 1)
+    ];
 }
 
 // Extract tracking number from API response

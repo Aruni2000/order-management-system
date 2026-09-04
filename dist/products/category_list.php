@@ -24,35 +24,21 @@ function generateCSRFToken() {
 }
 $csrf_token = generateCSRFToken();
 
-// Fetch only top-level categories for parent dropdown (used in add/edit modals)
-$all_categories = [];
-try {
-    $res = $conn->query("SELECT id, name FROM categories WHERE parent_id IS NULL OR parent_id = 0 ORDER BY name ASC");
-    if ($res) {
-        while ($row = $res->fetch_assoc()) {
-            $all_categories[] = $row;
-        }
-    }
-} catch (Exception $e) {
-    error_log("Error fetching categories: " . $e->getMessage());
-}
-
 // Handle search and filter parameters
 $search = isset($_GET['search']) ? trim($_GET['search']) : '';
 
 // Base SQL for counting total records
 $countSql = "SELECT COUNT(*) as total FROM categories";
 
-// Main query - Updated to include parent category name and status
-$sql = "SELECT c.id, c.name, c.parent_id, c.created_at, c.status, p.name as parent_name 
-        FROM categories c 
-        LEFT JOIN categories p ON c.parent_id = p.id";
+// Main query
+$sql = "SELECT c.id, c.name, c.created_at, c.status 
+        FROM categories c";
 
 // Apply search condition
 if (!empty($search)) {
     $searchTerm = $conn->real_escape_string($search);
-    $searchCondition = " WHERE c.id LIKE '%$searchTerm%' OR c.name LIKE '%$searchTerm%' OR p.name LIKE '%$searchTerm%'";
-    $countSql .= " c LEFT JOIN categories p ON c.parent_id = p.id " . $searchCondition;
+    $searchCondition = " WHERE c.id LIKE '%$searchTerm%' OR c.name LIKE '%$searchTerm%'";
+    $countSql .= " " . $searchCondition;
     $sql .= $searchCondition;
 }
 
@@ -345,7 +331,6 @@ $result = $conn->query($sql);
                             <tr>
                                 <th>ID</th>
                                 <th>Name</th>
-                                <th>Main Category</th>
                                 <th>Created Date</th>
                                 <th>Status</th>
                                 <th>Actions</th>
@@ -357,17 +342,6 @@ $result = $conn->query($sql);
                                     <tr>
                                         <td><?php echo htmlspecialchars($row['id']); ?></td>
                                         <td class="category-name"><?php echo htmlspecialchars($row['name']); ?></td>
-                                        <td>
-                                            <?php if ($row['parent_name']): ?>
-                                                <span class="badge" style="background-color: #e2e8f0; color: #475569;">
-                                                    <i class="fas fa-level-up-alt"></i> <?php echo htmlspecialchars($row['parent_name']); ?>
-                                                </span>
-                                            <?php else: ?>
-                                                <span class="badge" style="background-color: #dbeafe; color: #1e40af;">
-                                                    <i class="fas fa-star"></i> Top Level
-                                                </span>
-                                            <?php endif; ?>
-                                        </td>
                                         <td>
                                             <div style="font-size: 13px;">
                                                 <?php echo date('Y-m-d', strtotime($row['created_at'])); ?>
@@ -387,7 +361,6 @@ $result = $conn->query($sql);
                                                 <button type="button" class="action-btn view-btn view-category-btn"
                                                         data-category-id="<?= $row['id'] ?>"
                                                         data-category-name="<?= htmlspecialchars($row['name']) ?>"
-                                                        data-parent-name="<?= htmlspecialchars($row['parent_name'] ?? 'Top Level') ?>"
                                                         data-category-status="<?= htmlspecialchars($row['status']) ?>"
                                                         data-category-created="<?= htmlspecialchars($row['created_at']) ?>"
                                                         title="View Category Details">
@@ -396,8 +369,7 @@ $result = $conn->query($sql);
                                                 
                                                 <button class="action-btn dispatch-btn edit-category-btn" title="Edit Category"
                                                         data-category-id="<?= $row['id'] ?>"
-                                                        data-category-name="<?= htmlspecialchars($row['name']) ?>"
-                                                        data-parent-id="<?= $row['parent_id'] ?? '0' ?>">
+                                                        data-category-name="<?= htmlspecialchars($row['name']) ?>">
                                                     <i class="fas fa-edit"></i>
                                                 </button>
                                                 
@@ -414,7 +386,7 @@ $result = $conn->query($sql);
                                 <?php endwhile; ?>
                             <?php else: ?>
                                 <tr>
-                                    <td colspan="6" class="text-center" style="padding: 40px; text-align: center; color: #666;">
+                                    <td colspan="5" class="text-center" style="padding: 40px; text-align: center; color: #666;">
                                         <i class="fas fa-tags" style="font-size: 2rem; margin-bottom: 10px; display: block;"></i>
                                         No categories found
                                     </td>
@@ -448,13 +420,11 @@ $result = $conn->query($sql);
             
             const categoryId = button.getAttribute('data-category-id');
             const categoryName = button.getAttribute('data-category-name');
-            const parentName = button.getAttribute('data-parent-name');
             const categoryStatus = button.getAttribute('data-category-status');
             const categoryCreated = button.getAttribute('data-category-created');
 
             document.getElementById('modal-category-id').textContent = categoryId;
             document.getElementById('modal-category-name').textContent = categoryName;
-            document.getElementById('modal-parent-name').textContent = parentName;
             
             const statusElement = document.getElementById('modal-category-status');
             statusElement.textContent = categoryStatus.charAt(0).toUpperCase() + categoryStatus.slice(1);
@@ -548,24 +518,6 @@ $result = $conn->query($sql);
             $('#addCategoryForm')[0].reset();
             $('#addCategoryForm #name').removeClass('is-invalid');
             $('#addCategoryForm .error-feedback').hide();
-            
-            // Reset and initialize Select2 (dropdown renders at body level for clean event handling)
-            const $select = $('#addCategoryModal .parent-select');
-            if ($select.data('select2')) {
-                $select.val('').trigger('change');
-            } else {
-                $select.select2({
-                    placeholder: 'Search Parent Category...',
-                    allowClear: true,
-                    width: '100%'
-                }).on('select2:open', function() {
-                    const searchField = document.querySelector('.select2-search__field');
-                    if (searchField) {
-                        searchField.placeholder = 'Search Parent Category...';
-                        setTimeout(() => searchField.focus(), 100);
-                    }
-                });
-            }
         }
 
         function closeAddCategoryModal() {
@@ -577,7 +529,7 @@ $result = $conn->query($sql);
         // Store original values for change detection
         let editCategoryOriginal = {};
 
-        function openEditCategoryModal(categoryId, categoryName, parentId) {
+        function openEditCategoryModal(categoryId, categoryName) {
             const modal = document.getElementById('editCategoryModal');
             modal.style.display = 'block';
             document.body.style.overflow = 'clip';
@@ -587,48 +539,15 @@ $result = $conn->query($sql);
             $('#editName').val(categoryName).removeClass('is-invalid');
             $('#editCategoryForm .error-feedback').hide();
             
-            // Exclude current category from parent options (prevent self-reference)
-            $('.edit-parent-option').each(function() {
-                const optionCatId = $(this).data('cat-id');
-                if (String(optionCatId) === String(categoryId)) {
-                    $(this).hide();
-                } else {
-                    $(this).show();
-                }
-            });
-            
-            // Initialize or update Select2 (dropdown renders at body level for clean event handling)
-            const $select = $('#editCategoryModal .parent-select-edit');
-            if ($select.data('select2')) {
-                $select.val(null).trigger('change');
-                $select.val(parentId).trigger('change');
-            } else {
-                $select.select2({
-                    placeholder: 'Search Parent Category...',
-                    allowClear: true,
-                    width: '100%'
-                }).on('select2:open', function() {
-                    const searchField = document.querySelector('.select2-search__field');
-                    if (searchField) {
-                        searchField.placeholder = 'Search Parent Category...';
-                        setTimeout(() => searchField.focus(), 100);
-                    }
-                });
-                $select.val(parentId).trigger('change');
-            }
-            
             // Store original values for change detection
             editCategoryOriginal = {
-                name: categoryName,
-                parent_id: parentId
+                name: categoryName
             };
         }
 
         function closeEditCategoryModal() {
             document.getElementById('editCategoryModal').style.display = 'none';
             document.body.style.overflow = '';
-            // Restore all parent options for next time
-            $('.edit-parent-option').show();
         }
 
         // ========== FORM SUBMISSIONS ==========
@@ -684,8 +603,7 @@ $result = $conn->query($sql);
                 }
                 
                 // Check for changes first
-                const currentParentId = $('#editCategoryModal .parent-select-edit').val() || '0';
-                if (name === editCategoryOriginal.name && currentParentId == editCategoryOriginal.parent_id) {
+                if (name === editCategoryOriginal.name) {
                     toastManager.warning('No changes were made to the category.');
                     return;
                 }
@@ -722,8 +640,7 @@ $result = $conn->query($sql);
             $(document).on('click', '.edit-category-btn', function() {
                 const id = $(this).data('category-id');
                 const name = $(this).data('category-name');
-                const parentId = $(this).data('parent-id') || '0';
-                openEditCategoryModal(id, name, parentId);
+                openEditCategoryModal(id, name);
             });
 
             // View buttons
@@ -790,10 +707,6 @@ $result = $conn->query($sql);
                     <span class="detail-value" id="modal-category-name"></span>
                 </div>
                 <div class="customer-detail-row">
-                    <span class="detail-label">Parent Category:</span>
-                    <span class="detail-value" id="modal-parent-name"></span>
-                </div>
-                <div class="customer-detail-row">
                     <span class="detail-label">Status:</span>
                     <span class="detail-value"><span id="modal-category-status"></span></span>
                 </div>
@@ -822,19 +735,6 @@ $result = $conn->query($sql);
                         <input type="text" class="form-control" id="name" name="name"
                                placeholder="Enter category name" required maxlength="255">
                         <div class="error-feedback" id="name-error"></div>
-                    </div>
-                    <div class="form-group-modal">
-                        <label class="form-label">
-                            <i class="fas fa-level-up-alt"></i> Parent Category
-                        </label>
-                        <select class="form-select parent-select" name="parent_id" data-placeholder="Search Parent Category...">
-                            <option value=""></option>
-                            <option value="0">None (Top Level)</option>
-                            <?php foreach ($all_categories as $cat): ?>
-                                <option value="<?php echo $cat['id']; ?>"><?php echo htmlspecialchars($cat['name']); ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                        <div class="error-feedback" id="parent_id-error"></div>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -865,20 +765,6 @@ $result = $conn->query($sql);
                         <input type="text" class="form-control" id="editName" name="name"
                                placeholder="Enter category name" required maxlength="255">
                         <div class="error-feedback" id="editName-error"></div>
-                    </div>
-                    <div class="form-group-modal">
-                        <label class="form-label">
-                            <i class="fas fa-level-up-alt"></i> Parent Category
-                        </label>
-                        <!-- Exclude current category from parent options to prevent self-reference -->
-                        <select class="form-select parent-select-edit" name="parent_id" data-placeholder="Search Parent Category...">
-                            <option value=""></option>
-                            <option value="0">None (Top Level)</option>
-                            <?php foreach ($all_categories as $cat): ?>
-                                <option value="<?php echo $cat['id']; ?>" class="edit-parent-option" data-cat-id="<?php echo $cat['id']; ?>"><?php echo htmlspecialchars($cat['name']); ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                        <div class="error-feedback" id="parent_id-error"></div>
                     </div>
                 </div>
                 <div class="modal-footer">

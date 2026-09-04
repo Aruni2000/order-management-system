@@ -20,8 +20,6 @@ if (!isset($_POST['csrf_token']) || !isset($_SESSION['csrf_token']) || $_POST['c
 }
 
 $name = trim(htmlspecialchars($_POST['name'] ?? '', ENT_QUOTES, 'UTF-8'));
-$parent_id = isset($_POST['parent_id']) ? intval($_POST['parent_id']) : 0;
-$parent_id_val = ($parent_id > 0) ? $parent_id : null;
 
 if (empty($name)) {
     echo json_encode(['success' => false, 'message' => 'Category name is required.']);
@@ -30,18 +28,18 @@ if (empty($name)) {
 
 try {
     // Check for duplicates
-    $check = $conn->prepare("SELECT id FROM categories WHERE name = ? AND (parent_id = ? OR (parent_id IS NULL AND ? IS NULL)) LIMIT 1");
-    $check->bind_param("sii", $name, $parent_id_val, $parent_id_val);
+    $check = $conn->prepare("SELECT id FROM categories WHERE name = ? LIMIT 1");
+    $check->bind_param("s", $name);
     $check->execute();
     if ($check->get_result()->num_rows > 0) {
-        echo json_encode(['success' => false, 'message' => 'Category name already exists in this parent.']);
+        echo json_encode(['success' => false, 'message' => 'Category name already exists.']);
         exit();
     }
     $check->close();
 
-    // Insert
-    $stmt = $conn->prepare("INSERT INTO categories (name, parent_id) VALUES (?, ?)");
-    $stmt->bind_param("si", $name, $parent_id_val);
+    // Insert (flat category, no parent)
+    $stmt = $conn->prepare("INSERT INTO categories (name) VALUES (?)");
+    $stmt->bind_param("s", $name);
     
     if ($stmt->execute()) {
         $category_id = $conn->insert_id;
@@ -49,7 +47,6 @@ try {
         // Log action
         if (isset($_SESSION['user_id'])) {
             $user_id = $_SESSION['user_id'];
-            $parent_text = ($parent_id > 0) ? "under parent ID $parent_id" : "as top-level";
             $details = "Created Category '$name'";
             $log = $conn->prepare("INSERT INTO user_logs (user_id, action_type, inquiry_id, details, created_at) VALUES (?, 'category_create', ?, ?, NOW())");
             $log->bind_param("iis", $user_id, $category_id, $details);

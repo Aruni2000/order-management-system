@@ -82,7 +82,7 @@ if (!empty($search)) {
     $searchTerm = $conn->real_escape_string($search);
     $searchConditions[] = "(
                         i.order_id LIKE '%$searchTerm%' OR 
-                        c.name LIKE '%$searchTerm%' OR 
+                        i.full_name LIKE '%$searchTerm%' OR 
                         i.issue_date LIKE '%$searchTerm%' OR 
                         i.due_date LIKE '%$searchTerm%' OR 
                         i.total_amount LIKE '%$searchTerm%' OR
@@ -100,7 +100,7 @@ if (!empty($order_id_filter)) {
 // Specific Customer Name filter
 if (!empty($customer_name_filter)) {
     $customerNameTerm = $conn->real_escape_string($customer_name_filter);
-    $searchConditions[] = "c.name LIKE '%$customerNameTerm%'";
+    $searchConditions[] = "i.full_name LIKE '%$customerNameTerm%'";
 }
 
 // Date range filter
@@ -488,6 +488,15 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                 </div>
             </div>
             <div class="modal-footer">
+                <!-- Payment Slip View Button / No Slip Message -->
+                <button class="modal-btn modal-btn-info" onclick="viewPaymentSlip()" id="viewPaymentSlipBtn" style="display:none;">
+                    <i class="fas fa-file-image"></i>
+                    View Payment Slip
+                </button>
+                <span id="noPaymentSlipMsg" class="modal-btn modal-btn-secondary" style="display:none;cursor:default;opacity:0.7;">
+                    <i class="fas fa-times-circle"></i>
+                    No Payment Slip
+                </span>
                 <button class="modal-btn modal-btn-secondary" onclick="closeOrderModal()">Close</button>
                 <button class="modal-btn modal-btn-primary" onclick="downloadOrder()" id="downloadBtn" style="display:none;">
                     <i class="fas fa-download"></i>
@@ -521,6 +530,8 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
         
         let currentOrderId = null;
         let currentInterface = null;
+        let currentPaymentSlip = null;
+        let currentPayStatus = null;
 
         // Clear all filter inputs
         function clearFilters() {
@@ -552,6 +563,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
             const modal = document.getElementById('orderModal');
             const modalContent = document.getElementById('modalContent');
             const downloadBtn = document.getElementById('downloadBtn');
+            const viewPaymentSlipBtn = document.getElementById('viewPaymentSlipBtn');
             
             // Show modal
             modal.style.display = 'flex';
@@ -565,6 +577,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                 </div>
             `;
             downloadBtn.style.display = 'none';
+            if (viewPaymentSlipBtn) viewPaymentSlipBtn.style.display = 'none';
             
             // Fetch order details
             const phpFile = 'download_order.php';
@@ -591,6 +604,9 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                 }
                 modalContent.innerHTML = data;
                 downloadBtn.style.display = 'inline-flex';
+
+                // Check payment slip availability
+                checkPaymentSlipAvailability();
             })
             .catch(error => {
                 console.error('Error loading order details:', error);
@@ -645,6 +661,67 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
             document.body.style.overflow = '';
             currentOrderId = null;
             currentInterface = null;
+            currentPaymentSlip = null;
+            currentPayStatus = null;
+        }
+
+        // Function to check payment slip availability
+        function checkPaymentSlipAvailability() {
+            if (!currentOrderId) return;
+
+            // Fetch payment slip information from server
+            fetch('get_payment_slip_info.php?order_id=' + encodeURIComponent(currentOrderId), {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    currentPaymentSlip = data.payment_slip;
+                    currentPayStatus = data.pay_status;
+
+                    const viewPaymentSlipBtn = document.getElementById('viewPaymentSlipBtn');
+                    const noSlipMsg = document.getElementById('noPaymentSlipMsg');
+
+                    if (currentPayStatus === 'paid') {
+                        if (currentPaymentSlip && currentPaymentSlip.trim() !== '') {
+                            viewPaymentSlipBtn.style.display = 'inline-flex';
+                            if (noSlipMsg) noSlipMsg.style.display = 'none';
+                        } else {
+                            viewPaymentSlipBtn.style.display = 'none';
+                            if (noSlipMsg) noSlipMsg.style.display = 'inline-flex';
+                        }
+                    } else {
+                        viewPaymentSlipBtn.style.display = 'none';
+                        if (noSlipMsg) noSlipMsg.style.display = 'none';
+                    }
+                } else {
+                    console.log('No payment slip information available');
+                }
+            })
+            .catch(error => {
+                console.error('Error checking payment slip:', error);
+            });
+        }
+
+        // Function to view payment slip with no-slip message
+        function viewPaymentSlip() {
+            // Check if payment slip exists
+            if (!currentPaymentSlip || currentPaymentSlip.trim() === '') {
+                const slipBtn = document.getElementById('viewPaymentSlipBtn');
+                const noSlipMsg = document.getElementById('noPaymentSlipMsg');
+                if (slipBtn) slipBtn.style.display = 'none';
+                if (noSlipMsg) noSlipMsg.style.display = 'inline-flex';
+                return;
+            }
+
+            // Construct the payment slip URL
+            const slipUrl = '/OMS/dist/uploads/payment_slips/' + encodeURIComponent(currentPaymentSlip);
+
+            // Open payment slip in new tab
+            window.open(slipUrl, '_blank');
         }
 
         // Download order

@@ -184,18 +184,33 @@ try {
     $grn_id = $conn->insert_id;
     $insertGrn->close();
 
-    // Insert GRN items
+    // Insert GRN items and their batch records
     $insertItem = $conn->prepare("INSERT INTO grn_items (grn_id, product_id, batch_number, quantity, buying_price, selling_price) VALUES (?, ?, ?, ?, ?, ?)");
+    $insertBatch = $conn->prepare("INSERT INTO batches (tenant_id, grn_id, grn_item_id, supplier_id, product_id, batch_number, buying_price, selling_price, received_qty, remaining_qty, received_date, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+    $batchStatus = $auto_confirm ? 'confirmed' : 'draft';
     foreach ($items as $item) {
         $insertItem->bind_param("iisidd", $grn_id, $item['product_id'], $item['batch_number'], $item['quantity'], $item['buying_price'], $item['selling_price']);
         if (!$insertItem->execute()) {
             throw new Exception("Failed to add item: " . $insertItem->error);
         }
+        $grn_item_id = $conn->insert_id;
+
+        $insertBatch->bind_param(
+            "iiiiisdiiiss",
+            $tenant_id, $grn_id, $grn_item_id, $supplier_id, $item['product_id'],
+            $item['batch_number'], $item['buying_price'], $item['selling_price'],
+            $item['quantity'], $item['quantity'], $received_date, $batchStatus
+        /* types: i i i i i s d d i i s s */
+        );
+        if (!$insertBatch->execute()) {
+            throw new Exception("Failed to add batch record: " . $insertBatch->error);
+        }
     }
     $insertItem->close();
+    $insertBatch->close();
 
-    // Auto-confirm: update product stock quantities
-    if ($auto_confirm) {
+    // Auto-confirm: update product stock quantities (only if allow_inventory is enabled)
+    if ($auto_confirm && isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1) {
         $updateStock = $conn->prepare("UPDATE products SET stock_quantity = stock_quantity + ? WHERE id = ?");
         foreach ($items as $item) {
             $updateStock->bind_param("ii", $item['quantity'], $item['product_id']);

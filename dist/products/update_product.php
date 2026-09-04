@@ -77,13 +77,15 @@ try {
     // Get and sanitize form data
     $name = sanitizeInput($_POST['name'] ?? '');
     $status = sanitizeInput($_POST['status'] ?? '');
-    $lkr_price = sanitizeInput($_POST['lkr_price'] ?? '');
     $product_code = sanitizeInput($_POST['product_code'] ?? '');
     $description = sanitizeInput($_POST['description'] ?? '');
     
+    // Price and stock are not editable in the product form; preserve existing values.
+    // Stock is managed via GRN, orders and stock updates.
+    
     // Default values for stock if inventory
     $allow_inventory = isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1;
-    $stock_quantity = $allow_inventory ? intval($_POST['stock_quantity'] ?? $originalProduct['stock_quantity']) : intval($originalProduct['stock_quantity']);
+    $stock_quantity = intval($originalProduct['stock_quantity']);
     $low_stock_threshold = $allow_inventory ? intval($_POST['low_stock_threshold'] ?? $originalProduct['low_stock_threshold']) : intval($originalProduct['low_stock_threshold']);
     $category_id = intval($_POST['category_id'] ?? $originalProduct['category_id']);
 
@@ -102,18 +104,6 @@ try {
     // Validate status
     if (empty($status) || !in_array($status, ['active', 'inactive'])) {
         $errors['status'] = 'Please select a valid status';
-    }
-
-    // Validate price
-    if (empty($lkr_price) || !is_numeric($lkr_price)) {
-        $errors['lkr_price'] = 'Price is required and must be a valid number';
-    } else {
-        $numPrice = floatval($lkr_price);
-        if ($numPrice < 0) {
-            $errors['lkr_price'] = 'Price cannot be negative';
-        } elseif ($numPrice > 99999999.99) {
-            $errors['lkr_price'] = 'Price is too high (maximum 99,999,999.99)';
-        }
     }
 
     // Validate product code
@@ -135,9 +125,6 @@ try {
     }
 
     // Validate stock fields
-    if ($stock_quantity < 0) {
-        $errors['stock_quantity'] = 'Stock quantity cannot be negative';
-    }
     if ($low_stock_threshold < 0) {
         $errors['low_stock_threshold'] = 'Stock Warning Level cannot be negative';
     }
@@ -169,7 +156,7 @@ try {
 
     // Prepare update query
     $updateQuery = "UPDATE products 
-                    SET name = ?, description = ?, lkr_price = ?, status = ?, product_code = ?, stock_quantity = ?, low_stock_threshold = ?, category_id = ?
+                    SET name = ?, description = ?, status = ?, product_code = ?, stock_quantity = ?, low_stock_threshold = ?, category_id = ?
                     WHERE id = ?";
 
     $updateStmt = $conn->prepare($updateQuery);
@@ -179,7 +166,7 @@ try {
     }
 
     // Bind parameters
-    $updateStmt->bind_param("ssdssiiii", $name, $description, $lkr_price, $status, $product_code, $stock_quantity, $low_stock_threshold, $category_id, $product_id);
+    $updateStmt->bind_param("ssssiiii", $name, $description, $status, $product_code, $stock_quantity, $low_stock_threshold, $category_id, $product_id);
 
     // Execute the update
     if ($updateStmt->execute()) {
@@ -199,9 +186,6 @@ try {
                 if ($originalProduct['status'] !== $status) {
                     $changes[] = "Status: '{$originalProduct['status']}' → '{$status}'";
                 }
-                if (floatval($originalProduct['lkr_price']) !== floatval($lkr_price)) {
-                    $changes[] = "Price: LKR {$originalProduct['lkr_price']} → LKR {$lkr_price}";
-                }
                 if ($originalProduct['product_code'] !== $product_code) {
                     $changes[] = "Code: '{$originalProduct['product_code']}' → '{$product_code}'";
                 }
@@ -210,9 +194,6 @@ try {
                 }
                 if (intval($originalProduct['category_id'] ?? 0) !== $category_id) {
                     $changes[] = "Category ID: {$originalProduct['category_id']} to {$category_id}";
-                }
-                if (intval($originalProduct['stock_quantity'] ?? 0) !== $stock_quantity) {
-                    $changes[] = "Stock: {$originalProduct['stock_quantity']} to {$stock_quantity}";
                 }
                 if (intval($originalProduct['low_stock_threshold'] ?? 10) !== $low_stock_threshold) {
                     $changes[] = "Threshold: {$originalProduct['low_stock_threshold']} to {$low_stock_threshold}";

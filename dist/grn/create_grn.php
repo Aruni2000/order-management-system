@@ -26,7 +26,7 @@ if ($supResult) {
 
 // Fetch active products
 $products = [];
-$prodResult = $conn->query("SELECT id, name, product_code, lkr_price, stock_quantity FROM products WHERE status = 'active' ORDER BY name ASC");
+$prodResult = $conn->query("SELECT id, name, product_code, stock_quantity FROM products WHERE status = 'active' ORDER BY name ASC");
 if ($prodResult) {
     while ($row = $prodResult->fetch_assoc()) {
         $products[] = $row;
@@ -219,7 +219,6 @@ $initial_batch_number = 'BN-' . date('Ymd') . '-' . date('His') . '-0'; // depre
                                                     <option value="">-- Select Product --</option>
                                                     <?php foreach ($products as $p): ?>
                                                         <option value="<?php echo $p['id']; ?>"
-                                                            data-price="<?php echo $p['lkr_price']; ?>"
                                                             data-stock="<?php echo $p['stock_quantity']; ?>"
                                                             data-code="<?php echo htmlspecialchars($p['product_code']); ?>">
                                                             <?php echo htmlspecialchars($p['name']); ?> (<?php echo $p['product_code']; ?>)
@@ -244,7 +243,6 @@ $initial_batch_number = 'BN-' . date('Ymd') . '-' . date('His') . '-0'; // depre
                                             </td>
                                             <td>
                                                 <input type="text" name="items[0][batch_number]" class="form-control batch-number-input" value="" maxlength="30" readonly style="font-family: monospace; font-size: 12px; background: #f1f5f9;" placeholder="Auto-generated">
-                                                <script>document.currentScript.previousElementSibling.value = generateBatchNumber(document.currentScript.closest('tr').querySelector('.product-select').selectedOptions[0]?.dataset.code || 'BATCH');</script>
                                             </td>
                                             <td class="line-subtotal">
                                                 Rs. 0.00
@@ -332,10 +330,6 @@ $initial_batch_number = 'BN-' . date('Ymd') . '-' . date('His') . '-0'; // depre
         $(document).on('change', '.product-select', function() {
             const $row = $(this).closest('tr');
             const selected = $(this).find(':selected');
-            const price = selected.data('price');
-            if (price) {
-                $row.find('.selling-price-input').val(parseFloat(price).toFixed(2));
-            }
             // Auto-generate batch number with product code (always regenerate)
             const batchInput = $row.find('.batch-number-input');
             const productCode = selected.data('code') || 'BATCH';
@@ -374,7 +368,7 @@ $initial_batch_number = 'BN-' . date('Ymd') . '-' . date('His') . '-0'; // depre
 
     function addNewRow() {
         const productOptions = productsData.map(p =>
-            `<option value="${p.id}" data-price="${p.lkr_price}" data-stock="${p.stock_quantity}" data-code="${p.product_code}">${p.name} (${p.product_code})</option>`
+            `<option value="${p.id}" data-stock="${p.stock_quantity}" data-code="${p.product_code}">${p.name} (${p.product_code})</option>`
         ).join('');
 
         const row = `
