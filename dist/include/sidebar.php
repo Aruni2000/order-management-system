@@ -273,6 +273,7 @@ $safe_company_name = htmlspecialchars($company_name, ENT_QUOTES, 'UTF-8');
           </ul>
         </li>
 
+        <?php if ($is_admin && $is_main_admin_tenant): ?>
         <li class="pc-item pc-caption"><label>Purchasing Management</label></li>
 
         <li class="pc-item pc-hasmenu">
@@ -294,6 +295,7 @@ $safe_company_name = htmlspecialchars($company_name, ENT_QUOTES, 'UTF-8');
             <li class="pc-item"><a class="pc-link" href="../grn/cancelled_grn_list.php">Cancelled GRNs</a></li>
           </ul>
         </li>
+        <?php endif; ?>
         <?php endif; ?>
 
         <li class="pc-item pc-caption"><label>Lead Management</label></li>
@@ -323,8 +325,8 @@ $safe_company_name = htmlspecialchars($company_name, ENT_QUOTES, 'UTF-8');
 
         <ul class="pc-submenu">
             <li class="pc-item">
-                <a class="pc-link" href="../admin/edit_tenant.php">
-                    <span class="pc-text">Edit Company</span>
+                <a class="pc-link" href="../admin/branding.php">
+                    <span class="pc-text">Edit Branding</span>
                 </a>
             </li>
         </ul>

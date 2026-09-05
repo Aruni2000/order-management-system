@@ -19,6 +19,11 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     exit();
 }
 
+if (!isset($_SESSION['is_main_admin']) || $_SESSION['is_main_admin'] != 1) {
+    header("Location: /OMS/dist/dashboard/index.php");
+    exit();
+}
+
 // Include database connection
 include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 

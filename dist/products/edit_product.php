@@ -33,10 +33,20 @@ if ($product_id <= 0) {
 
 // Fetch existing product data
 $product = null;
+$session_tenant_id = isset($_SESSION['tenant_id']) ? (int)$_SESSION['tenant_id'] : 0;
+$is_main_admin = isset($_SESSION['is_main_admin']) ? (int)$_SESSION['is_main_admin'] : 0;
+
 try {
-    $query = "SELECT * FROM products WHERE id = ? LIMIT 1";
-    $stmt = $conn->prepare($query);
-    $stmt->bind_param("i", $product_id);
+    if ($is_main_admin) {
+        $query = "SELECT * FROM products WHERE id = ? LIMIT 1";
+        $stmt = $conn->prepare($query);
+        $stmt->bind_param("i", $product_id);
+    } else {
+        $query = "SELECT * FROM products WHERE id = ? AND tenant_id = ? LIMIT 1";
+        $stmt = $conn->prepare($query);
+        $stmt->bind_param("ii", $product_id, $session_tenant_id);
+    }
+    
     $stmt->execute();
     $result = $stmt->get_result();
     
@@ -76,6 +86,20 @@ try {
     $catStmt->close();
 } catch (Exception $e) {
     error_log("Error fetching categories: " . $e->getMessage());
+}
+
+$tenants = [];
+if ($is_main_admin) {
+    try {
+        $tRes = $conn->query("SELECT tenant_id, company_name FROM tenants WHERE status = 'active' ORDER BY is_main_admin DESC, company_name ASC");
+        if ($tRes) {
+            while ($row = $tRes->fetch_assoc()) {
+                $tenants[] = $row;
+            }
+        }
+    } catch (Exception $e) {
+        error_log("Error fetching tenants: " . $e->getMessage());
+    }
 }
 ?>
 
@@ -316,6 +340,25 @@ try {
                                     <div class="error-feedback" id="status-error"></div>
                                 </div>
                             </div>
+
+                            <!-- Tenant Selector (Main Admin Only) -->
+                            <?php if ($is_main_admin): ?>
+                            <div class="form-row">
+                                <div class="product-form-group full-width">
+                                    <label for="tenant_id" class="form-label">
+                                        <i class="fas fa-building"></i> Target Company / Tenant<span class="required">*</span>
+                                    </label>
+                                    <select class="form-select" id="tenant_id" name="tenant_id" required>
+                                        <?php foreach ($tenants as $t): ?>
+                                            <option value="<?php echo $t['tenant_id']; ?>" <?php echo ($t['tenant_id'] == $product['tenant_id']) ? 'selected' : ''; ?>>
+                                                <?php echo htmlspecialchars($t['company_name']); ?>
+                                            </option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                    <div class="error-feedback" id="tenant_id-error"></div>
+                                </div>
+                            </div>
+                            <?php endif; ?>
 
                             <!-- Category and Product Code -->
                             <div class="form-row">

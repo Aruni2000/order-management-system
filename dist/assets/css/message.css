@@ -425,7 +425,7 @@
         }
 
         /* Form Styles */
-        .form-group {
+        .api-modal .form-group {
             margin-bottom: 18px;
         }
 
@@ -631,7 +631,7 @@
                 padding: 16px 20px;
             }
         }
-        .form-group label {
+        .api-modal .form-group label {
     font-weight: 500;
     color: #374151;
     margin-bottom: 8px;
@@ -639,8 +639,7 @@
     text-transform: uppercase;
     letter-spacing: 0.025em;
 }
-.form-group input,
-.form-group select {
+.api-modal .form-group input, .api-modal .form-group select {
         border: 1px solid #dee2e6;
     border-radius: 6px;
     padding: 8px 12px;

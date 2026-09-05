@@ -22,6 +22,13 @@ include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 // Set content type to JSON
 header('Content-Type: application/json');
 
+// Check if user is main admin (Admin only access)
+$is_main_admin = isset($_SESSION['is_main_admin']) ? (int)$_SESSION['is_main_admin'] : 0;
+if ($is_main_admin != 1) {
+    echo json_encode(['success' => false, 'message' => 'Access denied. Only administrators can update stock.']);
+    exit();
+}
+
 // Check if inventory management is enabled
 if (!isset($_SESSION['allow_inventory']) || $_SESSION['allow_inventory'] != 1) {
     echo json_encode(['success' => false, 'message' => 'Inventory management is disabled.']);
@@ -75,15 +82,24 @@ try {
     }
     
     // Check if product exists
-    $checkSql = "SELECT id, name, stock_quantity FROM products WHERE id = ?";
-    $checkStmt = $conn->prepare($checkSql);
+    $session_tenant_id = isset($_SESSION['tenant_id']) ? (int)$_SESSION['tenant_id'] : 0;
+    $is_main_admin = isset($_SESSION['is_main_admin']) ? (int)$_SESSION['is_main_admin'] : 0;
+    
+    if ($is_main_admin) {
+        $checkSql = "SELECT id, name, stock_quantity FROM products WHERE id = ?";
+        $checkStmt = $conn->prepare($checkSql);
+        $checkStmt->bind_param("i", $product_id);
+    } else {
+        $checkSql = "SELECT id, name, stock_quantity FROM products WHERE id = ? AND tenant_id = ?";
+        $checkStmt = $conn->prepare($checkSql);
+        $checkStmt->bind_param("ii", $product_id, $session_tenant_id);
+    }
     
     if (!$checkStmt) {
         echo json_encode(['success' => false, 'message' => 'Database prepare error: ' . $conn->error]);
         exit();
     }
     
-    $checkStmt->bind_param("i", $product_id);
     $checkStmt->execute();
     $result = $checkStmt->get_result();
     
@@ -97,13 +113,20 @@ try {
     $checkStmt->close();
 
     // Check batch exists, belongs to product, and supports the operation
-    $batchSql = "SELECT batch_id, batch_number, remaining_qty, status FROM batches WHERE batch_id = ? AND product_id = ?";
-    $batchStmt = $conn->prepare($batchSql);
+    if ($is_main_admin) {
+        $batchSql = "SELECT batch_id, batch_number, remaining_qty, status FROM batches WHERE batch_id = ? AND product_id = ?";
+        $batchStmt = $conn->prepare($batchSql);
+        $batchStmt->bind_param("ii", $batch_id, $product_id);
+    } else {
+        $batchSql = "SELECT batch_id, batch_number, remaining_qty, status FROM batches WHERE batch_id = ? AND product_id = ? AND tenant_id = ?";
+        $batchStmt = $conn->prepare($batchSql);
+        $batchStmt->bind_param("iii", $batch_id, $product_id, $session_tenant_id);
+    }
     if (!$batchStmt) {
         echo json_encode(['success' => false, 'message' => 'Database prepare error: ' . $conn->error]);
         exit();
     }
-    $batchStmt->bind_param("ii", $batch_id, $product_id);
+    
     $batchStmt->execute();
     $batchResult = $batchStmt->get_result();
 
@@ -159,15 +182,20 @@ try {
         }
         $updateBatchStmt->close();
 
-        // Update product stock
-        $updateSql = "UPDATE products SET stock_quantity = ? WHERE id = ?";
-        $updateStmt = $conn->prepare($updateSql);
+        // Update product stock (with tenant isolation)
+        if ($is_main_admin) {
+            $updateSql = "UPDATE products SET stock_quantity = ? WHERE id = ?";
+            $updateStmt = $conn->prepare($updateSql);
+            $updateStmt->bind_param("ii", $new_stock, $product_id);
+        } else {
+            $updateSql = "UPDATE products SET stock_quantity = ? WHERE id = ? AND tenant_id = ?";
+            $updateStmt = $conn->prepare($updateSql);
+            $updateStmt->bind_param("iii", $new_stock, $product_id, $session_tenant_id);
+        }
         
         if (!$updateStmt) {
             throw new Exception('Database prepare error: ' . $conn->error);
         }
-        
-        $updateStmt->bind_param("ii", $new_stock, $product_id);
         
         if (!$updateStmt->execute()) {
             throw new Exception('Failed to update stock: ' . $updateStmt->error);

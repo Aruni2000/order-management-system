@@ -457,7 +457,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
 
                                 $updateBatch = null;
                                 if ($isBatchAware) {
-                                    $updateBatch = $conn->prepare("UPDATE batches SET remaining_qty = remaining_qty + ? WHERE batch_id = ?");
+                                    if ($is_main_admin === 1 && $role_id === 1) {
+                                        $updateBatch = $conn->prepare("UPDATE batches SET remaining_qty = remaining_qty + ? WHERE batch_id = ?");
+                                    } else {
+                                        $updateBatch = $conn->prepare("UPDATE batches SET remaining_qty = remaining_qty + ? WHERE batch_id = ? AND tenant_id = ?");
+                                    }
                                 }
 
                                 while ($item = $itemsResult->fetch_assoc()) {
@@ -471,17 +475,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                                         $oibStmt->bind_param("i", $item['item_id']);
                                         $oibStmt->execute();
                                         $oibResult = $oibStmt->get_result();
-                                        while ($oib = $oibResult->fetch_assoc()) {
+                                    while ($oib = $oibResult->fetch_assoc()) {
+                                        if ($is_main_admin === 1 && $role_id === 1) {
                                             $updateBatch->bind_param("ii", $oib['quantity'], $oib['batch_id']);
-                                            $updateBatch->execute();
+                                        } else {
+                                            $updateBatch->bind_param("iii", $oib['quantity'], $oib['batch_id'], $tenant_id);
                                         }
+                                        $updateBatch->execute();
+                                    }
                                         $oibStmt->close();
                                     }
 
-                                    // Update stock - Increment stock for returned items
-                                    $updateStockSql = "UPDATE products SET stock_quantity = stock_quantity + ? WHERE id = ?";
+                                    // Update stock - Increment stock for returned items (with tenant isolation)
+                                    $updateStockSql = "UPDATE products SET stock_quantity = stock_quantity + ? WHERE id = ? AND tenant_id = ?";
                                     $stockStmt = $conn->prepare($updateStockSql);
-                                    $stockStmt->bind_param("ii", $quantity, $productId);
+                                    $stockStmt->bind_param("iii", $quantity, $productId, $tenant_id);
                                     if ($stockStmt->execute()) {
                                         $inventoryUpdatedCount++;
                                     }

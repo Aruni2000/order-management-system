@@ -6,6 +6,10 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     echo json_encode(['success' => false, 'message' => 'Unauthorized access.']);
     exit();
 }
+if (!isset($_SESSION['is_main_admin']) || $_SESSION['is_main_admin'] != 1) {
+    echo json_encode(['success' => false, 'message' => 'Unauthorized: Only main admin can cancel GRNs.']);
+    exit();
+}
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     echo json_encode(['success' => false, 'message' => 'Invalid request method.']);
     exit();

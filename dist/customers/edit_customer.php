@@ -36,15 +36,28 @@ if ($customer_id <= 0) {
     exit();
 }
 
-// Fetch customer data
+// Fetch customer data (with tenant isolation)
 $customer = null;
-$customerStmt = $conn->prepare("
-    SELECT c.*, ct.city_name 
-    FROM customers c 
-    LEFT JOIN city_table ct ON c.city_id = ct.city_id 
-    WHERE c.customer_id = ?
-");
-$customerStmt->bind_param("i", $customer_id);
+$session_tenant_id = isset($_SESSION['tenant_id']) ? (int)$_SESSION['tenant_id'] : 0;
+$is_main_admin = isset($_SESSION['is_main_admin']) ? (int)$_SESSION['is_main_admin'] : 0;
+
+if ($is_main_admin) {
+    $customerStmt = $conn->prepare("
+        SELECT c.*, ct.city_name 
+        FROM customers c 
+        LEFT JOIN city_table ct ON c.city_id = ct.city_id 
+        WHERE c.customer_id = ?
+    ");
+    $customerStmt->bind_param("i", $customer_id);
+} else {
+    $customerStmt = $conn->prepare("
+        SELECT c.*, ct.city_name 
+        FROM customers c 
+        LEFT JOIN city_table ct ON c.city_id = ct.city_id 
+        WHERE c.customer_id = ? AND c.tenant_id = ?
+    ");
+    $customerStmt->bind_param("ii", $customer_id, $session_tenant_id);
+}
 $customerStmt->execute();
 $customerResult = $customerStmt->get_result();
 

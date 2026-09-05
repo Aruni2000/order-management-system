@@ -214,10 +214,10 @@ try {
     // Only proceed with duplicate checks if basic validation passed
     if (empty($errors)) {
 
-        // 9. CHECK DUPLICATE EMAIL
+        // 9. CHECK DUPLICATE EMAIL (within same tenant)
         if (!empty($email)) {
-            $emailCheckStmt = $conn->prepare("SELECT customer_id, name FROM customers WHERE email = ?");
-            $emailCheckStmt->bind_param("s", $email);
+            $emailCheckStmt = $conn->prepare("SELECT customer_id, name FROM customers WHERE email = ? AND tenant_id = ?");
+            $emailCheckStmt->bind_param("si", $email, $tenantID);
             $emailCheckStmt->execute();
             $emailCheckResult = $emailCheckStmt->get_result();
             
@@ -228,10 +228,10 @@ try {
             $emailCheckStmt->close();
         }
 
-        // 10. CHECK PRIMARY PHONE AS PRIMARY NUMBER
+        // 10. CHECK PRIMARY PHONE AS PRIMARY NUMBER (within same tenant)
         if (!empty($phone)) {
-            $phoneCheckStmt = $conn->prepare("SELECT customer_id, name FROM customers WHERE phone = ?");
-            $phoneCheckStmt->bind_param("s", $phone);
+            $phoneCheckStmt = $conn->prepare("SELECT customer_id, name FROM customers WHERE phone = ? AND tenant_id = ?");
+            $phoneCheckStmt->bind_param("si", $phone, $tenantID);
             $phoneCheckStmt->execute();
             $phoneCheckResult = $phoneCheckStmt->get_result();
             
@@ -242,10 +242,10 @@ try {
             $phoneCheckStmt->close();
         }
 
-        // 11. CHECK PRIMARY PHONE AS SECONDARY NUMBER
+        // 11. CHECK PRIMARY PHONE AS SECONDARY NUMBER (within same tenant)
         if (!empty($phone) && !isset($errors['phone'])) {
-            $phoneAsPhone2Stmt = $conn->prepare("SELECT customer_id, name FROM customers WHERE phone_2 = ?");
-            $phoneAsPhone2Stmt->bind_param("s", $phone);
+            $phoneAsPhone2Stmt = $conn->prepare("SELECT customer_id, name FROM customers WHERE phone_2 = ? AND tenant_id = ?");
+            $phoneAsPhone2Stmt->bind_param("si", $phone, $tenantID);
             $phoneAsPhone2Stmt->execute();
             $phoneAsPhone2Result = $phoneAsPhone2Stmt->get_result();
             
@@ -256,10 +256,10 @@ try {
             $phoneAsPhone2Stmt->close();
         }
 
-        // 12. CHECK SECONDARY PHONE AS PRIMARY NUMBER (if phone_2 is provided)
+        // 12. CHECK SECONDARY PHONE AS PRIMARY NUMBER (if phone_2 is provided, within same tenant)
         if (!empty($phone_2)) {
-            $phone2AsPrimaryStmt = $conn->prepare("SELECT customer_id, name FROM customers WHERE phone = ?");
-            $phone2AsPrimaryStmt->bind_param("s", $phone_2);
+            $phone2AsPrimaryStmt = $conn->prepare("SELECT customer_id, name FROM customers WHERE phone = ? AND tenant_id = ?");
+            $phone2AsPrimaryStmt->bind_param("si", $phone_2, $tenantID);
             $phone2AsPrimaryStmt->execute();
             $phone2AsPrimaryResult = $phone2AsPrimaryStmt->get_result();
             
@@ -270,10 +270,10 @@ try {
             $phone2AsPrimaryStmt->close();
         }
 
-        // 13. CHECK SECONDARY PHONE AS SECONDARY NUMBER (if phone_2 is provided)
+        // 13. CHECK SECONDARY PHONE AS SECONDARY NUMBER (if phone_2 is provided, within same tenant)
         if (!empty($phone_2) && !isset($errors['phone_2'])) {
-            $phone2AsPhone2Stmt = $conn->prepare("SELECT customer_id, name FROM customers WHERE phone_2 = ?");
-            $phone2AsPhone2Stmt->bind_param("s", $phone_2);
+            $phone2AsPhone2Stmt = $conn->prepare("SELECT customer_id, name FROM customers WHERE phone_2 = ? AND tenant_id = ?");
+            $phone2AsPhone2Stmt->bind_param("si", $phone_2, $tenantID);
             $phone2AsPhone2Stmt->execute();
             $phone2AsPhone2Result = $phone2AsPhone2Stmt->get_result();
             

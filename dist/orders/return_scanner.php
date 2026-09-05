@@ -175,7 +175,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
                     $updateBatch = null;
                     if ($isBatchAware) {
-                        $updateBatch = $conn->prepare("UPDATE batches SET remaining_qty = remaining_qty + ? WHERE batch_id = ?");
+                        if ($is_main_admin) {
+                            $updateBatch = $conn->prepare("UPDATE batches SET remaining_qty = remaining_qty + ? WHERE batch_id = ?");
+                        } else {
+                            $updateBatch = $conn->prepare("UPDATE batches SET remaining_qty = remaining_qty + ? WHERE batch_id = ? AND tenant_id = ?");
+                        }
                     }
 
                     while ($item = $itemsResult->fetch_assoc()) {
@@ -190,7 +194,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                             $oibStmt->execute();
                             $oibResult = $oibStmt->get_result();
                             while ($oib = $oibResult->fetch_assoc()) {
-                                $updateBatch->bind_param("ii", $oib['quantity'], $oib['batch_id']);
+                                if ($is_main_admin) {
+                                    $updateBatch->bind_param("ii", $oib['quantity'], $oib['batch_id']);
+                                } else {
+                                    $updateBatch->bind_param("iii", $oib['quantity'], $oib['batch_id'], $session_tenant_id);
+                                }
                                 if (!$updateBatch->execute()) {
                                     throw new Exception("Failed to restore batch stock.");
                                 }
@@ -198,10 +206,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                             $oibStmt->close();
                         }
 
-                        // Update stock - Increment stock for returned items
-                        $updateStockSql = "UPDATE products SET stock_quantity = stock_quantity + ? WHERE id = ?";
+                        // Update stock - Increment stock for returned items (with tenant isolation)
+                        $updateStockSql = "UPDATE products SET stock_quantity = stock_quantity + ? WHERE id = ? AND tenant_id = ?";
                         $stockStmt = $conn->prepare($updateStockSql);
-                        $stockStmt->bind_param("ii", $quantity, $productId);
+                        $stockStmt->bind_param("iii", $quantity, $productId, $tenant_id);
                         
                         if (!$stockStmt->execute()) {
                              throw new Exception("Failed to update stock for product ID: " . $productId);

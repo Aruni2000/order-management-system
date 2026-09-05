@@ -6,6 +6,10 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     echo json_encode(['success' => false, 'message' => 'Unauthorized access.']);
     exit();
 }
+if (!isset($_SESSION['is_main_admin']) || $_SESSION['is_main_admin'] != 1) {
+    echo json_encode(['success' => false, 'message' => 'Unauthorized: Only main admin can create GRNs.']);
+    exit();
+}
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     echo json_encode(['success' => false, 'message' => 'Invalid request method.']);
     exit();
@@ -28,7 +32,14 @@ try {
     $notes = sanitizeInput($_POST['notes'] ?? '');
     $auto_confirm = intval($_POST['auto_confirm'] ?? 0);
     $created_by = $_SESSION['user_id'] ?? null;
-    $tenant_id = $_SESSION['tenant_id'] ?? null;
+    $tenant_id = intval($_POST['tenant_id'] ?? ($_SESSION['tenant_id'] ?? 0));
+
+    if ($tenant_id <= 0) {
+        $response['errors']['tenant_id'] = 'Please select a company/tenant';
+        $response['message'] = 'Please correct the errors below.';
+        echo json_encode($response);
+        exit();
+    }
 
     // Validate header
     if ($supplier_id <= 0) {
@@ -196,7 +207,7 @@ try {
         $grn_item_id = $conn->insert_id;
 
         $insertBatch->bind_param(
-            "iiiiisdiiiss",
+            "iiiiisddiiss",
             $tenant_id, $grn_id, $grn_item_id, $supplier_id, $item['product_id'],
             $item['batch_number'], $item['buying_price'], $item['selling_price'],
             $item['quantity'], $item['quantity'], $received_date, $batchStatus
@@ -211,9 +222,9 @@ try {
 
     // Auto-confirm: update product stock quantities (only if allow_inventory is enabled)
     if ($auto_confirm && isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1) {
-        $updateStock = $conn->prepare("UPDATE products SET stock_quantity = stock_quantity + ? WHERE id = ?");
+        $updateStock = $conn->prepare("UPDATE products SET stock_quantity = stock_quantity + ? WHERE id = ? AND (tenant_id = ? OR tenant_id IS NULL)");
         foreach ($items as $item) {
-            $updateStock->bind_param("ii", $item['quantity'], $item['product_id']);
+            $updateStock->bind_param("iii", $item['quantity'], $item['product_id'], $tenant_id);
             if (!$updateStock->execute()) {
                 throw new Exception("Failed to update stock for product ID " . $item['product_id']);
             }

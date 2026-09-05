@@ -159,9 +159,10 @@ while ($item = $itemsResult->fetch_assoc()) {
 }
 $stmt->close();
 
-// Fetch necessary data for the form
-$productSql = "SELECT id, name, description, stock_quantity, low_stock_threshold FROM products WHERE status = 'active' ORDER BY name ASC";
+// Fetch necessary data for the form (filtered by order's tenant)
+$productSql = "SELECT id, name, description, stock_quantity, low_stock_threshold FROM products WHERE status = 'active' AND tenant_id = ? ORDER BY name ASC";
 $productStmt = $conn->prepare($productSql);
+$productStmt->bind_param("i", $order_tenant_id);
 $productStmt->execute();
 $productsResult = $productStmt->get_result();
 
@@ -669,14 +670,14 @@ $deliveryFeeStmt->close();
                                                             <?php
                                                             // Pre-load batch options for this item's product (grouped by selling price).
                                                             // Include the item's own quantity as returning stock so its price group stays selectable.
-                                                            $batchOptionsStmt = $conn->prepare(
+                                                             $batchOptionsStmt = $conn->prepare(
                                                                 "SELECT b.selling_price, SUM(b.remaining_qty) AS total_stock
                                                                  FROM batches b
-                                                                 WHERE b.product_id = ? AND b.status = 'confirmed'
+                                                                 WHERE b.product_id = ? AND b.tenant_id = ? AND b.status = 'confirmed'
                                                                  GROUP BY b.selling_price
                                                                  ORDER BY b.selling_price ASC, MIN(b.received_date) ASC"
                                                             );
-                                                            $batchOptionsStmt->bind_param("i", $item['product_id']);
+                                                            $batchOptionsStmt->bind_param("ii", $item['product_id'], $order_tenant_id);
                                                             $batchOptionsStmt->execute();
                                                             $batchOptionsResult = $batchOptionsStmt->get_result();
                                                             $itemQty = (int)$item['quantity'];
@@ -1254,7 +1255,8 @@ const ProductManager = {
         row.querySelector('.discount').value = '0.00';
 
         // Load available price groups from batches. Editing requires a real batch.
-        fetch('get_product_batches.php?product_id=' + encodeURIComponent(productSelect.value))
+        const tenantId = <?php echo $order_tenant_id; ?>;
+        fetch('get_product_batches.php?product_id=' + encodeURIComponent(productSelect.value) + '&tenant_id=' + encodeURIComponent(tenantId))
             .then(response => response.json())
             .then(data => {
                 if (data.success && data.prices && data.prices.length > 0) {

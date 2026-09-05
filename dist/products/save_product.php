@@ -59,6 +59,20 @@ try {
     $stock_quantity = $allow_inventory ? intval($_POST['stock_quantity'] ?? 0) : 0;
     $low_stock_threshold = $allow_inventory ? intval($_POST['low_stock_threshold'] ?? 0) : 0;
     $category_id = intval($_POST['category_id'] ?? 0);
+    
+    // Handle tenant_id based on role
+    $is_main_admin = isset($_SESSION['is_main_admin']) ? (int)$_SESSION['is_main_admin'] : 0;
+    if ($is_main_admin) {
+        $tenant_id = isset($_POST['tenant_id']) ? intval($_POST['tenant_id']) : 0;
+        if ($tenant_id <= 0) {
+            $response['errors']['tenant_id'] = 'Target Company / Tenant is required';
+            $response['message'] = 'Required fields are missing';
+            echo json_encode($response);
+            exit();
+        }
+    } else {
+        $tenant_id = isset($_SESSION['tenant_id']) ? (int)$_SESSION['tenant_id'] : 0;
+    }
 
     // -------------------------------------------------------------------------
     // REQUIRED FIELDS VALIDATION
@@ -86,11 +100,11 @@ try {
         exit();
     }
 
-    // Check for duplicate product code
+    // Check for duplicate product code per tenant
     if (!empty($product_code)) {
-        $checkCodeQuery = "SELECT id FROM products WHERE product_code = ? LIMIT 1";
+        $checkCodeQuery = "SELECT id FROM products WHERE product_code = ? AND tenant_id = ? LIMIT 1";
         $checkCodeStmt = $conn->prepare($checkCodeQuery);
-        $checkCodeStmt->bind_param("s", $product_code);
+        $checkCodeStmt->bind_param("si", $product_code, $tenant_id);
         $checkCodeStmt->execute();
         $codeResult = $checkCodeStmt->get_result();
 
@@ -104,8 +118,8 @@ try {
     }
 
     // Prepare insert query
-    $insertQuery = "INSERT INTO products (name, description, status, product_code, stock_quantity, low_stock_threshold, category_id) 
-                    VALUES (?, ?, ?, ?, ?, ?, ?)";
+    $insertQuery = "INSERT INTO products (name, description, status, product_code, stock_quantity, low_stock_threshold, category_id, tenant_id) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
     $insertStmt = $conn->prepare($insertQuery);
 
     if (!$insertStmt) {
@@ -113,7 +127,7 @@ try {
     }
 
     // Bind parameters
-    $insertStmt->bind_param("ssssiii", $name, $description, $status, $product_code, $stock_quantity, $low_stock_threshold, $category_id);
+    $insertStmt->bind_param("ssssiiii", $name, $description, $status, $product_code, $stock_quantity, $low_stock_threshold, $category_id, $tenant_id);
 
     // Execute the query
     if ($insertStmt->execute()) {

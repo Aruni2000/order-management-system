@@ -184,13 +184,22 @@ if ($rbac->isAdmin()) {
 
 $tableExists = $conn->query("SHOW TABLES LIKE 'products'");
      if ($tableExists && $tableExists->num_rows > 0) {
-         $stats['total_products'] = safeQuery($conn, "SELECT COUNT(*) as count FROM products");}
+         if ($is_main_admin == 1) {
+             $stats['total_products'] = safeQuery($conn, "SELECT COUNT(*) as count FROM products");
+         } else {
+             $stats['total_products'] = safeQuery($conn, "SELECT COUNT(*) as count FROM products WHERE tenant_id = $tenant_id");
+         }
+     }
 
 // Check for low stock products count
 $low_stock_count = 0;
 $allow_inventory = isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1;
 if ($allow_inventory) {
-    $low_stock_query = "SELECT COUNT(*) as count FROM products WHERE status = 'active' AND stock_quantity <= low_stock_threshold";
+    if ($is_main_admin == 1) {
+        $low_stock_query = "SELECT COUNT(*) as count FROM products WHERE status = 'active' AND stock_quantity <= low_stock_threshold";
+    } else {
+        $low_stock_query = "SELECT COUNT(*) as count FROM products WHERE status = 'active' AND stock_quantity <= low_stock_threshold AND tenant_id = $tenant_id";
+    }
     $low_stock_result = $conn->query($low_stock_query);
     if ($low_stock_result) {
         $row = $low_stock_result->fetch_assoc();
@@ -580,12 +589,6 @@ if (isset($_SESSION['customer_id'])) {
             </div>
             <!-- [ breadcrumb ] end -->
 
-            <?php if ($low_stock_count > 0): ?>
-            <div class="date-info" style="color: #dc3545; border-color: #fca5a5; background: #fff5f5;">
-                <i class="fas fa-exclamation-triangle"></i> Low Stock: <?php echo $low_stock_count; ?> products
-            </div>
-            <?php endif; ?>
-
             <?php if ($suspend_notice): ?>
             <div class="suspend-alert" role="alert">
                 <i class="fas fa-exclamation-triangle me-2"></i>
@@ -609,6 +612,12 @@ if (isset($_SESSION['customer_id'])) {
                 }
                 ?>
             </div>
+
+            <?php if ($low_stock_count > 0): ?>
+            <div class="date-info" style="color: #dc3545; border-color: #fca5a5; background: #fff5f5;">
+                <i class="fas fa-exclamation-triangle"></i> Low Stock: <?php echo $low_stock_count; ?> products
+            </div>
+            <?php endif; ?>
 
             <!-- Filter Bar -->
             <div class="filter-bar no-print">

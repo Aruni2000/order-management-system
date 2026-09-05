@@ -177,6 +177,39 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         // Get tenant_id from POST data (this is what user selected in the form)
         $tenant_id = isset($_POST['tenant_id']) ? intval($_POST['tenant_id']) : ($_SESSION['tenant_id'] ?? 1);
 
+        // Validate that tenant_id is accessible by this user
+        if (!($is_main_admin === 1 && $role_id === 1)) {
+            if ($tenant_id !== intval($_SESSION['tenant_id'])) {
+                throw new Exception("Invalid tenant access.");
+            }
+        }
+
+        // Validate all submitted product IDs belong to the selected tenant
+        $valid_product_ids = array_filter(array_map('intval', $_POST['order_product']), function($id) { return $id > 0; });
+        if (!empty($valid_product_ids)) {
+            $placeholders = implode(',', array_fill(0, count($valid_product_ids), '?'));
+            $productTypes = str_repeat('i', count($valid_product_ids));
+            $checkProductSql = "SELECT id FROM products WHERE id IN ($placeholders) AND tenant_id = ? AND status = 'active'";
+            $checkStmt = $conn->prepare($checkProductSql);
+            if ($checkStmt) {
+                $bindParams = array_merge($valid_product_ids, [$tenant_id]);
+                $checkStmt->bind_param($productTypes . 'i', ...$bindParams);
+                $checkStmt->execute();
+                $checkResult = $checkStmt->get_result();
+                $allowed_ids = [];
+                while ($row = $checkResult->fetch_assoc()) {
+                    $allowed_ids[] = $row['id'];
+                }
+                $checkStmt->close();
+
+                foreach ($valid_product_ids as $pid) {
+                    if (!in_array($pid, $allowed_ids)) {
+                        throw new Exception("Product ID $pid does not belong to the selected tenant.");
+                    }
+                }
+            }
+        }
+
         // Handle address fields according to actual database schema
         $address_line1 = trim($_POST['address_line1'] ?? '');
         $address_line2 = trim($_POST['address_line2'] ?? '');
@@ -595,19 +628,19 @@ if (!$stmt) {
 }
 
 // Helper closure for FIFO batch consumption within a price group
-$consumeBatches = function($product_id, $quantity, $batch_price, $order_id, $order_item_id, $conn) {
+$consumeBatches = function($product_id, $quantity, $batch_price, $order_id, $order_item_id, $conn, $tenant_id) {
     $consumed = []; // list of [batch_id, qty]
     $available_total = 0;
 
     if ($batch_price > 0) {
         // Select confirmed batches at the given selling price, oldest first (FIFO)
         $batchSql = "SELECT batch_id, remaining_qty FROM batches
-                     WHERE product_id = ? AND selling_price = ? AND status = 'confirmed' AND remaining_qty > 0
+                     WHERE product_id = ? AND selling_price = ? AND tenant_id = ? AND status = 'confirmed' AND remaining_qty > 0
                      ORDER BY received_date ASC, batch_id ASC
                      FOR UPDATE";
         $batchStmt = $conn->prepare($batchSql);
         if ($batchStmt) {
-            $batchStmt->bind_param("id", $product_id, $batch_price);
+            $batchStmt->bind_param("idi", $product_id, $batch_price, $tenant_id);
             $batchStmt->execute();
             $batchResult = $batchStmt->get_result();
             $batches = [];
@@ -675,7 +708,7 @@ foreach ($order_items as $item) {
     if (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1) {
         $batchConsumed = ['consumed' => []];
         if ($item['batch_price'] > 0) {
-            $batchConsumed = $consumeBatches($item['product_id'], $item['quantity'], $item['batch_price'], $order_id, $order_item_id, $conn);
+            $batchConsumed = $consumeBatches($item['product_id'], $item['quantity'], $item['batch_price'], $order_id, $order_item_id, $conn, $tenant_id);
             if (isset($batchConsumed['error'])) {
                 // Fetch product name for better error message
                 $getNameSql = "SELECT name FROM products WHERE id = ?";
@@ -698,9 +731,9 @@ foreach ($order_items as $item) {
         // Update product total stock by the consumed quantity (batch-level source of truth)
         if (empty($batchConsumed['consumed'])) {
             // Fallback (no batches): deduct from product total directly
-            $updateStockSql = "UPDATE products SET stock_quantity = stock_quantity - ? WHERE id = ? AND stock_quantity >= ?";
+            $updateStockSql = "UPDATE products SET stock_quantity = stock_quantity - ? WHERE id = ? AND stock_quantity >= ? AND tenant_id = ?";
             $stockStmt = $conn->prepare($updateStockSql);
-            $stockStmt->bind_param("iii", $item['quantity'], $item['product_id'], $item['quantity']);
+            $stockStmt->bind_param("iiii", $item['quantity'], $item['product_id'], $item['quantity'], $tenant_id);
             if (!$stockStmt->execute()) {
                 throw new Exception("Failed to update stock for product ID: " . $item['product_id']);
             }
@@ -720,9 +753,9 @@ foreach ($order_items as $item) {
             $stockStmt->close();
         } else {
             // Deduct product total by the amount consumed across batches (kept in sync)
-            $updateStockSql = "UPDATE products SET stock_quantity = stock_quantity - ? WHERE id = ? AND stock_quantity >= ?";
+            $updateStockSql = "UPDATE products SET stock_quantity = stock_quantity - ? WHERE id = ? AND stock_quantity >= ? AND tenant_id = ?";
             $stockStmt = $conn->prepare($updateStockSql);
-            $stockStmt->bind_param("iii", $item['quantity'], $item['product_id'], $item['quantity']);
+            $stockStmt->bind_param("iiii", $item['quantity'], $item['product_id'], $item['quantity'], $tenant_id);
             if (!$stockStmt->execute()) {
                 throw new Exception("Failed to update stock for product ID: " . $item['product_id']);
             }

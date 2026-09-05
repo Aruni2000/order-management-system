@@ -42,14 +42,22 @@ try {
         throw new Exception('Order ID is required');
     }
     
-    // First check if order exists and get its current status
-    $checkOrderSql = "SELECT order_id, pay_status, status FROM order_header WHERE order_id = ?";
-    $checkOrderStmt = $conn->prepare($checkOrderSql);
+    // First check if order exists and get its current status (with tenant isolation)
+    $session_tenant_id = isset($_SESSION['tenant_id']) ? (int)$_SESSION['tenant_id'] : 0;
+    $is_main_admin = isset($_SESSION['is_main_admin']) ? (int)$_SESSION['is_main_admin'] : 0;
+    
+    if ($is_main_admin) {
+        $checkOrderSql = "SELECT order_id, pay_status, status FROM order_header WHERE order_id = ?";
+        $checkOrderStmt = $conn->prepare($checkOrderSql);
+        $checkOrderStmt->bind_param("s", $orderId);
+    } else {
+        $checkOrderSql = "SELECT order_id, pay_status, status FROM order_header WHERE order_id = ? AND tenant_id = ?";
+        $checkOrderStmt = $conn->prepare($checkOrderSql);
+        $checkOrderStmt->bind_param("si", $orderId, $session_tenant_id);
+    }
     if (!$checkOrderStmt) {
         throw new Exception('Failed to prepare order check statement: ' . $conn->error);
     }
-    
-    $checkOrderStmt->bind_param("s", $orderId);
     $checkOrderStmt->execute();
     $orderResult = $checkOrderStmt->get_result();
     

@@ -107,9 +107,13 @@ function checkCourierStatus($conn, $tenant_id) {
 // Check courier status for selected tenant
 $courierStatus = checkCourierStatus($conn, $selected_tenant_id);
 
-// Fetch necessary data for the form
-$sql = "SELECT id, name, description, stock_quantity, low_stock_threshold FROM products WHERE status = 'active' ORDER BY name ASC";
-$result = $conn->query($sql);
+// Fetch necessary data for the form - filter by selected tenant for proper isolation
+$productSql = "SELECT id, name, description, stock_quantity, low_stock_threshold FROM products WHERE status = 'active' AND tenant_id = ? ORDER BY name ASC";
+$productStmt = $conn->prepare($productSql);
+$productStmt->bind_param("i", $selected_tenant_id);
+$productStmt->execute();
+$result = $productStmt->get_result();
+$productStmt->close();
 
 
 // Fetch cities for dropdown

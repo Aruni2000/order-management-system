@@ -12,6 +12,8 @@ include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 header('Content-Type: application/json');
 
 $product_id = isset($_GET['product_id']) ? intval($_GET['product_id']) : 0;
+$session_tenant_id = isset($_SESSION['tenant_id']) ? (int)$_SESSION['tenant_id'] : 0;
+$is_main_admin = isset($_SESSION['is_main_admin']) ? (int)$_SESSION['is_main_admin'] : 0;
 
 if ($product_id <= 0) {
     echo json_encode(['success' => false, 'message' => 'Invalid product ID.']);
@@ -19,15 +21,25 @@ if ($product_id <= 0) {
     exit();
 }
 
-// Fetch confirmed batches for the product with remaining stock
+// Fetch confirmed batches for the product with remaining stock (with tenant isolation)
 $batches = [];
-$sql = "SELECT b.batch_id, b.batch_number, b.selling_price, b.buying_price,
-               b.remaining_qty, b.received_date
-        FROM batches b
-        WHERE b.product_id = ? AND b.status = 'confirmed' AND b.remaining_qty > 0
-        ORDER BY b.received_date ASC, b.batch_id ASC";
-$stmt = $conn->prepare($sql);
-$stmt->bind_param("i", $product_id);
+if ($is_main_admin) {
+    $sql = "SELECT b.batch_id, b.batch_number, b.selling_price, b.buying_price,
+                   b.remaining_qty, b.received_date
+            FROM batches b
+            WHERE b.product_id = ? AND b.status = 'confirmed' AND b.remaining_qty > 0
+            ORDER BY b.received_date ASC, b.batch_id ASC";
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param("i", $product_id);
+} else {
+    $sql = "SELECT b.batch_id, b.batch_number, b.selling_price, b.buying_price,
+                   b.remaining_qty, b.received_date
+            FROM batches b
+            WHERE b.product_id = ? AND b.tenant_id = ? AND b.status = 'confirmed' AND b.remaining_qty > 0
+            ORDER BY b.received_date ASC, b.batch_id ASC";
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param("ii", $product_id, $session_tenant_id);
+}
 $stmt->execute();
 $result = $stmt->get_result();
 while ($row = $result->fetch_assoc()) {

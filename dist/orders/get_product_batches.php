@@ -26,7 +26,7 @@ $prices = [];
 $stockCondition = $allow_inventory ? "AND b.remaining_qty > 0" : "";
 $sql = "SELECT b.selling_price, SUM(b.remaining_qty) AS total_stock
         FROM batches b
-        WHERE b.product_id = ? AND b.status = 'confirmed' $stockCondition
+        WHERE b.product_id = ? AND b.tenant_id = ? AND b.status = 'confirmed' $stockCondition
         GROUP BY b.selling_price
         ORDER BY b.selling_price ASC, MIN(b.received_date) ASC";
 $stmt = $conn->prepare($sql);
@@ -34,7 +34,7 @@ if (!$stmt) {
     echo json_encode(['success' => false, 'message' => 'DB error: ' . $conn->error]);
     exit();
 }
-$stmt->bind_param("i", $product_id);
+$stmt->bind_param("ii", $product_id, $tenant_id);
 $stmt->execute();
 $result = $stmt->get_result();
 while ($row = $result->fetch_assoc()) {

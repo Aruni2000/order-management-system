@@ -5,6 +5,10 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     header("Location: /OMS/dist/pages/login.php");
     exit();
 }
+if (!isset($_SESSION['is_main_admin']) || $_SESSION['is_main_admin'] != 1) {
+    header("Location: /OMS/dist/dashboard/index.php");
+    exit();
+}
 
 function generateCSRFToken() {
     if (!isset($_SESSION['csrf_token'])) {
@@ -24,6 +28,7 @@ $grn_clear_url = $grn_clear_url ?? 'grn_list.php';
 
 $search = isset($_GET['search']) ? trim($_GET['search']) : '';
 $supplier_filter = isset($_GET['supplier_filter']) ? intval($_GET['supplier_filter']) : 0;
+$tenant_filter = isset($_GET['tenant_filter']) ? intval($_GET['tenant_filter']) : 0;
 $status_filter = isset($_GET['status_filter']) ? trim($_GET['status_filter']) : '';
 if ($grn_fixed_status !== '') {
     $status_filter = $grn_fixed_status;
@@ -34,6 +39,15 @@ $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 10;
 $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
 $offset = ($page - 1) * $limit;
 
+// Fetch active tenants for filter
+$tenants = [];
+$tRes = $conn->query("SELECT tenant_id, company_name FROM tenants WHERE status = 'active' ORDER BY company_name ASC");
+if ($tRes) {
+    while ($row = $tRes->fetch_assoc()) {
+        $tenants[] = $row;
+    }
+}
+
 // Fetch active suppliers for filter
 $suppliers = [];
 $supResult = $conn->query("SELECT id, name FROM suppliers WHERE status = 'active' ORDER BY name ASC");
@@ -43,13 +57,16 @@ if ($supResult) {
     }
 }
 
-$countSql = "SELECT COUNT(*) as total FROM grn g LEFT JOIN suppliers s ON g.supplier_id = s.id WHERE 1=1";
-$sql = "SELECT g.*, s.name as supplier_name FROM grn g LEFT JOIN suppliers s ON g.supplier_id = s.id WHERE 1=1";
+$countSql = "SELECT COUNT(*) as total FROM grn g LEFT JOIN suppliers s ON g.supplier_id = s.id LEFT JOIN tenants t ON g.tenant_id = t.tenant_id WHERE 1=1";
+$sql = "SELECT g.*, s.name as supplier_name, t.company_name FROM grn g LEFT JOIN suppliers s ON g.supplier_id = s.id LEFT JOIN tenants t ON g.tenant_id = t.tenant_id WHERE 1=1";
 
 $conditions = [];
 if (!empty($search)) {
     $t = $conn->real_escape_string($search);
-    $conditions[] = "(g.grn_number LIKE '%$t%' OR s.name LIKE '%$t%')";
+    $conditions[] = "(g.grn_number LIKE '%$t%' OR s.name LIKE '%$t%' OR t.company_name LIKE '%$t%')";
+}
+if ($tenant_filter > 0) {
+    $conditions[] = "g.tenant_id = $tenant_filter";
 }
 if ($supplier_filter > 0) {
     $conditions[] = "g.supplier_id = $supplier_filter";
@@ -119,6 +136,18 @@ $result = $conn->query($sql);
                         </div>
 
                         <div class="form-group">
+                            <label for="tenant_filter">Company / Tenant</label>
+                            <select id="tenant_filter" name="tenant_filter">
+                                <option value="">All Companies</option>
+                                <?php foreach ($tenants as $t): ?>
+                                    <option value="<?php echo $t['tenant_id']; ?>" <?php echo ($tenant_filter == $t['tenant_id']) ? 'selected' : ''; ?>>
+                                        <?php echo htmlspecialchars($t['company_name']); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
                             <label for="supplier_filter">Supplier</label>
                             <select id="supplier_filter" name="supplier_filter">
                                 <option value="">All Suppliers</option>
@@ -178,6 +207,7 @@ $result = $conn->query($sql);
                         <thead>
                             <tr>
                                 <th>GRN Number</th>
+                                <th>Company</th>
                                 <th>Supplier</th>
                                 <th>Received Date</th>
                                 <th>Total Amount</th>
@@ -195,6 +225,11 @@ $result = $conn->query($sql);
                                     ?>
                                     <tr>
                                         <td><strong><?php echo htmlspecialchars($row['grn_number']); ?></strong></td>
+                                        <td>
+                                            <span class="badge" style="background: #e0f2fe; color: #0369a1; padding: 4px 8px; border-radius: 4px; font-weight: 600; font-size: 12px;">
+                                                <?php echo htmlspecialchars($row['company_name'] ?? 'N/A'); ?>
+                                            </span>
+                                        </td>
                                         <td>
                                             <div style="font-weight: 600; color: #1e293b;">
                                                 <?php echo htmlspecialchars($row['supplier_name'] ?? 'Unknown'); ?>

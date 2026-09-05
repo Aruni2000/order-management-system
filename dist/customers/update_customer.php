@@ -120,15 +120,29 @@ try {
         exit();
     }
 
-    // Check if customer exists and get all current data including city name for comparison
-    $customerCheckStmt = $conn->prepare("
-        SELECT c.customer_id, c.name, c.email, c.phone, c.phone_2, c.status, 
-               c.address_line1, c.address_line2, c.city_id, ct.city_name 
-        FROM customers c
-        LEFT JOIN city_table ct ON c.city_id = ct.city_id
-        WHERE c.customer_id = ?
-    ");
-    $customerCheckStmt->bind_param("i", $customer_id);
+    // Check if customer exists and get all current data including city name for comparison (with tenant isolation)
+    $session_tenant_id = isset($_SESSION['tenant_id']) ? (int)$_SESSION['tenant_id'] : 0;
+    $is_main_admin = isset($_SESSION['is_main_admin']) ? (int)$_SESSION['is_main_admin'] : 0;
+    
+    if ($is_main_admin) {
+        $customerCheckStmt = $conn->prepare("
+            SELECT c.customer_id, c.name, c.email, c.phone, c.phone_2, c.status, 
+                   c.address_line1, c.address_line2, c.city_id, ct.city_name 
+            FROM customers c
+            LEFT JOIN city_table ct ON c.city_id = ct.city_id
+            WHERE c.customer_id = ?
+        ");
+        $customerCheckStmt->bind_param("i", $customer_id);
+    } else {
+        $customerCheckStmt = $conn->prepare("
+            SELECT c.customer_id, c.name, c.email, c.phone, c.phone_2, c.status, 
+                   c.address_line1, c.address_line2, c.city_id, ct.city_name 
+            FROM customers c
+            LEFT JOIN city_table ct ON c.city_id = ct.city_id
+            WHERE c.customer_id = ? AND c.tenant_id = ?
+        ");
+        $customerCheckStmt->bind_param("ii", $customer_id, $session_tenant_id);
+    }
     $customerCheckStmt->execute();
     $customerCheckResult = $customerCheckStmt->get_result();
     
@@ -417,22 +431,38 @@ try {
     $phone2Value = !empty($phone_2) ? $phone_2 : null;
     $address2Value = !empty($address_line2) ? $address_line2 : null;
 
-    // Prepare and execute customer update
-    $updateStmt = $conn->prepare("
-        UPDATE customers 
-        SET name = ?, 
-            email = ?, 
-            phone = ?, 
-            phone_2 = ?,
-            status = ?, 
-            address_line1 = ?, 
-            address_line2 = ?, 
-            city_id = ?, 
-            updated_at = NOW()
-        WHERE customer_id = ?
-    ");
-
-    $updateStmt->bind_param("sssssssii", $name, $emailValue, $phone, $phone2Value, $status, $address_line1, $address2Value, $city_id, $customer_id);
+    // Prepare and execute customer update (with tenant isolation)
+    if ($is_main_admin) {
+        $updateStmt = $conn->prepare("
+            UPDATE customers 
+            SET name = ?, 
+                email = ?, 
+                phone = ?, 
+                phone_2 = ?,
+                status = ?, 
+                address_line1 = ?, 
+                address_line2 = ?, 
+                city_id = ?, 
+                updated_at = NOW()
+            WHERE customer_id = ?
+        ");
+        $updateStmt->bind_param("sssssssii", $name, $emailValue, $phone, $phone2Value, $status, $address_line1, $address2Value, $city_id, $customer_id);
+    } else {
+        $updateStmt = $conn->prepare("
+            UPDATE customers 
+            SET name = ?, 
+                email = ?, 
+                phone = ?, 
+                phone_2 = ?,
+                status = ?, 
+                address_line1 = ?, 
+                address_line2 = ?, 
+                city_id = ?, 
+                updated_at = NOW()
+            WHERE customer_id = ? AND tenant_id = ?
+        ");
+        $updateStmt->bind_param("sssssssiii", $name, $emailValue, $phone, $phone2Value, $status, $address_line1, $address2Value, $city_id, $customer_id, $session_tenant_id);
+    }
 
     if ($updateStmt->execute()) {
         if ($updateStmt->affected_rows > 0) {

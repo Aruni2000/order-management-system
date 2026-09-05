@@ -6,6 +6,10 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     echo json_encode(['success' => false, 'message' => 'Unauthorized access.']);
     exit();
 }
+if (!isset($_SESSION['is_main_admin']) || $_SESSION['is_main_admin'] != 1) {
+    echo json_encode(['success' => false, 'message' => 'Unauthorized: Only main admin can confirm GRNs.']);
+    exit();
+}
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     echo json_encode(['success' => false, 'message' => 'Invalid request method.']);
     exit();
@@ -29,7 +33,7 @@ if ($grn_id <= 0) {
 
 try {
     // Check GRN exists and is draft
-    $checkStmt = $conn->prepare("SELECT grn_number, status FROM grn WHERE grn_id = ?");
+    $checkStmt = $conn->prepare("SELECT grn_number, status, tenant_id FROM grn WHERE grn_id = ?");
     $checkStmt->bind_param("i", $grn_id);
     $checkStmt->execute();
     $checkResult = $checkStmt->get_result();
@@ -64,11 +68,12 @@ try {
 
     // Update stock for each item (only if allow_inventory is enabled)
     if (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1) {
-        $updateStock = $conn->prepare("UPDATE products SET stock_quantity = stock_quantity + ? WHERE id = ?");
+        $updateStock = $conn->prepare("UPDATE products SET stock_quantity = stock_quantity + ? WHERE id = ? AND (tenant_id = ? OR tenant_id IS NULL)");
+        $grn_tenant_id = $grnData['tenant_id'] ?? null;
         while ($item = $itemsResult->fetch_assoc()) {
             $qty = intval($item['quantity']);
             $pid = intval($item['product_id']);
-            $updateStock->bind_param("ii", $qty, $pid);
+            $updateStock->bind_param("iii", $qty, $pid, $grn_tenant_id);
             if (!$updateStock->execute()) {
                 throw new Exception("Failed to update stock for product ID " . $pid);
             }

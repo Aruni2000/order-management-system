@@ -7,7 +7,6 @@ include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
 // Check if user is logged in, if not redirect to login page
 if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
-    // Clear any existing output buffers
     if (ob_get_level()) {
         ob_end_clean();
     }
@@ -27,7 +26,6 @@ $role_stmt->execute();
 $role_result = $role_stmt->get_result();
 
 if ($role_result->num_rows === 0) {
-    // User not found or inactive
     session_destroy();
     header("Location: /OMS/dist/pages/login.php");
     exit();
@@ -37,7 +35,6 @@ $user_role = $role_result->fetch_assoc();
 
 // Check if user is admin (role_id = 1)
 if ($user_role['role_id'] != 1) {
-    // User is not admin, redirect to dashboard
     header("Location: /OMS/dist/dashboard/index.php");
     exit();
 }
@@ -45,43 +42,24 @@ if ($user_role['role_id'] != 1) {
 // Determine if current user is a main admin
 $current_is_main_admin = isset($_SESSION['is_main_admin']) && $_SESSION['is_main_admin'] == 1;
 
-// Function to generate CSRF token
-function generateCSRFToken() {
-    if (!isset($_SESSION['csrf_token'])) {
-        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-    }
-    return $_SESSION['csrf_token'];
+// Main admins should not use this page — redirect them to edit_tenant.php
+if ($current_is_main_admin) {
+    header("Location: edit_tenant.php");
+    exit();
 }
 
-// Get tenant ID from URL parameter
-$tenant_data = null;
-$errorMsg = "";
-
-$tenantId = null;
+// Company admin — get tenant ID from session
 $session_tenant_id = $_SESSION['tenant_id'] ?? null;
 
-if (isset($_GET['id']) && !empty($_GET['id'])) {
-    $tenantId = (int)$_GET['id'];
-    
-    // Company admin can ONLY edit their own tenant
-    if (!$current_is_main_admin && $tenantId !== (int)$session_tenant_id) {
-        header("Location: /OMS/dist/dashboard/index.php");
-        exit();
-    }
-} elseif (!$current_is_main_admin && $session_tenant_id) {
-    // Company admin with no ?id param: auto-load their own tenant
-    $tenantId = (int)$session_tenant_id;
-} elseif ($current_is_main_admin) {
-    // Main admin must provide an id
-    header("Location: tenant_list.php?error=No tenant ID specified");
-    exit();
-} else {
-    // Fallback: not main admin and no session tenant
+if (!$session_tenant_id) {
     header("Location: /OMS/dist/dashboard/index.php");
     exit();
 }
 
+$tenantId = (int)$session_tenant_id;
+
 // Fetch tenant data from database
+$tenant_data = null;
 $stmt = mysqli_prepare($conn, "SELECT * FROM tenants WHERE tenant_id = ?");
 if ($stmt) {
     mysqli_stmt_bind_param($stmt, "i", $tenantId);
@@ -91,15 +69,21 @@ if ($stmt) {
     mysqli_stmt_close($stmt);
 
     if (!$tenant_data) {
-        header("Location: tenant_list.php?error=Tenant not found");
+        header("Location: /OMS/dist/dashboard/index.php");
         exit();
     }
 } else {
-    header("Location: tenant_list.php?error=Database error: " . mysqli_error($conn));
+    header("Location: /OMS/dist/dashboard/index.php?error=Database error");
     exit();
 }
 
-
+// Function to generate CSRF token
+function generateCSRFToken() {
+    if (!isset($_SESSION['csrf_token'])) {
+        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+    }
+    return $_SESSION['csrf_token'];
+}
 ?>
 
 <!doctype html>
@@ -107,17 +91,14 @@ if ($stmt) {
 
 <head>
     <!-- TITLE -->
-    <title>Edit Tenant | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
+    <title>Edit Branding | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
 
     <?php
     include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php');
     ?>
     
-    <!-- [Template CSS Files] -->
-    
-    <!-- Custom CSS for form UI (matching branding.php style) -->
+    <!-- Custom CSS for form UI -->
    <style>
-/* Form UI Styles - Matching Branding.php */
 .form-control {
     border: 1px solid #ccc;
     padding: 8px 12px;
@@ -260,7 +241,7 @@ if ($stmt) {
         <div class="loading-spinner">
             <div class="spinner"></div>
             <h5>Processing...</h5>
-            <p>Please wait while we update the tenant</p>
+            <p>Please wait while we update branding settings</p>
         </div>
     </div>
 
@@ -271,12 +252,12 @@ if ($stmt) {
                 <div class="col-xl-12">
                     <div class="card">
                         <div class="card-header">
-                            <h5>Edit Tenant</h5>
+                            <h5>Edit Branding - <?= htmlspecialchars($tenant_data['company_name'] ?? '') ?></h5>
                         </div>
                         <div class="card-body">
 
-                            <!-- Edit Tenant Form -->
-                            <form method="POST" id="editTenantForm" enctype="multipart/form-data" novalidate>
+                            <!-- Branding Form -->
+                            <form method="POST" id="brandingForm" enctype="multipart/form-data" novalidate>
                                 <!-- CSRF Token -->
                                 <input type="hidden" name="csrf_token" value="<?php echo generateCSRFToken(); ?>">
                                 <!-- Tenant ID -->
@@ -331,40 +312,14 @@ if ($stmt) {
                                     <div class="error-feedback" id="address-error"></div>
                                 </div>
 
-                                <?php if ($current_is_main_admin): ?>
-                                <div class="form-row">
-                                    <!-- Delivery Fee -->
-                                    <div class="form-column">
-                                        <div class="form-group">
-                                            <label for="delivery_fee" class="form-label">Delivery Fee (LKR)</label>
-                                            <input type="number" step="0.01" class="form-control" id="delivery_fee" name="delivery_fee"
-                                                   placeholder="0.00" value="<?php echo htmlspecialchars($tenant_data['delivery_fee'] ?? '0.00'); ?>">
-                                            <div class="error-feedback" id="delivery_fee-error"></div>
-                                        </div>
-                                    </div>
-                                    <!-- Main Admin -->
-                                    <div class="form-column">
-                                        <div class="form-group">
-                                            <label for="is_main_admin" class="form-label">Main Admin *</label>
-                                            <select class="form-select form-control" id="is_main_admin" name="is_main_admin" required>
-                                                <option value="0" <?php echo (($tenant_data['is_main_admin'] ?? 0) == 0) ? 'selected' : ''; ?>>No</option>
-                                                <option value="1" <?php echo (($tenant_data['is_main_admin'] ?? 0) == 1) ? 'selected' : ''; ?>>Yes</option>
-                                            </select>
-                                            <div class="error-feedback" id="is_main_admin-error"></div>
-                                        </div>
-                                    </div>
-                                </div>
-                                <?php else: ?>
+                                <!-- Delivery Fee -->
                                 <div class="form-group">
                                     <label for="delivery_fee" class="form-label">Delivery Fee (LKR)</label>
                                     <input type="number" step="0.01" class="form-control" id="delivery_fee" name="delivery_fee"
                                            placeholder="0.00" value="<?php echo htmlspecialchars($tenant_data['delivery_fee'] ?? '0.00'); ?>">
                                     <div class="error-feedback" id="delivery_fee-error"></div>
                                 </div>
-                                <input type="hidden" name="is_main_admin" value="<?php echo (int)($tenant_data['is_main_admin'] ?? 0); ?>">
-                                <?php endif; ?>
 
-                                <?php if ($current_is_main_admin): ?>
                                 <h6 class="mb-3 mt-4">Logos and Icons</h6>
 
                                 <div class="form-row">
@@ -401,15 +356,14 @@ if ($stmt) {
                                         </div>
                                     </div>
                                 </div>
-                                <?php endif; ?>
 
                                 <!-- Submit Buttons -->
                                 <div class="d-flex justify-content-end mt-4 form-actions">
                                     <button type="submit" class="btn btn-primary" id="submitBtn">
-                                        Update Tenant
+                                        Update Branding
                                     </button>
-                                    <button type="button" class="btn btn-secondary ms-2" id="cancelBtn" onclick="window.location.href='<?php echo $current_is_main_admin ? 'tenant_list.php' : '../dashboard/index.php'; ?>'">
-                                        <?php echo $current_is_main_admin ? 'Back to All Tenants' : 'Back to Dashboard'; ?>
+                                    <button type="button" class="btn btn-secondary ms-2" id="cancelBtn" onclick="window.location.href='../dashboard/index.php'">
+                                        Back to Dashboard
                                     </button>
                                 </div>
                             </form>
@@ -433,7 +387,7 @@ if ($stmt) {
     ?>
     <!-- END SCRIPTS -->
 
-    <!-- jQuery (make sure this is loaded before your custom script) -->
+    <!-- jQuery -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
 
     <script>
@@ -444,8 +398,7 @@ if ($stmt) {
             email: '<?php echo addslashes($tenant_data['email'] ?? ''); ?>',
             phone: '<?php echo addslashes($tenant_data['phone'] ?? ''); ?>',
             address: '<?php echo addslashes($tenant_data['address'] ?? ''); ?>',
-            delivery_fee: '<?php echo ($tenant_data['delivery_fee'] ?? '0.00'); ?>',
-            is_main_admin: '<?php echo (int)($tenant_data['is_main_admin'] ?? 0); ?>'
+            delivery_fee: '<?php echo ($tenant_data['delivery_fee'] ?? '0.00'); ?>'
         };
 
         $(document).ready(function() {
@@ -453,7 +406,7 @@ if ($stmt) {
             initializeForm();
             
             // AJAX Form submission
-            $('#editTenantForm').on('submit', function(e) {
+            $('#brandingForm').on('submit', function(e) {
                 e.preventDefault();
                 
                 // Clear previous validations
@@ -461,7 +414,7 @@ if ($stmt) {
                 
                 // Check for changes first
                 if (!hasFormChanged()) {
-                    toastManager.warning('No changes were made to the tenant.');
+                    toastManager.warning('No changes were made to the branding settings.');
                     return;
                 }
                 
@@ -489,14 +442,14 @@ if ($stmt) {
             // Disable submit button
             const $submitBtn = $('#submitBtn');
             const originalText = $submitBtn.html();
-            $submitBtn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Updating Tenant...');
+            $submitBtn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Updating Branding...');
             
             // Prepare form data
-            const formData = new FormData($('#editTenantForm')[0]);
+            const formData = new FormData($('#brandingForm')[0]);
             
             // AJAX request
             $.ajax({
-                url: 'update_tenant.php',
+                url: 'update_branding.php',
                 type: 'POST',
                 data: formData,
                 processData: false,
@@ -508,7 +461,7 @@ if ($stmt) {
                     $submitBtn.prop('disabled', false).html(originalText);
                     
                     if (response.success) {
-                        toastManager.success(response.message || 'Tenant updated successfully!');
+                        toastManager.success(response.message || 'Branding updated successfully!');
                         // Reload after a short delay so the user sees the toast
                         setTimeout(function() {
                             location.reload();
@@ -517,14 +470,14 @@ if ($stmt) {
                         if (response.errors) {
                             showFieldErrors(response.errors);
                         }
-                        toastManager.error(response.message || 'Failed to update tenant. Please try again.');
+                        toastManager.error(response.message || 'Failed to update branding. Please try again.');
                     }
                 },
                 error: function(xhr, status, error) {
                     hideLoading();
                     $submitBtn.prop('disabled', false).html(originalText);
                     
-                    let errorMessage = 'An error occurred while updating the tenant.';
+                    let errorMessage = 'An error occurred while updating branding.';
                     
                     if (status === 'timeout') {
                         errorMessage = 'Request timeout. Please try again.';
@@ -556,29 +509,18 @@ if ($stmt) {
         
         // Change detection functions
         function hasFormChanged() {
-            var changed = (
+            return (
                 $('#company_name').val() !== originalValues.company_name ||
                 $('#contact_person').val() !== originalValues.contact_person ||
                 $('#email').val() !== originalValues.email ||
                 $('#phone').val() !== originalValues.phone ||
                 $('#address').val() !== originalValues.address ||
                 $('#delivery_fee').val() !== originalValues.delivery_fee ||
-                $('[name="is_main_admin"]').val() !== originalValues.is_main_admin
+                $('#logo').get(0).files.length > 0 ||
+                $('#fav_icon').get(0).files.length > 0 ||
+                $('input[name="remove_logo"]').is(':checked') ||
+                $('input[name="remove_favicon"]').is(':checked')
             );
-            // Only check logo/favicon for main admins
-            if ($('#logo').length) {
-                changed = changed || $('#logo').get(0).files.length > 0;
-            }
-            if ($('#fav_icon').length) {
-                changed = changed || $('#fav_icon').get(0).files.length > 0;
-            }
-            if ($('input[name="remove_logo"]').length) {
-                changed = changed || $('input[name="remove_logo"]').is(':checked');
-            }
-            if ($('input[name="remove_favicon"]').length) {
-                changed = changed || $('input[name="remove_favicon"]').is(':checked');
-            }
-            return changed;
         }
         
         function updateOriginalValues() {
@@ -588,7 +530,6 @@ if ($stmt) {
             originalValues.phone = $('#phone').val();
             originalValues.address = $('#address').val();
             originalValues.delivery_fee = $('#delivery_fee').val();
-            originalValues.is_main_admin = $('[name="is_main_admin"]').val();
         }
         
         // Loading functions
@@ -601,7 +542,6 @@ if ($stmt) {
             $('#loadingOverlay').hide();
             $('body').css('overflow', 'auto');
         }
-        
         
         // Clear all validations
         function clearAllValidations() {

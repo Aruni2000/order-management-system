@@ -16,6 +16,22 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
 include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
 
+// Multi-tenant permissions
+$is_main_admin = isset($_SESSION['is_main_admin']) && $_SESSION['is_main_admin'] == 1;
+$session_tenant_id = isset($_SESSION['tenant_id']) ? (int)$_SESSION['tenant_id'] : 0;
+$tenant_filter = isset($_GET['tenant_filter']) ? intval($_GET['tenant_filter']) : 0;
+
+// Fetch tenants for main admin filter
+$tenants = [];
+if ($is_main_admin) {
+    $tRes = $conn->query("SELECT tenant_id, company_name FROM tenants WHERE status = 'active' ORDER BY is_main_admin DESC, company_name ASC");
+    if ($tRes) {
+        while ($row = $tRes->fetch_assoc()) {
+            $tenants[] = $row;
+        }
+    }
+}
+
 // Handle search and filter parameters
 $search = isset($_GET['search']) ? trim($_GET['search']) : '';
 $product_id_filter = isset($_GET['product_id_filter']) ? trim($_GET['product_id_filter']) : '';
@@ -42,17 +58,27 @@ $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
 $offset = ($page - 1) * $limit;
 
 // Base SQL for counting total records
-$countSql = "SELECT COUNT(*) as total FROM products p LEFT JOIN categories c ON p.category_id = c.id";
+$countSql = "SELECT COUNT(*) as total FROM products p LEFT JOIN categories c ON p.category_id = c.id LEFT JOIN tenants t ON p.tenant_id = t.tenant_id";
 
-// Main query - Updated to include product_code and category name
-$sql = "SELECT p.*, c.name as category_name
+// Main query - Updated to include product_code, category name, and tenant company name
+$sql = "SELECT p.*, c.name as category_name, t.company_name
         FROM products p 
-        LEFT JOIN categories c ON p.category_id = c.id";
+        LEFT JOIN categories c ON p.category_id = c.id
+        LEFT JOIN tenants t ON p.tenant_id = t.tenant_id";
 
 // Build search conditions
 $searchConditions = [];
 
-// General search condition - Updated to include product_code and id
+// Enforce tenant isolation for sub-tenants vs main admin filter
+if ($is_main_admin) {
+    if ($tenant_filter > 0) {
+        $searchConditions[] = "p.tenant_id = $tenant_filter";
+    }
+} else {
+    $searchConditions[] = "p.tenant_id = $session_tenant_id";
+}
+
+// General search condition - Updated to include product_code, id, and tenant company name
 if (!empty($search)) {
     $searchTerm = $conn->real_escape_string($search);
     $searchConditions[] = "(
@@ -60,6 +86,7 @@ if (!empty($search)) {
                         p.name LIKE '%$searchTerm%' OR 
                         p.product_code LIKE '%$searchTerm%' OR 
                         p.description LIKE '%$searchTerm%' OR
+                        t.company_name LIKE '%$searchTerm%' OR
                         c.name LIKE '%$searchTerm%')";
 }
 
@@ -239,6 +266,20 @@ $result = $conn->query($sql);
                                 <?php endforeach; ?>
                             </select>
                         </div>
+                        <?php if ($is_main_admin): ?>
+                        <div class="form-group">
+                            <label for="tenant_filter">Company / Tenant</label>
+                            <select id="tenant_filter" name="tenant_filter">
+                                <option value="">All Companies</option>
+                                <?php foreach ($tenants as $t): ?>
+                                    <option value="<?php echo $t['tenant_id']; ?>" <?php echo ($tenant_filter == $t['tenant_id']) ? 'selected' : ''; ?>>
+                                        <?php echo htmlspecialchars($t['company_name']); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <?php endif; ?>
+
                         <?php if (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1): ?>
                         <div class="form-group">
                             <label for="low_stock_filter">Stock Status</label>
@@ -289,6 +330,9 @@ $result = $conn->query($sql);
                         <thead>
                             <tr>
                                 <th>ID</th>
+                                <?php if ($is_main_admin): ?>
+                                <th>Company</th>
+                                <?php endif; ?>
                                 <th>Product Name</th>
                                 <th>Category</th>
                                 <th>Product Code</th>
@@ -306,6 +350,15 @@ $result = $conn->query($sql);
                                     <tr>
                                         <!-- Product ID -->
                                         <td><?php echo htmlspecialchars($row['id']); ?></td>
+
+                                        <?php if ($is_main_admin): ?>
+                                        <!-- Company / Tenant -->
+                                        <td>
+                                            <span class="badge" style="background: #e0f2fe; color: #0369a1; padding: 4px 8px; border-radius: 4px; font-weight: 600; font-size: 12px;">
+                                                <?php echo htmlspecialchars($row['company_name'] ?? 'N/A'); ?>
+                                            </span>
+                                        </td>
+                                        <?php endif; ?>
                                         
                                         <!-- Product Name -->
                                         <td class="product-name">
@@ -384,10 +437,10 @@ $result = $conn->query($sql);
                                                     <i class="fas fa-eye"></i>
                                                 </button>
                                                 
-                                                <?php if (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1): ?>
+                                                <?php if ($is_main_admin && isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1): ?>
                                                 <button type="button" class="action-btn stock-update-btn" 
                                                         style="background: #17a2b8; color: white;"
-                                                        title="Update Stock"
+                                                        title="Update Stock (Admin Only)"
                                                         data-product-id="<?= $row['id'] ?>"
                                                         data-product-name="<?= htmlspecialchars($row['name']) ?>"
                                                         data-product-stock="<?= htmlspecialchars($row['stock_quantity']) ?>"
@@ -396,14 +449,16 @@ $result = $conn->query($sql);
                                                 </button>
                                                 <?php endif; ?>
                                                 
+                                                <?php if ($is_main_admin): ?>
                                                 <button type="button" class="action-btn" 
                                                         style="background: #6f42c1; color: white;"
-                                                        title="Update Selling Price"
+                                                        title="Update Selling Price (Admin Only)"
                                                         data-product-id="<?= $row['id'] ?>"
                                                         data-product-name="<?= htmlspecialchars($row['name']) ?>"
                                                         onclick="openPriceUpdateModal(this)">
                                                     <i class="fas fa-tag"></i>
                                                 </button>
+                                                <?php endif; ?>
                                                 
                                                 <button class="action-btn dispatch-btn" title="Edit Product" 
                                                         onclick="editProduct(<?php echo $row['id']; ?>)">
@@ -863,6 +918,12 @@ $result = $conn->query($sql);
                 <span class="close" onclick="closePriceUpdateModal()">&times;</span>
             </div>
             <div class="modal-body">
+                <div class="form-group" style="margin-bottom: 15px;">
+                    <label for="price_batch_id" style="display: block; margin-bottom: 8px; font-weight: 500;">Select Batch</label>
+                    <select id="price_batch_id" class="form-control" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;"></select>
+                    <div id="price-batch-error" style="color: #e74c3c; font-size: 13px; margin-top: 4px; display: none;"></div>
+                </div>
+
                 <div style="margin-bottom: 15px;">
                     <label style="display: block; margin-bottom: 8px; font-weight: 500;">Current Batch Selling Prices</label>
                     <div id="price-modal-current-prices" style="max-height: 180px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px; background: #f8fafc;">
@@ -875,7 +936,7 @@ $result = $conn->query($sql);
                     <input type="number" id="new_selling_price" class="form-control" min="0.01" step="0.01" placeholder="Enter new selling price" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
                     <div id="price-error" style="color: #e74c3c; font-size: 13px; margin-top: 4px; display: none;"></div>
                     <div style="font-size: 12px; color: #6c757d; margin-top: 5px;">
-                        <i class="fas fa-info-circle"></i> This will update the selling price for all confirmed batches of this product.
+                        <i class="fas fa-info-circle"></i> This will update the selling price for the selected batch.
                     </div>
                 </div>
 
@@ -1104,37 +1165,65 @@ $result = $conn->query($sql);
     <script>
         // Selling Price Update Functionality
         let currentPriceUpdateProductId = 0;
+        let currentPriceBatches = [];
 
         function openPriceUpdateModal(button) {
             const productId = button.getAttribute('data-product-id');
             const productName = button.getAttribute('data-product-name');
 
             currentPriceUpdateProductId = productId;
+            currentPriceBatches = [];
 
             document.getElementById('price-modal-title-name').textContent = productName;
 
             const priceInput = document.getElementById('new_selling_price');
             priceInput.value = '';
             document.getElementById('price-error').style.display = 'none';
+            document.getElementById('price-batch-error').style.display = 'none';
 
             const confirmBtn = document.getElementById('confirmPriceUpdateBtn');
             confirmBtn.onclick = function() {
                 updateSellingPrice(productId, priceInput.value);
             };
 
+            loadPriceBatches(productId);
+
+            document.getElementById('priceUpdateModal').style.display = 'block';
+            setTimeout(() => { priceInput.focus(); }, 100);
+        }
+
+        function loadPriceBatches(productId) {
+            const batchSelect = document.getElementById('price_batch_id');
             const pricesContainer = document.getElementById('price-modal-current-prices');
+            batchSelect.innerHTML = '<option value="">Loading batches...</option>';
             pricesContainer.innerHTML = '<div style="text-align: center; color: #64748b; font-size: 13px;"><i class="fas fa-spinner fa-spin"></i> Loading...</div>';
 
             fetch('/OMS/dist/products/get_stock_batches.php?product_id=' + encodeURIComponent(productId))
                 .then(response => response.json())
                 .then(data => {
                     if (!data.success || !data.batches || data.batches.length === 0) {
+                        batchSelect.innerHTML = '<option value="">No confirmed batches available</option>';
                         pricesContainer.innerHTML = '<div style="text-align: center; color: #94a3b8; font-size: 13px; padding: 10px;">No confirmed batches found for this product.</div>';
                         return;
                     }
 
+                    currentPriceBatches = data.batches;
+
+                    // Populate batch dropdown
+                    batchSelect.innerHTML = '';
+                    currentPriceBatches.forEach(batch => {
+                        const opt = document.createElement('option');
+                        opt.value = batch.batch_id;
+                        let label = 'Batch #' + (batch.batch_number || batch.batch_id) +
+                            ' (Stock: ' + batch.remaining_qty + ', Rs. ' +
+                            Number(batch.selling_price).toFixed(2) + ')';
+                        opt.textContent = label;
+                        batchSelect.appendChild(opt);
+                    });
+
+                    // Populate current prices list
                     let rows = '';
-                    data.batches.forEach(b => {
+                    currentPriceBatches.forEach(b => {
                         rows += `
                             <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #eef2f7; font-size: 13px;">
                                 <span style="font-family: monospace; font-weight: 600; color: #1e293b;">Batch #${b.batch_number || b.batch_id}</span>
@@ -1145,11 +1234,9 @@ $result = $conn->query($sql);
                     pricesContainer.innerHTML = rows;
                 })
                 .catch(() => {
+                    batchSelect.innerHTML = '<option value="">Error loading batches</option>';
                     pricesContainer.innerHTML = '<div style="color: #dc3545; padding: 10px; font-size: 12px; text-align: center;"><i class="fas fa-exclamation-triangle"></i> Failed to load batch prices.</div>';
                 });
-
-            document.getElementById('priceUpdateModal').style.display = 'block';
-            setTimeout(() => { priceInput.focus(); }, 100);
         }
 
         function closePriceUpdateModal() {
@@ -1165,6 +1252,15 @@ $result = $conn->query($sql);
                 return;
             }
 
+            const batchSelect = document.getElementById('price_batch_id');
+            const batchId = parseInt(batchSelect.value) || 0;
+            if (batchId <= 0) {
+                document.getElementById('price-batch-error').textContent = 'Please select a batch.';
+                document.getElementById('price-batch-error').style.display = 'block';
+                toastManager.warning('Please select a batch.');
+                return;
+            }
+
             const btn = document.getElementById('confirmPriceUpdateBtn');
             const originalText = btn.textContent;
             btn.textContent = 'Updating...';
@@ -1177,6 +1273,7 @@ $result = $conn->query($sql);
                 },
                 body: JSON.stringify({
                     product_id: productId,
+                    batch_id: batchId,
                     new_selling_price: parseFloat(newPrice)
                 })
             })

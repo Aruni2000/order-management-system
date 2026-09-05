@@ -19,6 +19,11 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     exit();
 }
 
+if (!isset($_SESSION['is_main_admin']) || $_SESSION['is_main_admin'] != 1) {
+    header("Location: /OMS/dist/dashboard/index.php");
+    exit();
+}
+
 // CSRF token for confirm/cancel POST requests
 function generateCSRFToken() {
     if (!isset($_SESSION['csrf_token'])) {

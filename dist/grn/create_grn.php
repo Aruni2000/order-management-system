@@ -6,6 +6,13 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     exit();
 }
 
+// Access Control: Only Main Admin can create GRNs
+if (!isset($_SESSION['is_main_admin']) || $_SESSION['is_main_admin'] != 1) {
+    if (ob_get_level()) ob_end_clean();
+    header("Location: /OMS/dist/dashboard/index.php");
+    exit();
+}
+
 include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
 function generateCSRFToken() {
@@ -15,7 +22,16 @@ function generateCSRFToken() {
     return $_SESSION['csrf_token'];
 }
 
-// Fetch active suppliers
+// Fetch active tenants
+$tenants = [];
+$tResult = $conn->query("SELECT tenant_id, company_name, is_main_admin FROM tenants WHERE status = 'active' ORDER BY is_main_admin DESC, company_name ASC");
+if ($tResult) {
+    while ($row = $tResult->fetch_assoc()) {
+        $tenants[] = $row;
+    }
+}
+
+// Fetch active suppliers (global, no tenant restriction)
 $suppliers = [];
 $supResult = $conn->query("SELECT id, name FROM suppliers WHERE status = 'active' ORDER BY name ASC");
 if ($supResult) {
@@ -24,9 +40,13 @@ if ($supResult) {
     }
 }
 
-// Fetch active products
+// Fetch active products with tenant_id
 $products = [];
-$prodResult = $conn->query("SELECT id, name, product_code, stock_quantity FROM products WHERE status = 'active' ORDER BY name ASC");
+$prodResult = $conn->query("SELECT p.id, p.name, p.product_code, p.stock_quantity, p.tenant_id, t.company_name
+                            FROM products p
+                            LEFT JOIN tenants t ON p.tenant_id = t.tenant_id
+                            WHERE p.status = 'active'
+                            ORDER BY p.name ASC");
 if ($prodResult) {
     while ($row = $prodResult->fetch_assoc()) {
         $products[] = $row;
@@ -156,13 +176,29 @@ $initial_batch_number = 'BN-' . date('Ymd') . '-' . date('His') . '-0'; // depre
                         <div class="section-body">
                             <div class="customer-info-grid">
                                 <div class="form-group">
+                                    <label class="form-label" for="tenant_id">
+                                        Target Company / Tenant <span class="required">*</span>
+                                    </label>
+                                    <select class="form-select" id="tenant_id" name="tenant_id" required>
+                                        <?php foreach ($tenants as $t): ?>
+                                            <option value="<?php echo $t['tenant_id']; ?>" <?php echo ($t['tenant_id'] == $_SESSION['tenant_id']) ? 'selected' : ''; ?>>
+                                                <?php echo htmlspecialchars($t['company_name']); ?>
+                                            </option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                    <div class="error-feedback" id="tenant_id-error"></div>
+                                </div>
+
+                                <div class="form-group">
                                     <label class="form-label" for="supplier_id">
                                         Supplier <span class="required">*</span>
                                     </label>
                                     <select class="form-select" id="supplier_id" name="supplier_id" required>
                                         <option value="">-- Select Supplier --</option>
                                         <?php foreach ($suppliers as $sup): ?>
-                                            <option value="<?php echo $sup['id']; ?>"><?php echo htmlspecialchars($sup['name']); ?></option>
+                                            <option value="<?php echo $sup['id']; ?>" data-tenant="<?php echo $sup['tenant_id'] ?? ''; ?>">
+                                                <?php echo htmlspecialchars($sup['name']); ?>
+                                            </option>
                                         <?php endforeach; ?>
                                     </select>
                                     <div class="error-feedback" id="supplier_id-error"></div>
@@ -242,7 +278,7 @@ $initial_batch_number = 'BN-' . date('Ymd') . '-' . date('His') . '-0'; // depre
                                                 </div>
                                             </td>
                                             <td>
-                                                <input type="text" name="items[0][batch_number]" class="form-control batch-number-input" value="" maxlength="30" readonly style="font-family: monospace; font-size: 12px; background: #f1f5f9;" placeholder="Auto-generated">
+                                                <input type="text" name="items[0][batch_number]" class="form-control batch-number-input" value="" maxlength="30" readonly style="font-family: monospace; font-size: 12px; background: #f1f5f9;" placeholder="Batch Number">
                                             </td>
                                             <td class="line-subtotal">
                                                 Rs. 0.00
@@ -302,12 +338,75 @@ $initial_batch_number = 'BN-' . date('Ymd') . '-' . date('His') . '-0'; // depre
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 
     <script>
+    const suppliersData = <?php echo json_encode($suppliers); ?>;
     const productsData = <?php echo json_encode($products); ?>;
     let rowIndex = 1;
 
+    function getFilteredProducts(selectedTenant) {
+        return productsData.filter(p => !p.tenant_id || String(p.tenant_id) === String(selectedTenant));
+    }
+
+    function getFilteredSuppliers(selectedTenant) {
+        // Return all suppliers without tenant filtering as per user request
+        return suppliersData;
+    }
+
+    function updateSupplierOptions(selectedTenant) {
+        const filtered = getFilteredSuppliers(selectedTenant);
+        const currentVal = $('#supplier_id').val();
+        let options = '<option value="">-- Select Supplier --</option>';
+        let stillValid = false;
+        filtered.forEach(s => {
+            const isSel = String(s.id) === String(currentVal);
+            if (isSel) stillValid = true;
+            options += `<option value="${s.id}" ${isSel ? 'selected' : ''}>${s.name}</option>`;
+        });
+        $('#supplier_id').html(options).trigger('change');
+        if (!stillValid) {
+            $('#supplier_id').val('').trigger('change');
+        }
+    }
+
+    function updateProductOptionsForRows(selectedTenant) {
+        const filtered = getFilteredProducts(selectedTenant);
+        $('#lineItemsBody .line-item-row').each(function() {
+            const $select = $(this).find('.product-select');
+            const currentVal = $select.val();
+            let options = '<option value="">-- Select Product --</option>';
+            let stillValid = false;
+            filtered.forEach(p => {
+                const isSel = String(p.id) === String(currentVal);
+                if (isSel) stillValid = true;
+                options += `<option value="${p.id}" data-stock="${p.stock_quantity}" data-code="${p.product_code}" ${isSel ? 'selected' : ''}>${p.name} (${p.product_code})</option>`;
+            });
+            $select.html(options);
+            if (!stillValid && currentVal) {
+                $select.val('').trigger('change');
+                $(this).find('.batch-number-input').val('');
+                $(this).find('.line-subtotal').text('Rs. 0.00');
+            }
+        });
+        recalculateTotals();
+    }
+
     $(document).ready(function() {
-        // Initialize Select2 for supplier
+        // Initialize Select2 for supplier and tenant
         $('#supplier_id').select2({ placeholder: '-- Select Supplier --', allowClear: true, width: '100%' });
+        $('#tenant_id').select2({ width: '100%' });
+
+        // On tenant change, update supplier and product options
+        $('#tenant_id').on('change', function() {
+            const selectedTenant = $(this).val();
+            updateSupplierOptions(selectedTenant);
+            updateProductOptionsForRows(selectedTenant);
+        });
+
+        // Trigger initial filtering based on default tenant
+        const initialTenant = $('#tenant_id').val();
+        if (initialTenant) {
+            updateSupplierOptions(initialTenant);
+            updateProductOptionsForRows(initialTenant);
+        }
 
         // Add row
         $('#addRowBtn').on('click', function() {
@@ -367,7 +466,9 @@ $initial_batch_number = 'BN-' . date('Ymd') . '-' . date('His') . '-0'; // depre
     });
 
     function addNewRow() {
-        const productOptions = productsData.map(p =>
+        const selectedTenant = $('#tenant_id').val();
+        const filteredProducts = getFilteredProducts(selectedTenant);
+        const productOptions = filteredProducts.map(p =>
             `<option value="${p.id}" data-stock="${p.stock_quantity}" data-code="${p.product_code}">${p.name} (${p.product_code})</option>`
         ).join('');
 

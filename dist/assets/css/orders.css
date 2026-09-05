@@ -37,7 +37,7 @@
 
 .tracking-form {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(197px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 20px;
   align-items: end;
 }
@@ -45,7 +45,6 @@
 .form-group {
   display: flex;
   flex-direction: column;
-  
 }
 
 .form-group label {
@@ -101,8 +100,8 @@
 }
 
 .pc-container .pc-content {
-    padding-right: 1rem;
-    padding-top: 1.5rem;
+  padding-right: 1rem;
+  padding-top: 1.25rem;
 }
 
 /* ====================================

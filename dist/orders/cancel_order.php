@@ -36,12 +36,22 @@ try {
     
     try {
        // Check if order exists and can be cancelled
-$check_sql = "SELECT order_id, status, customer_id, total_amount 
-              FROM order_header 
-              WHERE order_id = ? AND interface IN ('individual', 'leads')";
+       $is_main_admin = isset($_SESSION['is_main_admin']) ? (int)$_SESSION['is_main_admin'] : 0;
+       $session_tenant_id = isset($_SESSION['tenant_id']) ? intval($_SESSION['tenant_id']) : 0;
 
-        $stmt = $conn->prepare($check_sql);
-        $stmt->bind_param("s", $order_id);
+       if ($is_main_admin) {
+           $check_sql = "SELECT order_id, status, customer_id, total_amount 
+                         FROM order_header 
+                         WHERE order_id = ? AND interface IN ('individual', 'leads')";
+           $stmt = $conn->prepare($check_sql);
+           $stmt->bind_param("s", $order_id);
+       } else {
+           $check_sql = "SELECT order_id, status, customer_id, total_amount 
+                         FROM order_header 
+                         WHERE order_id = ? AND tenant_id = ? AND interface IN ('individual', 'leads')";
+           $stmt = $conn->prepare($check_sql);
+           $stmt->bind_param("si", $order_id, $session_tenant_id);
+       }
         $stmt->execute();
         $result = $stmt->get_result();
         
@@ -68,14 +78,24 @@ $check_sql = "SELECT order_id, status, customer_id, total_amount
         
         $stmt->close();
         
-        // Update order header to cancelled
-        $update_order_sql = "UPDATE order_header SET 
-                            status = 'cancel', 
-                            cancellation_reason = ?,
-                            updated_at = CURRENT_TIMESTAMP
-                            WHERE order_id = ?";
-        $order_stmt = $conn->prepare($update_order_sql);
-        $order_stmt->bind_param("ss", $cancellation_reason, $order_id);
+        // Update order header to cancelled (with tenant isolation)
+        if ($is_main_admin) {
+            $update_order_sql = "UPDATE order_header SET 
+                                status = 'cancel', 
+                                cancellation_reason = ?,
+                                updated_at = CURRENT_TIMESTAMP
+                                WHERE order_id = ?";
+            $order_stmt = $conn->prepare($update_order_sql);
+            $order_stmt->bind_param("ss", $cancellation_reason, $order_id);
+        } else {
+            $update_order_sql = "UPDATE order_header SET 
+                                status = 'cancel', 
+                                cancellation_reason = ?,
+                                updated_at = CURRENT_TIMESTAMP
+                                WHERE order_id = ? AND tenant_id = ?";
+            $order_stmt = $conn->prepare($update_order_sql);
+            $order_stmt->bind_param("ssi", $cancellation_reason, $order_id, $session_tenant_id);
+        }
         
         if (!$order_stmt->execute()) {
             throw new Exception('Failed to update order: ' . $order_stmt->error);
@@ -111,7 +131,7 @@ $check_sql = "SELECT order_id, status, customer_id, total_amount
                 $batch_stmt = $conn->prepare($update_batch_sql);
             }
 
-            $update_stock_sql = "UPDATE products SET stock_quantity = stock_quantity + ? WHERE id = ?";
+            $update_stock_sql = "UPDATE products SET stock_quantity = stock_quantity + ? WHERE id = ? AND tenant_id = ?";
             $stock_stmt = $conn->prepare($update_stock_sql);
 
             while ($item = $items_result->fetch_assoc()) {
@@ -139,7 +159,7 @@ $check_sql = "SELECT order_id, status, customer_id, total_amount
                     $qty = $qty; // keep full item qty for product rollup
                 }
 
-                $stock_stmt->bind_param("ii", $qty, $product_id);
+                $stock_stmt->bind_param("iii", $qty, $product_id, $session_tenant_id);
                 if (!$stock_stmt->execute()) {
                     throw new Exception('Failed to restore stock for product ID: ' . $product_id);
                 }

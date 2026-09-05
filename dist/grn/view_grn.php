@@ -5,6 +5,10 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     header("Location: /OMS/dist/pages/login.php");
     exit();
 }
+if (!isset($_SESSION['is_main_admin']) || $_SESSION['is_main_admin'] != 1) {
+    header("Location: /OMS/dist/dashboard/index.php");
+    exit();
+}
 
 function generateCSRFToken() {
     if (!isset($_SESSION['csrf_token'])) {
@@ -22,13 +26,14 @@ if ($grn_id <= 0) {
     exit();
 }
 
-// Fetch GRN header with supplier
+// Fetch GRN header with supplier and tenant
 $grn = null;
 $grnStmt = $conn->prepare("SELECT g.*, s.name as supplier_name, s.contact_person, s.phone as supplier_phone, s.email as supplier_email, s.address as supplier_address,
-    u.name as created_by_name
+    u.name as created_by_name, t.company_name as tenant_company_name
     FROM grn g
     LEFT JOIN suppliers s ON g.supplier_id = s.id
     LEFT JOIN users u ON g.created_by = u.id
+    LEFT JOIN tenants t ON g.tenant_id = t.tenant_id
     WHERE g.grn_id = ?");
 $grnStmt->bind_param("i", $grn_id);
 $grnStmt->execute();
@@ -141,6 +146,14 @@ $itemsStmt->close();
                             <div class="detail-item-box">
                                 <div class="detail-item-label">GRN Number</div>
                                 <div class="detail-item-val"><?= htmlspecialchars($grn['grn_number']) ?></div>
+                            </div>
+                            <div class="detail-item-box">
+                                <div class="detail-item-label">Company / Tenant</div>
+                                <div class="detail-item-val">
+                                    <span class="badge" style="background: #e0f2fe; color: #0369a1; padding: 4px 8px; border-radius: 4px; font-weight: 600; font-size: 12px;">
+                                        <?= htmlspecialchars($grn['tenant_company_name'] ?? 'N/A') ?>
+                                    </span>
+                                </div>
                             </div>
                             <div class="detail-item-box">
                                 <div class="detail-item-label">Received Date</div>

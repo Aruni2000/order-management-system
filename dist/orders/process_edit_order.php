@@ -301,14 +301,14 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         // Returns 'ok' (batch group consumed), 'none' (no batches at this price ->
         // caller falls back to product-total deduction), or 'insufficient' (batches
         // exist at this price but qty cannot be fulfilled -> caller blocks).
-        $deductStockFifo = function($product_id, $qty, $price, $order_item_id, $order_id) use ($conn) {
+        $deductStockFifo = function($product_id, $qty, $price, $order_item_id, $order_id) use ($conn, $order_tenant_id) {
             // Select confirmed batches at the price, oldest first
             $batchSql = "SELECT batch_id, remaining_qty FROM batches
-                         WHERE product_id = ? AND selling_price = ? AND status = 'confirmed' AND remaining_qty > 0
+                         WHERE product_id = ? AND selling_price = ? AND tenant_id = ? AND status = 'confirmed' AND remaining_qty > 0
                          ORDER BY received_date ASC, batch_id ASC
                          FOR UPDATE";
             $batchStmt = $conn->prepare($batchSql);
-            $batchStmt->bind_param("id", $product_id, $price);
+            $batchStmt->bind_param("idi", $product_id, $price, $order_tenant_id);
             $batchStmt->execute();
             $batchResult = $batchStmt->get_result();
             $batchList = [];
@@ -342,20 +342,36 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             return 'none';
         };
 
-        // Prepare product stock statements
-        $restoreStockSql = "UPDATE products SET stock_quantity = stock_quantity + ? WHERE id = ?";
-        $restoreStockStmt = $conn->prepare($restoreStockSql);
+        // Prepare product stock statements (with tenant isolation)
+        if ($is_main_admin) {
+            $restoreStockSql = "UPDATE products SET stock_quantity = stock_quantity + ? WHERE id = ?";
+            $restoreStockStmt = $conn->prepare($restoreStockSql);
 
-        $deductStockSql = "UPDATE products SET stock_quantity = stock_quantity - ? WHERE id = ? AND stock_quantity >= ?";
-        $deductStockStmt = $conn->prepare($deductStockSql);
+            $deductStockSql = "UPDATE products SET stock_quantity = stock_quantity - ? WHERE id = ? AND stock_quantity >= ?";
+            $deductStockStmt = $conn->prepare($deductStockSql);
 
-        $deductProduct = function($qty, $product_id, $product_name) use ($conn, $deductStockStmt) {
-            $deductStockStmt->bind_param("iii", $qty, $product_id, $qty);
-            $deductStockStmt->execute();
-            if ($deductStockStmt->affected_rows === 0) {
-                throw new Exception("Insufficient stock for product: " . $product_name . " (ID: " . $product_id . ")");
-            }
-        };
+            $deductProduct = function($qty, $product_id, $product_name) use ($conn, $deductStockStmt) {
+                $deductStockStmt->bind_param("iii", $qty, $product_id, $qty);
+                $deductStockStmt->execute();
+                if ($deductStockStmt->affected_rows === 0) {
+                    throw new Exception("Insufficient stock for product: " . $product_name . " (ID: " . $product_id . ")");
+                }
+            };
+        } else {
+            $restoreStockSql = "UPDATE products SET stock_quantity = stock_quantity + ? WHERE id = ? AND tenant_id = ?";
+            $restoreStockStmt = $conn->prepare($restoreStockSql);
+
+            $deductStockSql = "UPDATE products SET stock_quantity = stock_quantity - ? WHERE id = ? AND stock_quantity >= ? AND tenant_id = ?";
+            $deductStockStmt = $conn->prepare($deductStockSql);
+
+            $deductProduct = function($qty, $product_id, $product_name) use ($conn, $deductStockStmt, $session_tenant_id) {
+                $deductStockStmt->bind_param("iiii", $qty, $product_id, $qty, $session_tenant_id);
+                $deductStockStmt->execute();
+                if ($deductStockStmt->affected_rows === 0) {
+                    throw new Exception("Insufficient stock for product: " . $product_name . " (ID: " . $product_id . ")");
+                }
+            };
+        }
 
         // Process each item
         foreach ($order_items as $item) {
@@ -367,7 +383,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     // Stock management - only if enabled
                     if (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1) {
                         // Restore old stock to product total
-                        $restoreStockStmt->bind_param("ii", $old_item['quantity'], $old_item['product_id']);
+                        if ($is_main_admin) {
+                            $restoreStockStmt->bind_param("ii", $old_item['quantity'], $old_item['product_id']);
+                        } else {
+                            $restoreStockStmt->bind_param("iii", $old_item['quantity'], $old_item['product_id'], $session_tenant_id);
+                        }
                         $restoreStockStmt->execute();
                         // Restore old batches
                         $restoreItemBatches($item['item_id']);
@@ -431,7 +451,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             if (!in_array($item_id, $processed_item_ids)) {
                 // This item was removed - restore its stock and delete it
                 if (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1) {
-                    $restoreStockStmt->bind_param("ii", $old_item['quantity'], $old_item['product_id']);
+                    if ($is_main_admin) {
+                        $restoreStockStmt->bind_param("ii", $old_item['quantity'], $old_item['product_id']);
+                    } else {
+                        $restoreStockStmt->bind_param("iii", $old_item['quantity'], $old_item['product_id'], $session_tenant_id);
+                    }
                     $restoreStockStmt->execute();
                     $restoreItemBatches($item_id);
                 }

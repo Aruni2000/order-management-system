@@ -59,10 +59,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         exit();
     }
     
-    // Check if it exists and is in dispatch status
-    $checkSql = "SELECT order_id, status FROM order_header WHERE tracking_number = ?";
-    $checkStmt = $conn->prepare($checkSql);
-    $checkStmt->bind_param("s", $tracking_number);
+    // Check if it exists and is in dispatch status (with tenant isolation)
+    $session_tenant_id = isset($_SESSION['tenant_id']) ? (int)$_SESSION['tenant_id'] : 0;
+    $is_main_admin = isset($_SESSION['is_main_admin']) ? (int)$_SESSION['is_main_admin'] : 0;
+    
+    if ($is_main_admin) {
+        $checkSql = "SELECT order_id, status FROM order_header WHERE tracking_number = ?";
+        $checkStmt = $conn->prepare($checkSql);
+        $checkStmt->bind_param("s", $tracking_number);
+    } else {
+        $checkSql = "SELECT order_id, status FROM order_header WHERE tracking_number = ? AND tenant_id = ?";
+        $checkStmt = $conn->prepare($checkSql);
+        $checkStmt->bind_param("si", $tracking_number, $session_tenant_id);
+    }
     $checkStmt->execute();
     $result = $checkStmt->get_result();
     
@@ -78,9 +87,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         exit();
     }
     
-    $updateHeaderSql = "UPDATE order_header SET handover_to_courier = 1, handover_time = NOW(), updated_at = updated_at WHERE tracking_number = ?";
-    $updateHeaderStmt = $conn->prepare($updateHeaderSql);
-    $updateHeaderStmt->bind_param("s", $tracking_number);
+    // Update with tenant isolation
+    if ($is_main_admin) {
+        $updateHeaderSql = "UPDATE order_header SET handover_to_courier = 1, handover_time = NOW(), updated_at = updated_at WHERE tracking_number = ?";
+        $updateHeaderStmt = $conn->prepare($updateHeaderSql);
+        $updateHeaderStmt->bind_param("s", $tracking_number);
+    } else {
+        $updateHeaderSql = "UPDATE order_header SET handover_to_courier = 1, handover_time = NOW(), updated_at = updated_at WHERE tracking_number = ? AND tenant_id = ?";
+        $updateHeaderStmt = $conn->prepare($updateHeaderSql);
+        $updateHeaderStmt->bind_param("si", $tracking_number, $session_tenant_id);
+    }
     
     if ($updateHeaderStmt->execute()) {
         // Insert user log for this individual handover

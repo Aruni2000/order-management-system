@@ -42,6 +42,8 @@ try {
     $product_id = (int)$input['product_id'];
     $new_status = trim($input['new_status']);
     $user_id = $_SESSION['user_id'];
+    $session_tenant_id = isset($_SESSION['tenant_id']) ? (int)$_SESSION['tenant_id'] : 0;
+    $is_main_admin = isset($_SESSION['is_main_admin']) ? (int)$_SESSION['is_main_admin'] : 0;
     
     // Validate product ID
     if ($product_id <= 0) {
@@ -55,16 +57,21 @@ try {
         exit();
     }
     
-    // Check if product exists
-    $checkSql = "SELECT id, name, status FROM products WHERE id = ?";
-    $checkStmt = $conn->prepare($checkSql);
+    // Check if product exists (with tenant isolation)
+    if ($is_main_admin) {
+        $checkSql = "SELECT id, name, status FROM products WHERE id = ?";
+        $checkStmt = $conn->prepare($checkSql);
+        $checkStmt->bind_param("i", $product_id);
+    } else {
+        $checkSql = "SELECT id, name, status FROM products WHERE id = ? AND tenant_id = ?";
+        $checkStmt = $conn->prepare($checkSql);
+        $checkStmt->bind_param("ii", $product_id, $session_tenant_id);
+    }
     
     if (!$checkStmt) {
         echo json_encode(['success' => false, 'message' => 'Database prepare error: ' . $conn->error]);
         exit();
     }
-    
-    $checkStmt->bind_param("i", $product_id);
     $checkStmt->execute();
     $result = $checkStmt->get_result();
     
@@ -90,15 +97,20 @@ try {
     $conn->autocommit(FALSE);
     
     try {
-        // Update product status
-        $updateSql = "UPDATE products SET status = ? WHERE id = ?";
-        $updateStmt = $conn->prepare($updateSql);
+        // Update product status (with tenant isolation)
+        if ($is_main_admin) {
+            $updateSql = "UPDATE products SET status = ? WHERE id = ?";
+            $updateStmt = $conn->prepare($updateSql);
+            $updateStmt->bind_param("si", $new_status, $product_id);
+        } else {
+            $updateSql = "UPDATE products SET status = ? WHERE id = ? AND tenant_id = ?";
+            $updateStmt = $conn->prepare($updateSql);
+            $updateStmt->bind_param("sii", $new_status, $product_id, $session_tenant_id);
+        }
         
         if (!$updateStmt) {
             throw new Exception('Database prepare error: ' . $conn->error);
         }
-        
-        $updateStmt->bind_param("si", $new_status, $product_id);
         
         if (!$updateStmt->execute()) {
             throw new Exception('Failed to update product status: ' . $updateStmt->error);

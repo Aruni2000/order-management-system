@@ -13,6 +13,14 @@ if (!isset($_SESSION['user_id'])) {
     exit();
 }
 
+// Check if user is main admin (Admin only access)
+$is_main_admin = isset($_SESSION['is_main_admin']) ? (int)$_SESSION['is_main_admin'] : 0;
+if ($is_main_admin != 1) {
+    http_response_code(403);
+    echo json_encode(['success' => false, 'message' => 'Access denied. Only administrators can update selling prices.']);
+    exit();
+}
+
 include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
 header('Content-Type: application/json');
@@ -33,6 +41,7 @@ try {
 
     $product_id = (int)$input['product_id'];
     $new_selling_price = (float)$input['new_selling_price'];
+    $batch_id = isset($input['batch_id']) ? (int)$input['batch_id'] : 0;
     $user_id = $_SESSION['user_id'];
 
     if ($product_id <= 0) {
@@ -44,13 +53,26 @@ try {
         exit();
     }
 
-    $checkSql = "SELECT id, name FROM products WHERE id = ?";
-    $checkStmt = $conn->prepare($checkSql);
-    if (!$checkStmt) {
-        echo json_encode(['success' => false, 'message' => 'Database prepare error: ' . $conn->error]);
-        exit();
+    $session_tenant_id = isset($_SESSION['tenant_id']) ? (int)$_SESSION['tenant_id'] : 0;
+    $is_main_admin = isset($_SESSION['is_main_admin']) ? (int)$_SESSION['is_main_admin'] : 0;
+
+    if ($is_main_admin) {
+        $checkSql = "SELECT id, name FROM products WHERE id = ?";
+        $checkStmt = $conn->prepare($checkSql);
+        if (!$checkStmt) {
+            echo json_encode(['success' => false, 'message' => 'Database prepare error: ' . $conn->error]);
+            exit();
+        }
+        $checkStmt->bind_param("i", $product_id);
+    } else {
+        $checkSql = "SELECT id, name FROM products WHERE id = ? AND tenant_id = ?";
+        $checkStmt = $conn->prepare($checkSql);
+        if (!$checkStmt) {
+            echo json_encode(['success' => false, 'message' => 'Database prepare error: ' . $conn->error]);
+            exit();
+        }
+        $checkStmt->bind_param("ii", $product_id, $session_tenant_id);
     }
-    $checkStmt->bind_param("i", $product_id);
     $checkStmt->execute();
     $result = $checkStmt->get_result();
     if ($result->num_rows === 0) {
@@ -60,13 +82,43 @@ try {
     $product = $result->fetch_assoc();
     $checkStmt->close();
 
-    $batchSql = "SELECT batch_id, batch_number, selling_price FROM batches WHERE product_id = ? AND status = 'confirmed'";
-    $batchStmt = $conn->prepare($batchSql);
-    if (!$batchStmt) {
-        echo json_encode(['success' => false, 'message' => 'Database prepare error: ' . $conn->error]);
-        exit();
+    if ($is_main_admin) {
+        if ($batch_id > 0) {
+            $batchSql = "SELECT batch_id, batch_number, selling_price FROM batches WHERE batch_id = ? AND product_id = ? AND status = 'confirmed'";
+            $batchStmt = $conn->prepare($batchSql);
+            if (!$batchStmt) {
+                echo json_encode(['success' => false, 'message' => 'Database prepare error: ' . $conn->error]);
+                exit();
+            }
+            $batchStmt->bind_param("ii", $batch_id, $product_id);
+        } else {
+            $batchSql = "SELECT batch_id, batch_number, selling_price FROM batches WHERE product_id = ? AND status = 'confirmed'";
+            $batchStmt = $conn->prepare($batchSql);
+            if (!$batchStmt) {
+                echo json_encode(['success' => false, 'message' => 'Database prepare error: ' . $conn->error]);
+                exit();
+            }
+            $batchStmt->bind_param("i", $product_id);
+        }
+    } else {
+        if ($batch_id > 0) {
+            $batchSql = "SELECT batch_id, batch_number, selling_price FROM batches WHERE batch_id = ? AND product_id = ? AND tenant_id = ? AND status = 'confirmed'";
+            $batchStmt = $conn->prepare($batchSql);
+            if (!$batchStmt) {
+                echo json_encode(['success' => false, 'message' => 'Database prepare error: ' . $conn->error]);
+                exit();
+            }
+            $batchStmt->bind_param("iii", $batch_id, $product_id, $session_tenant_id);
+        } else {
+            $batchSql = "SELECT batch_id, batch_number, selling_price FROM batches WHERE product_id = ? AND tenant_id = ? AND status = 'confirmed'";
+            $batchStmt = $conn->prepare($batchSql);
+            if (!$batchStmt) {
+                echo json_encode(['success' => false, 'message' => 'Database prepare error: ' . $conn->error]);
+                exit();
+            }
+            $batchStmt->bind_param("ii", $product_id, $session_tenant_id);
+        }
     }
-    $batchStmt->bind_param("i", $product_id);
     $batchStmt->execute();
     $batchResult = $batchStmt->get_result();
 
@@ -86,12 +138,39 @@ try {
     $conn->autocommit(FALSE);
 
     try {
-        $updateSql = "UPDATE batches SET selling_price = ? WHERE product_id = ? AND status = 'confirmed'";
-        $updateStmt = $conn->prepare($updateSql);
-        if (!$updateStmt) {
-            throw new Exception('Batch update prepare error: ' . $conn->error);
+        if ($is_main_admin) {
+            if ($batch_id > 0) {
+                $updateSql = "UPDATE batches SET selling_price = ? WHERE batch_id = ? AND product_id = ? AND status = 'confirmed'";
+                $updateStmt = $conn->prepare($updateSql);
+                if (!$updateStmt) {
+                    throw new Exception('Batch update prepare error: ' . $conn->error);
+                }
+                $updateStmt->bind_param("dii", $new_selling_price, $batch_id, $product_id);
+            } else {
+                $updateSql = "UPDATE batches SET selling_price = ? WHERE product_id = ? AND status = 'confirmed'";
+                $updateStmt = $conn->prepare($updateSql);
+                if (!$updateStmt) {
+                    throw new Exception('Batch update prepare error: ' . $conn->error);
+                }
+                $updateStmt->bind_param("di", $new_selling_price, $product_id);
+            }
+        } else {
+            if ($batch_id > 0) {
+                $updateSql = "UPDATE batches SET selling_price = ? WHERE batch_id = ? AND product_id = ? AND tenant_id = ? AND status = 'confirmed'";
+                $updateStmt = $conn->prepare($updateSql);
+                if (!$updateStmt) {
+                    throw new Exception('Batch update prepare error: ' . $conn->error);
+                }
+                $updateStmt->bind_param("diii", $new_selling_price, $batch_id, $product_id, $session_tenant_id);
+            } else {
+                $updateSql = "UPDATE batches SET selling_price = ? WHERE product_id = ? AND tenant_id = ? AND status = 'confirmed'";
+                $updateStmt = $conn->prepare($updateSql);
+                if (!$updateStmt) {
+                    throw new Exception('Batch update prepare error: ' . $conn->error);
+                }
+                $updateStmt->bind_param("dii", $new_selling_price, $product_id, $session_tenant_id);
+            }
         }
-        $updateStmt->bind_param("di", $new_selling_price, $product_id);
         if (!$updateStmt->execute()) {
             throw new Exception('Failed to update selling price: ' . $updateStmt->error);
         }
@@ -100,8 +179,9 @@ try {
 
         $action_type = 'product_selling_price_updated';
         $old_prices_str = implode(', ', $oldPrices);
+        $batch_info = $batch_id > 0 ? "Batch #{$batch_id}" : "All batches";
         $details = "Updated Selling Price for Product '{$product['name']}' " .
-            "(from [{$old_prices_str}] to Rs. {$new_price_str}), " .
+            "({$batch_info} from [{$old_prices_str}] to Rs. {$new_price_str}), " .
             "Affected batches: {$affectedRows}";
 
         $logSql = "INSERT INTO user_logs (user_id, action_type, inquiry_id, details, created_at) VALUES (?, ?, ?, ?, NOW())";

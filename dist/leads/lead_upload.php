@@ -234,13 +234,13 @@ if ($_POST && isset($_FILES['csv_file']) && isset($_POST['users'])) {
         // Initialize round-robin counter
         $userIndex = 0;
 
-        // Fetch product data once for all rows
-        $productSql = "SELECT id, product_code, description FROM products WHERE id = ? AND status = 'active'";
+        // Fetch product data once for all rows (filtered by tenant)
+        $productSql = "SELECT id, product_code, description FROM products WHERE id = ? AND status = 'active' AND tenant_id = ?";
         $productStmt = $conn->prepare($productSql);
         if (!$productStmt) {
             throw new Exception("Failed to prepare product query: " . $conn->error);
         }
-        $productStmt->bind_param("i", $selectedProductId);
+        $productStmt->bind_param("ii", $selectedProductId, $tenant_id);
         $productStmt->execute();
         $productResult = $productStmt->get_result();
         
@@ -547,16 +547,16 @@ if ($_POST && isset($_FILES['csv_file']) && isset($_POST['users'])) {
                 
                 // Check and deduct stock (FIFO within the selected selling price group)
                 if (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1) {
-                    // Select confirmed batches at the selected selling price, oldest-first
+                    // Select confirmed batches at the selected selling price, oldest-first (filtered by tenant)
                     $batchSql = "SELECT batch_id, remaining_qty FROM batches
-                                 WHERE product_id = ? AND status = 'confirmed' AND remaining_qty > 0 AND selling_price = ?
+                                 WHERE product_id = ? AND tenant_id = ? AND status = 'confirmed' AND remaining_qty > 0 AND selling_price = ?
                                  ORDER BY received_date ASC, batch_id ASC
                                  FOR UPDATE";
                     $batchStmt = $conn->prepare($batchSql);
                     if (!$batchStmt) {
                         throw new Exception("Failed to prepare batch query: " . $conn->error);
                     }
-                    $batchStmt->bind_param("id", $productId, $selectedSellingPrice);
+                    $batchStmt->bind_param("iid", $productId, $tenant_id, $selectedSellingPrice);
                     $batchStmt->execute();
                     $batchResult = $batchStmt->get_result();
                     $batchList = [];
@@ -584,14 +584,22 @@ if ($_POST && isset($_FILES['csv_file']) && isset($_POST['users'])) {
                     }
 
                     if ($hasBatches) {
-                        // Deduct FIFO across batches
+                        // Deduct FIFO across batches (with tenant isolation)
                         $need = $quantityInt;
-                        $updateBatch = $conn->prepare("UPDATE batches SET remaining_qty = remaining_qty - ? WHERE batch_id = ? AND remaining_qty >= ?");
+                        if ($isMainAdmin) {
+                            $updateBatch = $conn->prepare("UPDATE batches SET remaining_qty = remaining_qty - ? WHERE batch_id = ? AND remaining_qty >= ?");
+                        } else {
+                            $updateBatch = $conn->prepare("UPDATE batches SET remaining_qty = remaining_qty - ? WHERE batch_id = ? AND remaining_qty >= ? AND tenant_id = ?");
+                        }
                         $insertOib = $conn->prepare("INSERT INTO order_item_batches (order_item_id, order_id, batch_id, quantity) VALUES (?, ?, ?, ?)");
                         foreach ($batchList as $b) {
                             if ($need <= 0) break;
                             $take = min($need, $b['remaining_qty']);
-                            $updateBatch->bind_param("iii", $take, $b['batch_id'], $take);
+                            if ($isMainAdmin) {
+                                $updateBatch->bind_param("iii", $take, $b['batch_id'], $take);
+                            } else {
+                                $updateBatch->bind_param("iiii", $take, $b['batch_id'], $take, $tenant_id);
+                            }
                             if (!$updateBatch->execute()) {
                                 throw new Exception("Failed to deduct batch stock.");
                             }
@@ -603,13 +611,13 @@ if ($_POST && isset($_FILES['csv_file']) && isset($_POST['users'])) {
                         $insertOib->close();
                     }
 
-                    // Deduct product total
-                    $updateStockSql = "UPDATE products SET stock_quantity = stock_quantity - ? WHERE id = ? AND stock_quantity >= ?";
+                    // Deduct product total (with tenant isolation)
+                    $updateStockSql = "UPDATE products SET stock_quantity = stock_quantity - ? WHERE id = ? AND stock_quantity >= ? AND tenant_id = ?";
                     $stockUpdateStmt = $conn->prepare($updateStockSql);
                     if (!$stockUpdateStmt) {
                         throw new Exception("Failed to prepare stock update query: " . $conn->error);
                     }
-                    $stockUpdateStmt->bind_param("iii", $quantityInt, $productId, $quantityInt);
+                    $stockUpdateStmt->bind_param("iiii", $quantityInt, $productId, $quantityInt, $tenant_id);
                     
                     if (!$stockUpdateStmt->execute()) {
                         throw new Exception("Failed to update stock for product code: " . $productCode);
@@ -740,9 +748,10 @@ if ($selectedTenantId) {
 // Fetch active products for dropdown based on selected tenant
 $products = [];
 if ($selectedTenantId) {
-    $productsSql = "SELECT id, name, product_code, stock_quantity FROM products WHERE status = 'active' ORDER BY name ASC";
+    $productsSql = "SELECT id, name, product_code, stock_quantity FROM products WHERE status = 'active' AND tenant_id = ? ORDER BY name ASC";
     $productsStmt = $conn->prepare($productsSql);
     if ($productsStmt) {
+        $productsStmt->bind_param("i", $selectedTenantId);
         $productsStmt->execute();
         $productsResult = $productsStmt->get_result();
         while ($row = $productsResult->fetch_assoc()) {

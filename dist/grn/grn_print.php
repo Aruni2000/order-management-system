@@ -15,6 +15,9 @@ if ($grn_id <= 0) {
 
 // Access control
 $is_main_admin = isset($_SESSION['is_main_admin']) ? (int)$_SESSION['is_main_admin'] : 0;
+if ($is_main_admin !== 1) {
+    die("Access Denied: Only main admin can print GRN");
+}
 $role_id = isset($_SESSION['role_id']) ? (int)$_SESSION['role_id'] : 0;
 $session_tenant_id = isset($_SESSION['tenant_id']) ? (int)$_SESSION['tenant_id'] : 0;
 
