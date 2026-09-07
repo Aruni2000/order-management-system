@@ -16,13 +16,6 @@ if (!isset($_SESSION['user_id'])) {
     exit();
 }
 
-// User role (role_id 2) cannot modify products
-if (isset($_SESSION['role_id']) && (int)$_SESSION['role_id'] == 2) {
-    http_response_code(403);
-    echo json_encode(['success' => false, 'message' => 'You do not have permission to modify products.']);
-    exit();
-}
-
 // Include database connection
 include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
@@ -65,7 +58,7 @@ try {
     }
     
     // Check if product exists (with tenant isolation)
-    if ($is_main_admin && $_SESSION['role_id'] == 1) {
+    if ($is_main_admin) {
         $checkSql = "SELECT id, name, status FROM products WHERE id = ?";
         $checkStmt = $conn->prepare($checkSql);
         $checkStmt->bind_param("i", $product_id);
@@ -105,7 +98,7 @@ try {
     
     try {
         // Update product status (with tenant isolation)
-        if ($is_main_admin && $_SESSION['role_id'] == 1) {
+        if ($is_main_admin) {
             $updateSql = "UPDATE products SET status = ? WHERE id = ?";
             $updateStmt = $conn->prepare($updateSql);
             $updateStmt->bind_param("si", $new_status, $product_id);

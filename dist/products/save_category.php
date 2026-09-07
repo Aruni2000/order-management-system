@@ -19,11 +19,6 @@ if (!isset($_POST['csrf_token']) || !isset($_SESSION['csrf_token']) || $_POST['c
     exit();
 }
 
-if ((int)($_SESSION['role_id'] ?? 0) == 2) {
-    echo json_encode(['success' => false, 'message' => 'You do not have permission to add categories.']);
-    exit();
-}
-
 $name = trim(htmlspecialchars($_POST['name'] ?? '', ENT_QUOTES, 'UTF-8'));
 
 if (empty($name)) {
@@ -31,23 +26,10 @@ if (empty($name)) {
     exit();
 }
 
-// Determine target tenant: main admin picks a tenant, everyone else uses their own
-$is_main_admin = (int)($_SESSION['is_main_admin'] ?? 0);
-$role_id = (int)($_SESSION['role_id'] ?? 0);
-if ($is_main_admin === 1 && $role_id === 1) {
-    $tenant_id = intval($_POST['tenant_id'] ?? 0);
-    if ($tenant_id <= 0) {
-        echo json_encode(['success' => false, 'message' => 'Target Company is required.']);
-        exit();
-    }
-} else {
-    $tenant_id = (int)($_SESSION['tenant_id'] ?? 0);
-}
-
 try {
-    // Check for duplicates within the same tenant
-    $check = $conn->prepare("SELECT id FROM categories WHERE name = ? AND tenant_id = ? LIMIT 1");
-    $check->bind_param("si", $name, $tenant_id);
+    // Check for duplicates
+    $check = $conn->prepare("SELECT id FROM categories WHERE name = ? LIMIT 1");
+    $check->bind_param("s", $name);
     $check->execute();
     if ($check->get_result()->num_rows > 0) {
         echo json_encode(['success' => false, 'message' => 'Category name already exists.']);
@@ -56,8 +38,8 @@ try {
     $check->close();
 
     // Insert (flat category, no parent)
-    $stmt = $conn->prepare("INSERT INTO categories (name, tenant_id) VALUES (?, ?)");
-    $stmt->bind_param("si", $name, $tenant_id);
+    $stmt = $conn->prepare("INSERT INTO categories (name) VALUES (?)");
+    $stmt->bind_param("s", $name);
     
     if ($stmt->execute()) {
         $category_id = $conn->insert_id;

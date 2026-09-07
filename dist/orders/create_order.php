@@ -23,7 +23,7 @@ $session_tenant_id = isset($_SESSION['tenant_id']) ? intval($_SESSION['tenant_id
 $selected_tenant_id = isset($_GET['tenant_id']) ? intval($_GET['tenant_id']) : $session_tenant_id;
 
 // If not main admin, force to use their own tenant
-if (!($is_main_admin === 1 && $_SESSION['role_id'] == 1)) {
+if (!($is_main_admin === 1 && $role_id === 1)) {
     $selected_tenant_id = $session_tenant_id;
 }
 
@@ -135,7 +135,7 @@ $deliveryFeeStmt->close();
 
 // Fetch tenants for dropdown if main admin
 $tenants = [];
-if ($is_main_admin === 1 && $_SESSION['role_id'] == 1) {
+if ($is_main_admin === 1 && $role_id === 1) {
     $tenantsQuery = "SELECT tenant_id, company_name FROM tenants WHERE status = 'active' ORDER BY company_name ASC";
     $tenantsResult = $conn->query($tenantsQuery);
     if ($tenantsResult && $tenantsResult->num_rows > 0) {
@@ -147,7 +147,7 @@ if ($is_main_admin === 1 && $_SESSION['role_id'] == 1) {
 
 // Get selected tenant name
 $selectedTenantName = '';
-if ($is_main_admin === 1 && $_SESSION['role_id'] == 1) {
+if ($is_main_admin === 1 && $role_id === 1) {
     foreach ($tenants as $tenant) {
         if ($tenant['tenant_id'] == $selected_tenant_id) {
             $selectedTenantName = $tenant['company_name'];
@@ -615,7 +615,7 @@ if ($is_main_admin === 1 && $_SESSION['role_id'] == 1) {
 </div>
 
           <!-- Tenant Selector Card -->
-<?php if ($is_main_admin === 1 && $_SESSION['role_id'] == 1): ?>
+<?php if ($is_main_admin === 1 && $role_id === 1): ?>
 <div class="tenant-selector-card">
     <div class="tenant-selector-content">
         <label class="tenant-selector-label">

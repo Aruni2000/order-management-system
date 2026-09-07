@@ -35,15 +35,6 @@ if (!isset($_POST['csrf_token']) || !isset($_SESSION['csrf_token']) || $_POST['c
     exit();
 }
 
-// User role (role_id 2) cannot add products
-if (isset($_SESSION['role_id']) && (int)$_SESSION['role_id'] == 2) {
-    echo json_encode([
-        'success' => false,
-        'message' => 'You do not have permission to add products.'
-    ]);
-    exit();
-}
-
 // Initialize response array
 $response = [
     'success' => false,
@@ -71,32 +62,16 @@ try {
     
     // Handle tenant_id based on role
     $is_main_admin = isset($_SESSION['is_main_admin']) ? (int)$_SESSION['is_main_admin'] : 0;
-    if ($is_main_admin && $_SESSION['role_id'] == 1) {
+    if ($is_main_admin) {
         $tenant_id = isset($_POST['tenant_id']) ? intval($_POST['tenant_id']) : 0;
         if ($tenant_id <= 0) {
-            $response['errors']['tenant_id'] = 'Tenant Company is required';
+            $response['errors']['tenant_id'] = 'Target Company / Tenant is required';
             $response['message'] = 'Required fields are missing';
             echo json_encode($response);
             exit();
         }
     } else {
         $tenant_id = isset($_SESSION['tenant_id']) ? (int)$_SESSION['tenant_id'] : 0;
-    }
-
-    // -------------------------------------------------------------------------
-    // CATEGORY TENANT VALIDATION
-    // -------------------------------------------------------------------------
-    if ($category_id > 0) {
-        $catTenantStmt = $conn->prepare("SELECT id FROM categories WHERE id = ? AND tenant_id = ?");
-        $catTenantStmt->bind_param("ii", $category_id, $tenant_id);
-        $catTenantStmt->execute();
-        if ($catTenantStmt->get_result()->num_rows === 0) {
-            $response['errors']['category_id'] = 'Selected category is not available for the target company';
-            $response['message'] = 'Please correct the errors below.';
-            echo json_encode($response);
-            exit();
-        }
-        $catTenantStmt->close();
     }
 
     // -------------------------------------------------------------------------

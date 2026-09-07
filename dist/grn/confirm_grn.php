@@ -16,7 +16,6 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
-include_once($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/stock_ledger.php');
 
 $input = json_decode(file_get_contents('php://input'), true);
 $grn_id = intval($input['grn_id'] ?? 0);
@@ -52,35 +51,25 @@ try {
         exit();
     }
 
-    $conn->begin_transaction();
-
-    $itemsStmt = $conn->prepare("SELECT product_id, quantity, id AS grn_item_id FROM grn_items WHERE grn_id = ?");
+    // Get all items (prepared statement for consistency)
+    $itemsStmt = $conn->prepare("SELECT product_id, quantity FROM grn_items WHERE grn_id = ?");
     $itemsStmt->bind_param("i", $grn_id);
     $itemsStmt->execute();
     $itemsResult = $itemsStmt->get_result();
     $itemsStmt->close();
     if (!$itemsResult || $itemsResult->num_rows === 0) {
-        $conn->rollback();
         echo json_encode(['success' => false, 'message' => 'No items found in this GRN.']);
         exit();
     }
     $item_count = $itemsResult->num_rows; // Save before iterating
 
-    $guardStmt = $conn->prepare("UPDATE grn SET status = 'confirmed' WHERE grn_id = ? AND status = 'draft'");
-    $guardStmt->bind_param("i", $grn_id);
-    $guardStmt->execute();
-    if ($guardStmt->affected_rows === 0) {
-        $guardStmt->close();
-        $conn->rollback();
-        echo json_encode(['success' => false, 'message' => 'Only draft GRNs can be confirmed. It may have been confirmed or cancelled by another session.']);
-        exit();
-    }
-    $guardStmt->close();
+    // Start transaction
+    $conn->begin_transaction();
 
     // Update stock for each item (only if allow_inventory is enabled)
     if (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1) {
-        $updateStock = $conn->prepare("UPDATE products SET stock_quantity = stock_quantity + ? WHERE id = ? AND tenant_id = ?");
-        $grn_tenant_id = (int)($grnData['tenant_id'] ?? 0);
+        $updateStock = $conn->prepare("UPDATE products SET stock_quantity = stock_quantity + ? WHERE id = ? AND (tenant_id = ? OR tenant_id IS NULL)");
+        $grn_tenant_id = $grnData['tenant_id'] ?? null;
         while ($item = $itemsResult->fetch_assoc()) {
             $qty = intval($item['quantity']);
             $pid = intval($item['product_id']);
@@ -88,17 +77,6 @@ try {
             if (!$updateStock->execute()) {
                 throw new Exception("Failed to update stock for product ID " . $pid);
             }
-            if ($updateStock->affected_rows === 0) {
-                throw new Exception("Product does not belong to the GRN company (ID " . $pid . ")");
-            }
-            $batchIdStmt = $conn->prepare("SELECT batch_id FROM batches WHERE grn_item_id = ? LIMIT 1");
-            $batchIdStmt->bind_param("i", $item['grn_item_id']);
-            $batchIdStmt->execute();
-            $batchRow = $batchIdStmt->get_result()->fetch_assoc();
-            $batchIdStmt->close();
-            $batchId = $batchRow ? (int)$batchRow['batch_id'] : null;
-
-            log_stock_movement($conn, $grn_tenant_id, $pid, $batchId, 'grn_in', $qty, 'grn', (int)$grn_id, isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : null, 'GRN ' . $grnData['grn_number'] . ' confirmed');
         }
         $updateStock->close();
     }
@@ -111,6 +89,13 @@ try {
     }
     $activateBatch->close();
 
+    // Update GRN status
+    $updateGrn = $conn->prepare("UPDATE grn SET status = 'confirmed' WHERE grn_id = ?");
+    $updateGrn->bind_param("i", $grn_id);
+    if (!$updateGrn->execute()) {
+        throw new Exception("Failed to update GRN status.");
+    }
+    $updateGrn->close();
 
     // Log action
     if (isset($_SESSION['user_id'])) {

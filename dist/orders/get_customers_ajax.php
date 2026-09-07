@@ -24,7 +24,7 @@ $session_tenant_id = isset($_SESSION['tenant_id']) ? intval($_SESSION['tenant_id
 
 // Determine which tenant to filter by
 $filter_tenant_id = $tenant_id;
-if (!($is_main_admin === 1)) {
+if (!($is_main_admin === 1 && $role_id === 1)) {
     $filter_tenant_id = $session_tenant_id;
 }
 

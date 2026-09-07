@@ -85,13 +85,19 @@ $order_query = "
 $params = [$order_id];
 $types = "i";
 
-if ($is_main_admin === 1) {
+if ($is_main_admin === 1 && $role_id === 1) {
     // Main Admin: No extra restrictions
-} else {
-    // All other users: Restrict to tenant
+} elseif ($role_id === 1 && $is_main_admin === 0) {
+    // Tenant Admin: Restrict to tenant
     $order_query .= " AND o.tenant_id = ?";
     $params[] = $session_tenant_id;
     $types .= "i";
+} else {
+    // Regular User: Restrict to tenant AND assigned user
+    $order_query .= " AND o.tenant_id = ? AND o.user_id = ?";
+    $params[] = $session_tenant_id;
+    $params[] = $logged_user_id;
+    $types .= "ii";
 }
 
 $stmt = $conn->prepare($order_query);

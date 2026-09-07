@@ -16,12 +16,6 @@ if (!isset($_SESSION['user_id'])) {
     exit();
 }
 
-if ((int)($_SESSION['role_id'] ?? 0) == 2) {
-    http_response_code(403);
-    echo json_encode(['success' => false, 'message' => 'You do not have permission to modify categories.']);
-    exit();
-}
-
 // Include database connection
 include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
@@ -61,30 +55,16 @@ try {
         exit();
     }
     
-    // Tenant isolation: main admin can toggle any tenant's category, others only their own
-    $is_main_admin = (int)($_SESSION['is_main_admin'] ?? 0);
-    $role_id = (int)($_SESSION['role_id'] ?? 0);
-    $session_tenant_id = (int)($_SESSION['tenant_id'] ?? 0);
-
     // Check if category exists
-    if ($is_main_admin === 1 && $role_id === 1) {
-        $checkSql = "SELECT id, name, status FROM categories WHERE id = ?";
-        $checkStmt = $conn->prepare($checkSql);
-    } else {
-        $checkSql = "SELECT id, name, status FROM categories WHERE id = ? AND tenant_id = ?";
-        $checkStmt = $conn->prepare($checkSql);
-    }
+    $checkSql = "SELECT id, name, status FROM categories WHERE id = ?";
+    $checkStmt = $conn->prepare($checkSql);
     
     if (!$checkStmt) {
         echo json_encode(['success' => false, 'message' => 'Database prepare error: ' . $conn->error]);
         exit();
     }
     
-    if ($is_main_admin === 1 && $role_id === 1) {
-        $checkStmt->bind_param("i", $category_id);
-    } else {
-        $checkStmt->bind_param("ii", $category_id, $session_tenant_id);
-    }
+    $checkStmt->bind_param("i", $category_id);
     $checkStmt->execute();
     $result = $checkStmt->get_result();
     
@@ -110,24 +90,15 @@ try {
     $conn->autocommit(FALSE);
     
     try {
-        // Update category status (keep tenant constraint for non-main admin as a safeguard)
-        if ($is_main_admin === 1 && $role_id === 1) {
-            $updateSql = "UPDATE categories SET status = ? WHERE id = ?";
-            $updateStmt = $conn->prepare($updateSql);
-        } else {
-            $updateSql = "UPDATE categories SET status = ? WHERE id = ? AND tenant_id = ?";
-            $updateStmt = $conn->prepare($updateSql);
-        }
+        // Update category status
+        $updateSql = "UPDATE categories SET status = ? WHERE id = ?";
+        $updateStmt = $conn->prepare($updateSql);
         
         if (!$updateStmt) {
             throw new Exception('Database prepare error: ' . $conn->error);
         }
         
-        if ($is_main_admin === 1 && $role_id === 1) {
-            $updateStmt->bind_param("si", $new_status, $category_id);
-        } else {
-            $updateStmt->bind_param("sii", $new_status, $category_id, $session_tenant_id);
-        }
+        $updateStmt->bind_param("si", $new_status, $category_id);
         
         if (!$updateStmt->execute()) {
             throw new Exception('Failed to update category status: ' . $updateStmt->error);

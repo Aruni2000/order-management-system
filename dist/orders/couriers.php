@@ -36,8 +36,8 @@ $is_main_admin = isset($_SESSION['is_main_admin']) ? (int)$_SESSION['is_main_adm
 $role_id = isset($_SESSION['role_id']) ? (int)$_SESSION['role_id'] : 0;
 $tenant_id = isset($_SESSION['tenant_id']) ? intval($_SESSION['tenant_id']) : 0;
 
-// Page-level access: Allow Main Admin and Company Admin (role_id=1) only
-if ($role_id !== 1) {
+// Page-level access: Allow Main Admin, Company Admin (role_id=1), and Moderators (role_id=3)
+if ($role_id !== 1 && $role_id !== 3) {
     if (ob_get_level()) ob_end_clean();
     header("Location: /OMS/dist/dashboard/index.php");
     exit();
@@ -46,7 +46,7 @@ if ($role_id !== 1) {
 // Determine access filter based on user permissions
 $accessFilter = "";
 
-if ($is_main_admin === 1 && $_SESSION['role_id'] == 1) {
+if ($is_main_admin === 1 && $role_id === 1) {
     // Main admin can see all couriers from all tenants
     if (!empty($tenant_filter)) {
         $accessFilter = " AND c.tenant_id = " . (int)$tenant_filter;
@@ -102,7 +102,7 @@ if (!empty($searchConditions)) {
 }
 
 // Add ordering - prioritize default courier first, then by creation date
-$sql .= " ORDER BY is_default DESC, co_id DESC LIMIT $limit OFFSET $offset";
+$sql .= " ORDER BY is_default DESC, co_id ASC LIMIT $limit OFFSET $offset";
 
 // Execute queries
 $countResult = $conn->query($countSql);
@@ -120,7 +120,7 @@ if (!$result) {
 
 // Fetch tenants for filter if main admin
 $tenants = [];
-if ($is_main_admin === 1 && $_SESSION['role_id'] == 1) {
+if ($is_main_admin === 1 && $role_id === 1) {
     $tenantsQuery = "SELECT tenant_id, company_name FROM tenants WHERE status = 'active' ORDER BY company_name ASC";
     $tenantsResult = $conn->query($tenantsQuery);
     if ($tenantsResult && $tenantsResult->num_rows > 0) {
@@ -230,7 +230,7 @@ function getStatusInfo($is_default) {
                 <div class="tracking-container">
                     <form class="tracking-form" method="GET" action="">
                         
-                        <?php if ($is_main_admin === 1 && $_SESSION['role_id'] == 1): ?>
+                        <?php if ($is_main_admin === 1 && $role_id === 1): ?>
                         <!-- Tenant Filter (Only for Main Admin) -->
                         <div class="form-group">
                             <label for="tenant_filter">Tenant</label>
@@ -287,7 +287,7 @@ function getStatusInfo($is_default) {
                             <tr>
                                 <th>ID</th>
                                 <th>Courier Name</th>
-                                <?php if ($is_main_admin === 1 && $_SESSION['role_id'] == 1): ?>
+                                <?php if ($is_main_admin === 1 && $role_id === 1): ?>
                                     <th>Tenant</th>
                                 <?php endif; ?>
                                 <th>Contact number & email</th>
@@ -316,7 +316,7 @@ function getStatusInfo($is_default) {
                                             </div>
                                         </td>
                                         
-                                        <?php if ($is_main_admin === 1 && $_SESSION['role_id'] == 1): ?>
+                                        <?php if ($is_main_admin === 1 && $role_id === 1): ?>
                                         <!-- Tenant Column (Only for Main Admin) -->
                                         <td class="tenant-info">
                                             <?php echo isset($row['tenant_name']) ? htmlspecialchars($row['tenant_name']) : 'N/A'; ?>
@@ -415,7 +415,7 @@ function getStatusInfo($is_default) {
                                 <?php endwhile; ?>
                             <?php else: ?>
                                 <tr>
-                                    <td colspan="<?php echo ($is_main_admin === 1 && $_SESSION['role_id'] == 1) ? '8' : '7'; ?>" class="text-center" style="padding: 40px; text-align: center; color: #666;">
+                                    <td colspan="<?php echo ($is_main_admin === 1 && $role_id === 1) ? '8' : '7'; ?>" class="text-center" style="padding: 40px; text-align: center; color: #666;">
                                         <i class="fas fa-truck" style="font-size: 2rem; margin-bottom: 10px; display: block;"></i>
                                         No couriers found
                                     </td>

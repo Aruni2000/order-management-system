@@ -109,15 +109,13 @@ try {
     $address_line2 = trim($_POST['address_line2'] ?? '');
     $city_id = intval($_POST['city_id'] ?? 0);
 
-    // Tenant selection: only main-admin users with Admin role may pick a tenant company
-    // Others get their own session tenant
-    $is_admin_role = (int)($_SESSION['role_id'] ?? 0) == 1;
-    if ($is_main_admin == 1 && $is_admin_role) {
-        //A user main id =1 and Admin role
-        $tenantID = intval($_POST['tenantID'] ?? 0);
+    //if 
+    if ($is_main_admin == 1){
+        //A user main id =1 
+        $tenantID= intval($_POST['tenantID'] ?? 0);
     } else {
-        //B others - use their own tenant
-        $tenantID = $tenant_id;
+        //B user main id  =0
+        $tenantID= $tenant_id;
     }
 
     // Clean phone numbers (remove non-digits)

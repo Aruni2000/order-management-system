@@ -196,7 +196,7 @@ $result = $conn->query($sql);
                                     $itemData = $itemCountResult ? $itemCountResult->fetch_assoc() : ['cnt' => 0, 'total_qty' => 0];
                                     ?>
                                     <tr>
-                                        <td class="order-id"><?php echo htmlspecialchars($row['grn_number']); ?></td>
+                                        <td><strong><?php echo htmlspecialchars($row['grn_number']); ?></strong></td>
                                         <td>
                                             <div style="font-weight: 600; color: #1e293b;">
                                                 <?php echo htmlspecialchars($row['supplier_name'] ?? 'Unknown'); ?>

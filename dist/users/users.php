@@ -58,6 +58,7 @@ $email_filter = isset($_GET['email_filter']) ? trim($_GET['email_filter']) : '';
 $phone_filter = isset($_GET['phone_filter']) ? trim($_GET['phone_filter']) : '';
 $nic_filter = isset($_GET['nic_filter']) ? trim($_GET['nic_filter']) : '';
 $role_filter = isset($_GET['role_filter']) ? trim($_GET['role_filter']) : '';
+$position_filter = isset($_GET['position_filter']) ? trim($_GET['position_filter']) : '';
 $status_filter = isset($_GET['status_filter']) ? trim($_GET['status_filter']) : '';
 $date_from = isset($_GET['date_from']) ? trim($_GET['date_from']) : '';
 $date_to = isset($_GET['date_to']) ? trim($_GET['date_to']) : '';
@@ -75,9 +76,11 @@ $countSql = "SELECT COUNT(*) as total FROM users";
 
 // Main query - updated to match your actual database schema
 $sql = "SELECT u.id as user_id, u.name as username, u.name as full_name, u.email, u.mobile as phone, 
-               u.nic, r.name as role, u.status, u.created_at, u.updated_at, t.company_name as tenant_name
+               u.nic, r.name as role, u.status, u.position_id, p.name as position_name,
+               u.created_at, u.updated_at, t.company_name as tenant_name
         FROM users u 
         LEFT JOIN roles r ON u.role_id = r.id
+        LEFT JOIN positions p ON u.position_id = p.id
         LEFT JOIN tenants t ON u.tenant_id = t.tenant_id";
 
 // Build search conditions
@@ -133,6 +136,12 @@ if (!empty($role_filter)) {
     $searchConditions[] = "r.name = '$roleTerm'";
 }
 
+// Position filter
+if (!empty($position_filter)) {
+    $positionTerm = (int)$position_filter;
+    $searchConditions[] = "u.position_id = $positionTerm";
+}
+
 // Status filter
 if (!empty($status_filter)) {
     $statusTerm = $conn->real_escape_string($status_filter);
@@ -153,6 +162,7 @@ if (!empty($date_to)) {
 // Apply all search conditions
 if (!empty($searchConditions)) {
     $finalSearchCondition = " WHERE " . implode(' AND ', $searchConditions);
+    $countSql = "SELECT COUNT(*) as total FROM users u LEFT JOIN roles r ON u.role_id = r.id LEFT JOIN positions p ON u.position_id = p.id LEFT JOIN tenants t ON u.tenant_id = t.tenant_id" . $finalSearchCondition;
     $sql .= $finalSearchCondition;
 } else {
     $countSql = "SELECT COUNT(*) as total FROM users";
@@ -184,9 +194,17 @@ if ($role_result && $role_result->num_rows > 0) {
     $roles = $role_result->fetch_all(MYSQLI_ASSOC);
 }
 
+// Get positions for filter dropdown
+$positions_sql = "SELECT id, name FROM positions ORDER BY name ASC";
+$positions_result = $conn->query($positions_sql);
+$positions_list = [];
+if ($positions_result && $positions_result->num_rows > 0) {
+    $positions_list = $positions_result->fetch_all(MYSQLI_ASSOC);
+}
+
 // Get active tenants for filter dropdown (if main admin)
 $tenants_list = [];
-if ($is_main_admin && $_SESSION['role_id'] == 1) {
+if ($is_main_admin) {
     $tenants_sql = "SELECT tenant_id, company_name FROM tenants WHERE status = 'active' ORDER BY company_name";
     $tenants_result = $conn->query($tenants_sql);
     if ($tenants_result && $tenants_result->num_rows > 0) {
@@ -275,6 +293,19 @@ if ($is_main_admin && $_SESSION['role_id'] == 1) {
                         </div>
                         
                         <div class="form-group">
+                            <label for="position_filter">Position</label>
+                            <select id="position_filter" name="position_filter">
+                                <option value="">All Positions</option>
+                                <?php foreach ($positions_list as $pos): ?>
+                                    <option value="<?php echo $pos['id']; ?>" 
+                                            <?php echo $position_filter == $pos['id'] ? 'selected' : ''; ?>>
+                                        <?php echo htmlspecialchars($pos['name']); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group">
                             <label for="status_filter">Status</label>
                             <select id="status_filter" name="status_filter">
                                 <option value="">All Status</option>
@@ -283,11 +314,11 @@ if ($is_main_admin && $_SESSION['role_id'] == 1) {
                             </select>
                         </div>
 
-                        <?php if ($is_main_admin && $_SESSION['role_id'] == 1): ?>
+                        <?php if ($is_main_admin): ?>
                         <div class="form-group">
-                            <label for="tenant_filter">Tenant Company</label>
+                            <label for="tenant_filter">Tenant</label>
                             <select id="tenant_filter" name="tenant_filter">
-                                <option value="">All Companies</option>
+                                <option value="">All Tenants</option>
                                 <?php foreach ($tenants_list as $tenant): ?>
                                     <option value="<?php echo $tenant['tenant_id']; ?>" 
                                             <?php echo ($tenant_filter == $tenant['tenant_id']) ? 'selected' : ''; ?>>
@@ -327,11 +358,12 @@ if ($is_main_admin && $_SESSION['role_id'] == 1) {
                             <tr>
                                 <th>ID</th>
                                 <th>User Name</th>
-                                <?php if ($is_main_admin && $_SESSION['role_id'] == 1): ?>
-                                    <th>Tenant Company</th>
+                                <?php if ($is_main_admin): ?>
+                                    <th>Tenant</th>
                                 <?php endif; ?>
                                 <th>Contact & NIC</th>
                                 <th>Role & Status</th>
+                                <th>Position</th>
                                 <th>Created</th>
                                 <th>Actions</th>
                             </tr>
@@ -340,8 +372,8 @@ if ($is_main_admin && $_SESSION['role_id'] == 1) {
                             <?php if ($result && $result->num_rows > 0): ?>
                                 <?php while ($row = $result->fetch_assoc()): ?>
                                     <tr>
-                                        <td class="order-id">
-                                            <?php echo htmlspecialchars($row['user_id']); ?>
+                                        <td>
+                                            <h6 style="margin: 0; font-size: 14px; font-weight: 600;"><?php echo htmlspecialchars($row['user_id']); ?></h6>
                                         </td>
                                         <td class="customer-name">
                                             <div class="customer-info">
@@ -351,7 +383,7 @@ if ($is_main_admin && $_SESSION['role_id'] == 1) {
                                         </td>
 
                                         <!-- Tenant Info -->
-                                        <?php if ($is_main_admin && $_SESSION['role_id'] == 1): ?>
+                                        <?php if ($is_main_admin): ?>
                                             <td>
                                                 <div style="font-weight: 500; color: #495057;">
                                                     <?php echo htmlspecialchars($row['tenant_name'] ?: 'N/A'); ?>
@@ -384,6 +416,19 @@ if ($is_main_admin && $_SESSION['role_id'] == 1) {
                                             </div>
                                         </td>
                                         
+                                        <!-- Position -->
+                                        <td>
+                                            <div style="line-height: 1.4;">
+                                                <?php if (!empty($row['position_name'])): ?>
+                                                    <div style="font-weight: 500; color: #495057;">
+                                                        <i class="fas fa-briefcase" style="font-size: 12px; color: #6c757d; margin-right: 4px;"></i>
+                                                        <?php echo htmlspecialchars($row['position_name']); ?>
+                                                    </div>
+                                                <?php else: ?>
+                                                    <span style="color: #adb5bd; font-size: 12px;">—</span>
+                                                <?php endif; ?>
+                                            </div>
+                                        </td>
                                         
                                         <!-- Created -->
                                         <td>
@@ -405,6 +450,7 @@ if ($is_main_admin && $_SESSION['role_id'] == 1) {
                                                         data-user-nic="<?= htmlspecialchars($row['nic']) ?>"
                                                         data-user-role="<?= htmlspecialchars($row['role']) ?>"
                                                         data-user-status="<?= htmlspecialchars($row['status']) ?>"
+                                                        data-user-position="<?= htmlspecialchars($row['position_name'] ?? '') ?>"
                                                         data-user-created="<?= htmlspecialchars($row['created_at']) ?>"
                                                         data-user-updated="<?= htmlspecialchars($row['updated_at']) ?>"
                                                         title="View User Details">
@@ -449,17 +495,20 @@ if ($is_main_admin && $_SESSION['role_id'] == 1) {
                     </div>
                     <div class="pagination-controls">
                         <?php if ($page > 1): ?>
+                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page - 1; ?>&limit=<?php echo $limit; ?>&user_name_filter=<?php echo urlencode($user_name_filter); ?>&email_filter=<?php echo urlencode($email_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&nic_filter=<?php echo urlencode($nic_filter); ?>&role_filter=<?php echo urlencode($role_filter); ?>&position_filter=<?php echo urlencode($position_filter); ?>&status_filter=<?php echo urlencode($status_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&search=<?php echo urlencode($search); ?>&tenant_filter=<?php echo urlencode($tenant_filter); ?>'">
                                 <i class="fas fa-chevron-left"></i>
                             </button>
                         <?php endif; ?>
                         
                         <?php for ($i = max(1, $page - 2); $i <= min($totalPages, $page + 2); $i++): ?>
                             <button class="page-btn <?php echo ($i == $page) ? 'active' : ''; ?>" 
+                                    onclick="window.location.href='?page=<?php echo $i; ?>&limit=<?php echo $limit; ?>&user_name_filter=<?php echo urlencode($user_name_filter); ?>&email_filter=<?php echo urlencode($email_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&nic_filter=<?php echo urlencode($nic_filter); ?>&role_filter=<?php echo urlencode($role_filter); ?>&position_filter=<?php echo urlencode($position_filter); ?>&status_filter=<?php echo urlencode($status_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&search=<?php echo urlencode($search); ?>&tenant_filter=<?php echo urlencode($tenant_filter); ?>'">
                                 <?php echo $i; ?>
                             </button>
                         <?php endfor; ?>
                         
                         <?php if ($page < $totalPages): ?>
+                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page + 1; ?>&limit=<?php echo $limit; ?>&user_name_filter=<?php echo urlencode($user_name_filter); ?>&email_filter=<?php echo urlencode($email_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&nic_filter=<?php echo urlencode($nic_filter); ?>&role_filter=<?php echo urlencode($role_filter); ?>&position_filter=<?php echo urlencode($position_filter); ?>&status_filter=<?php echo urlencode($status_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&search=<?php echo urlencode($search); ?>&tenant_filter=<?php echo urlencode($tenant_filter); ?>'">
                                 <i class="fas fa-chevron-right"></i>
                             </button>
                         <?php endif; ?>
@@ -501,6 +550,8 @@ if ($is_main_admin && $_SESSION['role_id'] == 1) {
                                     <span class="detail-value" id="modal-user-role"></span>
                                 </div>
                                 <div class="customer-detail-row">
+                                    <span class="detail-label">Position:</span>
+                                    <span class="detail-value" id="modal-user-position"></span>
                                 </div>
                                 <div class="customer-detail-row">
                                     <span class="detail-label">Status:</span>
@@ -547,6 +598,7 @@ function openUserModal(button) {
     const userNic = button.getAttribute('data-user-nic');
     const userRole = button.getAttribute('data-user-role');
     const userStatus = button.getAttribute('data-user-status');
+    const userPosition = button.getAttribute('data-user-position');
     const userCreated = button.getAttribute('data-user-created');
     const userUpdated = button.getAttribute('data-user-updated');
 
@@ -557,6 +609,7 @@ function openUserModal(button) {
     document.getElementById('modal-user-phone').textContent = userPhone || 'N/A';
     document.getElementById('modal-user-nic').textContent = userNic || 'N/A';
     document.getElementById('modal-user-role').textContent = userRole || 'User';
+    document.getElementById('modal-user-position').textContent = userPosition || '—';
     
     // Set status badge
     const statusElement = document.getElementById('modal-user-status');

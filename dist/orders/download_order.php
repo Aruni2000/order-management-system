@@ -77,13 +77,19 @@ $order_query = "SELECT
 $params = [$order_id];
 $types = "i";
 
-if ($is_main_admin === 1) {
+if ($is_main_admin === 1 && $role_id === 1) {
     // Main Admin: No extra restrictions
-} else {
-    // All other users: Restrict to tenant
+} elseif ($role_id === 1 && $is_main_admin === 0) {
+    // Tenant Admin: Restrict to tenant
     $order_query .= " AND oh.tenant_id = ?";
     $params[] = $session_tenant_id;
     $types .= "i";
+} else {
+    // Regular User: Restrict to tenant AND assigned user
+    $order_query .= " AND oh.tenant_id = ? AND oh.user_id = ?";
+    $params[] = $session_tenant_id;
+    $params[] = $logged_user_id;
+    $types .= "ii";
 }
 
 $stmt = $conn->prepare($order_query);
@@ -165,6 +171,8 @@ if (isset($order['order_pay_status']) && !empty($order['order_pay_status'])) {
 
     if ($allItemsPaid && count($items) > 0) {
         $orderPayStatus = 'paid';
+    } elseif ($anyItemPaid) {
+        $orderPayStatus = 'partial';
     } else {
         $orderPayStatus = 'unpaid';
     }
@@ -210,6 +218,7 @@ function getPaymentStatusBadge($status) {
     $status = strtolower($status ?? 'unpaid');
     switch ($status) {
         case 'paid': return "status-paid";
+        case 'partial': return "status-partial";
         default: return "status-unpaid";
     }
 }
@@ -276,6 +285,7 @@ $conditionLabel = $conditionLabels[$conditionVal] ?? 'New';
             white-space: nowrap;
         }
         .od-badge.status-paid { background: #dcfce7; color: #166534; }
+        .od-badge.status-partial { background: #fef3c7; color: #92400e; }
         .od-badge.status-unpaid { background: #fee2e2; color: #991b1b; }
         .od-badge.status-pending { background: #dbeafe; color: #1e40af; }
         .od-badge.status-dispatch { background: #fef3c7; color: #92400e; }
@@ -426,7 +436,7 @@ $conditionLabel = $conditionLabels[$conditionVal] ?? 'New';
                 <i class="fas fa-circle" style="font-size:6px;"></i> <?php echo ucfirst($orderStatus); ?>
             </span>
             <span class="od-badge <?php echo getPaymentStatusBadge($orderPayStatus); ?>">
-                <i class="fas fa-<?php echo $orderPayStatus == 'paid' ? 'check-circle' : 'times-circle'; ?>"></i>
+                <i class="fas fa-<?php echo $orderPayStatus == 'paid' ? 'check-circle' : ($orderPayStatus == 'partial' ? 'clock' : 'times-circle'); ?>"></i>
                 <?php echo ucfirst($orderPayStatus); ?>
             </span>
             <span class="od-badge od-badge-outline">
@@ -597,7 +607,7 @@ $conditionLabel = $conditionLabels[$conditionVal] ?? 'New';
             <?php if (!empty($order['payment_slip'])): ?>
             <div class="od-field">
                 <span class="od-field-label">Payment Slip</span>
-                <span class="od-field-value"><a href="/OMS/dist/uploads/<?php echo urlencode($order['payment_slip']); ?>" target="_blank" style="color:#3b82f6;text-decoration:none;font-size:0.8rem;"><i class="fas fa-file-image"></i> View Slip</a></span>
+                <span class="od-field-value"><a href="/OMS/dist/uploads/payment_slips/<?php echo urlencode($order['payment_slip']); ?>" target="_blank" style="color:#3b82f6;text-decoration:none;font-size:0.8rem;"><i class="fas fa-file-image"></i> View Slip</a></span>
             </div>
             <?php endif; ?>
             <?php if (empty($order['payment_method']) && empty($order['amount_paid'])): ?>
@@ -679,7 +689,7 @@ $conditionLabel = $conditionLabels[$conditionVal] ?? 'New';
 
 <script>
 function viewPaymentSlip(slipFileName) {
-    const slipUrl = '/OMS/dist/uploads/' + encodeURIComponent(slipFileName);
+    const slipUrl = '/OMS/dist/uploads/payment_slips/' + encodeURIComponent(slipFileName);
     window.open(slipUrl, '_blank');
 }
 </script>

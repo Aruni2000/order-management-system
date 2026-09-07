@@ -49,7 +49,7 @@ $itemsStmt = $conn->prepare("SELECT gi.*, p.name as product_name, p.product_code
     b.remaining_qty as batch_remaining_qty
     FROM grn_items gi
     LEFT JOIN products p ON gi.product_id = p.id
-    LEFT JOIN batches b ON b.grn_item_id = gi.id
+    LEFT JOIN batches b ON (b.grn_item_id = gi.id OR (b.grn_id = gi.grn_id AND b.batch_number = gi.batch_number))
     WHERE gi.grn_id = ?
     ORDER BY gi.id ASC");
 $itemsStmt->bind_param("i", $grn_id);
@@ -73,9 +73,11 @@ $conn->close();
             <span class="order-field-value"><strong><?= htmlspecialchars($grn['grn_number']) ?></strong></span>
         </div>
         <div class="order-field">
-            <span class="order-field-label">Tenant Company</span>
+            <span class="order-field-label">Company / Tenant</span>
             <span class="order-field-value">
-                <?= htmlspecialchars($grn['tenant_company_name'] ?? 'N/A') ?>
+                <span class="badge" style="background: #e0f2fe; color: #0369a1; padding: 4px 8px; border-radius: 4px; font-weight: 600; font-size: 12px;">
+                    <?= htmlspecialchars($grn['tenant_company_name'] ?? 'N/A') ?>
+                </span>
             </span>
         </div>
         <div class="order-field">

@@ -59,15 +59,20 @@ $where[] = "o.interface IN ('individual', 'leads')";
 $where[] = "o.status = 'dispatch'"; // Always dispatch status
 
 // Access Control Logic
-if ($is_main_admin === 1 && $_SESSION['role_id'] == 1) {
+if ($is_main_admin === 1 && $role_id === 1) {
     // Main Admin: View All or Filter Specific Tenant
     if (!empty($tenant_filter)) {
         $tenant_id_safe = (int)$tenant_filter;
         $where[] = "o.tenant_id = $tenant_id_safe";
     }
-} else {
-    // All other users: View their Tenant's orders
+} elseif ($role_id === 1 && $is_main_admin === 0) {
+    // Tenant Admin: View All in their Tenant
     $where[] = "o.tenant_id = $tenant_id_session";
+} else {
+    // Regular User: View Only Assigned Orders in their Tenant
+    $logged_user_id = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
+    $where[] = "o.tenant_id = $tenant_id_session";
+    $where[] = "o.user_id = $logged_user_id";
 }
 
 // Date and time range filter
@@ -129,7 +134,7 @@ $result = $conn->query($sql);
 
 // Fetch tenants for Main Admin filter
 $tenants = [];
-if ($is_main_admin === 1 && $_SESSION['role_id'] == 1) {
+if ($is_main_admin === 1 && $role_id === 1) {
     $tenantsResult = $conn->query("SELECT tenant_id, company_name FROM tenants WHERE status = 'active' ORDER BY company_name ASC");
     if ($tenantsResult) {
         while ($t = $tenantsResult->fetch_assoc()) {
@@ -209,7 +214,7 @@ if ($is_main_admin === 1 && $_SESSION['role_id'] == 1) {
                                 <input type="hidden" name="status_filter" value="dispatch">
                             </div>
 
-                            <?php if ($is_main_admin === 1 && $_SESSION['role_id'] == 1): ?>
+                            <?php if ($is_main_admin === 1 && $role_id === 1): ?>
                             <div class="filter-group">
                                 <label for="tenant_filter">Tenant</label>
                                 <select id="tenant_filter" name="tenant_filter">
@@ -333,13 +338,6 @@ if ($is_main_admin === 1 && $_SESSION['role_id'] == 1) {
             dateInput.addEventListener('change', function() {
                 document.getElementById('filterForm').submit();
             });
-            
-            const tenantFilter = document.getElementById('tenant_filter');
-            if (tenantFilter) {
-                tenantFilter.addEventListener('change', function() {
-                    document.getElementById('filterForm').submit();
-                });
-            }
             
             console.log('Label print page loaded');
             console.log('Total orders found: <?php echo $totalRows; ?>');

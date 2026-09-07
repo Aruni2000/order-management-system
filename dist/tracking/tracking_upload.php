@@ -15,15 +15,6 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
 // Include the database connection file early
 include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
-// Store role (role_id 3, non-main-admin) is limited to Products & Order Management
-if ((int)($_SESSION['role_id'] ?? 0) === 3 && (int)($_SESSION['is_main_admin'] ?? 0) !== 1) {
-    if (ob_get_level()) {
-        ob_end_clean();
-    }
-    header("Location: /OMS/dist/pages/access_denied.php");
-    exit();
-}
-
 // Function to remove BOM and clean CSV headers
 function cleanCsvHeader($header) {
     // Remove BOM if present
@@ -177,7 +168,7 @@ function validateRowData($rowData, $rowNumber, $courierId, $tenantId, $conn) {
 function getTenants($conn, $is_main_admin, $role_id, $session_tenant_id) {
     $tenants = [];
     
-    if ($is_main_admin === 1) {
+    if ($is_main_admin === 1 && $role_id === 1) {
         // Main Admin gets all active tenants
         $result = $conn->query("SELECT tenant_id, company_name FROM tenants WHERE status = 'active' ORDER BY company_name");
     } else {
@@ -205,12 +196,12 @@ $errors = [];
 $warnings = [];
 $rowNumber = 2;
 
-// Access Control: Allow Main Admin and Company Admin (role_id=1) only
+// Access Control: Allow Main Admin, Company Admin (role_id=1), and Moderators (role_id=3)
 $is_main_admin = isset($_SESSION['is_main_admin']) ? (int)$_SESSION['is_main_admin'] : 0;
 $role_id = isset($_SESSION['role_id']) ? (int)$_SESSION['role_id'] : 0;
 $session_tenant_id = isset($_SESSION['tenant_id']) ? (int)$_SESSION['tenant_id'] : 0;
 
-if ($role_id !== 1) {
+if ($role_id !== 1 && $role_id !== 3) {
     ob_end_clean();
     header("Location: /OMS/dist/dashboard/index.php");
     exit();
@@ -221,7 +212,7 @@ $tenants = getTenants($conn, $is_main_admin, $role_id, $session_tenant_id);
 
 // If user is restricted to one tenant, pre-select it
 $restricted_tenant_id = 0;
-if (!($is_main_admin === 1) && !empty($tenants)) {
+if (!($is_main_admin === 1 && $role_id === 1) && !empty($tenants)) {
     $restricted_tenant_id = $tenants[0]['tenant_id'];
 }
 

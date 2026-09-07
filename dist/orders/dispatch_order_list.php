@@ -82,9 +82,11 @@ $offset = ($page - 1) * $limit;
 
 // NEW: Role-based access control condition
 $roleBasedCondition = "";
-if ($is_main_admin != 1) {
-    // Non-main-admin users can only see their tenant's orders
-    $roleBasedCondition = " AND i.tenant_id = $tenant_id";
+if ($current_user_role != 1) {
+    // Non-admin users can only see their own orders
+    $roleBasedCondition = " AND i.user_id = $current_user_id";
+}else{
+    $roleBasedCondition = "";
 }
 
 /**
@@ -203,8 +205,8 @@ if (!empty($updated_date_to)) {
 
 // Specific tenant ID filter
 if (!empty($tenant_id_filter)) {
-    $tenantIdTerm = (int)$tenant_id_filter;
-    $searchConditions[] = "i.tenant_id = $tenantIdTerm";
+    $tenantIdTerm = $conn->real_escape_string($tenant_id_filter);
+    $searchConditions[] = "i.tenant_id = '$tenantIdTerm'";
 }
 
 // Handover Status filter
@@ -251,8 +253,7 @@ $usersResult = $conn->query($usersQuery);
 
 // Get unique tenants for filter dropdown
 $tenant_sql = "SELECT DISTINCT tenant_id, company_name 
-               FROM tenants
-               WHERE status = 'active'";
+               FROM tenants";
 $tenant_result = $conn->query($tenant_sql);
 $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
 
@@ -292,21 +293,6 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
 
     .actions {
         white-space: nowrap;
-    }
-
-    .issued-time {
-        font-size: 0.9em;
-        color: #333;
-        line-height: 1.2;
-    }
-    .issued-date {
-        display: block;
-        font-weight: 600;
-    }
-    .issued-time-only {
-        display: block;
-        color: #666;
-        font-size: 0.85em;
     }
 
     .updated-time {
@@ -398,36 +384,6 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                 value="<?php echo htmlspecialchars($customer_name_filter); ?>">
                         </div>
 
-                        <div class="form-group">
-                            <label for="tracking_id">Tracking ID</label>
-                            <input type="text" id="tracking_id" name="tracking_id" placeholder="Enter tracking ID"
-                                value="<?php echo htmlspecialchars($tracking_id); ?>">
-                        </div>
-
-                        <div class="form-group">
-                            <label for="handover_filter">Handover Status</label>
-                            <select id="handover_filter" name="handover_filter">
-                                <option value="">All Status</option>
-                                <option value="handed_over" <?php echo ($handover_filter == 'handed_over') ? 'selected' : ''; ?>>Handed Over</option>
-                                <option value="pending" <?php echo ($handover_filter == 'pending') ? 'selected' : ''; ?>>Pending</option>
-                            </select>
-                        </div>
-
-<?php if ($is_admin && $is_main_admin) { ?>
-                        <div class="form-group">
-                            <label for="tenant_id_filter">Tenant</label>
-                            <select id="tenant_id_filter" name="tenant_id_filter">
-                                <option value="">All Companies</option>
-                                <?php foreach ($tenants as $tenant): ?>
-                                <option value="<?php echo htmlspecialchars($tenant['tenant_id']); ?>"
-                                    <?php echo $tenant_id_filter == $tenant['tenant_id'] ? 'selected' : ''; ?>>
-                                    <?php echo htmlspecialchars($tenant['company_name'] ? $tenant['company_name'] : 'Company ' . $tenant['tenant_id']); ?>
-                                </option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
-                        <?php } ?>
-
                         <!-- User ID Filter - Only show for admin users -->
                         <?php if ($current_user_role == 1): ?>
                         <div class="form-group">
@@ -444,19 +400,51 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                 <?php endif; ?>
                             </select>
                         </div>
-<?php endif; ?>
+                        <?php endif; ?>
+
 
                         <div class="form-group">
-                            <label for="updated_date_from">Date From</label>
+                            <label for="tracking_id">Tracking ID</label>
+                            <input type="text" id="tracking_id" name="tracking_id" placeholder="Enter tracking ID"
+                                value="<?php echo htmlspecialchars($tracking_id); ?>">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="updated_date_from">Updated From</label>
                             <input type="date" id="updated_date_from" name="updated_date_from"
                                 value="<?php echo htmlspecialchars($updated_date_from); ?>">
                         </div>
 
                         <div class="form-group">
-                            <label for="updated_date_to">Date To</label>
+                            <label for="updated_date_to">Updated To</label>
                             <input type="date" id="updated_date_to" name="updated_date_to"
                                 value="<?php echo htmlspecialchars($updated_date_to); ?>">
                         </div>
+
+                        <div class="form-group">
+                            <label for="handover_filter">Handover Status</label>
+                            <select id="handover_filter" name="handover_filter">
+                                <option value="">All Status</option>
+                                <option value="handed_over" <?php echo ($handover_filter == 'handed_over') ? 'selected' : ''; ?>>Handed Over</option>
+                                <option value="pending" <?php echo ($handover_filter == 'pending') ? 'selected' : ''; ?>>Pending</option>
+                            </select>
+                        </div>
+
+                        <?php if ($is_admin && $is_main_admin) { ?>
+                        <div class="form-group">
+                            <label for="tenant_id_filter">Tenant ID</label>
+                            <select id="tenant_id_filter" name="tenant_id_filter">
+                                <option value="">All Companies</option>
+                                <?php foreach ($tenants as $tenant): ?>
+                                <option value="<?php echo htmlspecialchars($tenant['tenant_id']); ?>"
+                                    <?php echo $tenant_id_filter == $tenant['tenant_id'] ? 'selected' : ''; ?>>
+                                    <?php echo htmlspecialchars($tenant['company_name'] ? $tenant['company_name'] : 'Company ' . $tenant['tenant_id']); ?>
+                                </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <?php } else { ?>
+                        <?php } ?>
 
                         <div class="form-group">
                             <div class="button-group">
@@ -496,16 +484,16 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                         <thead>
                             <tr>
                                 <th>Order ID</th>
-                                <th>Issue Date</th>
                                 <th>Updated Time</th>
                                 <th>Customer Name</th>
-                                <th>Total Amount</th>
+                                <th>Amount</th>
                                 <th>Tracking Number</th>
-                                <th>Handover Status</th>
                                 <?php if ($is_admin && $is_main_admin) { ?>
                                 <th>Tenant Company</th>
-                                <?php } ?>
+                                <?php } else { ?>
+                                        <?php } ?>
                                 <th>Processed By</th>
+                                <th>Handover Status</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
@@ -517,19 +505,6 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                 <td class="order-id">
                                     <?php echo isset($row['order_id']) ? htmlspecialchars($row['order_id']) : ''; ?>
                                     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/leads_badge.php'); ?>
-                                </td>
-
-                                <!-- Issue Date -->
-                                <td class="issued-time">
-                                    <?php
-                                            if (isset($row['created_at']) && !empty($row['created_at'])) {
-                                                $createdAt = new DateTime($row['created_at']);
-                                                echo '<span class="issued-date">' . $createdAt->format('Y-m-d') . '</span>';
-                                                echo '<span class="issued-time-only">' . $createdAt->format('h:i:s A') . '</span>';
-                                            } else {
-                                                echo '<span style="color: #999; font-style: italic;">N/A</span>';
-                                            }
-                                            ?>
                                 </td>
 
                                 <!-- Updated Time Column -->
@@ -590,6 +565,35 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                             ?>
                                 </td>
 
+                                <!-- Tenant Company Name -->
+                                <?php if ($is_admin && $is_main_admin) { ?>
+                                <td class="customer-name">
+                                    <div class="customer-info">
+                                        <h6 style="margin: 0; font-size: 14px;">
+                                            <?php echo htmlspecialchars($row['company_name']); ?></h6>
+                                    </div>
+                                </td>
+                                <?php } else { ?>
+                                        <?php } ?>
+
+                                <!-- Processed By (who marked paid + payment method) -->
+                                <td>
+                                    <?php
+                                    $paidByName = isset($row['paid_by_name']) ? htmlspecialchars($row['paid_by_name']) : '';
+                                    $paymentMethod = isset($row['payment_method']) ? htmlspecialchars($row['payment_method']) : '';
+                                    
+                                    if ($payStatus == 'paid' && !empty($paidByName)) {
+                                        echo '<span style="font-weight: 600; color: #28a745;">' . $paidByName . '</span>';
+                                        if (!empty($paymentMethod)) {
+                                            $methodDisplay = ucwords(str_replace('_', ' ', $paymentMethod));
+                                            echo '<br><span style="font-size: 11px; color: #6c757d;">' . $methodDisplay . '</span>';
+                                        }
+                                    } else {
+                                        echo '<span style="color: #adb5bd;">-</span>';
+                                    }
+                                    ?>
+                                </td>
+
                                 <!-- Handover Status -->
                                 <td>
                                     <?php
@@ -605,36 +609,6 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                         echo '<span style="display:block; font-size: 11px; color: #555; margin-top: 2px;">' . $handoverTime->format('Y-m-d h:i:s A') . '</span>';
                                     } else {
                                         echo '<span style="display:block; font-size: 11px; color: #adb5bd; margin-top: 2px;">-</span>';
-                                    }
-                                    ?>
-                                </td>
-
-                                <!-- Tenant Company Name -->
-                                <?php if ($is_admin && $is_main_admin) { ?>
-                                <td class="customer-name">
-                                    <div class="customer-info">
-                                        <h6 style="margin: 0; font-size: 14px;">
-                                            <?php echo htmlspecialchars($row['company_name']); ?></h6>
-                                    </div>
-                                </td>
-                                <?php } ?>
-
-                                <!-- Processed By (who marked paid + payment method) -->
-                                <td>
-                                    <?php
-                                    $paidByName = isset($row['paid_by_name']) ? htmlspecialchars($row['paid_by_name']) : '';
-                                    $paidById = isset($row['pay_by']) ? htmlspecialchars($row['pay_by']) : '';
-                                    $paymentMethod = isset($row['payment_method']) ? htmlspecialchars($row['payment_method']) : '';
-                                    
-                                    if ($payStatus == 'paid' && !empty($paidByName)) {
-                                        $processedBy = $paidByName . (!empty($paidById) ? ' (' . $paidById . ')' : '');
-                                        echo '<span style="font-weight: 600; color: #28a745;">' . $processedBy . '</span>';
-                                        if (!empty($paymentMethod)) {
-                                            $methodDisplay = ucwords(str_replace('_', ' ', $paymentMethod));
-                                            echo '<br><span style="font-size: 11px; color: #6c757d;">' . $methodDisplay . '</span>';
-                                        }
-                                    } else {
-                                        echo '<span style="color: #adb5bd;">-</span>';
                                     }
                                     ?>
                                 </td>
@@ -693,7 +667,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                             <?php endwhile; ?>
                             <?php else: ?>
                             <tr>
-                                <td colspan="<?php echo ($is_admin && $is_main_admin) ? '10' : '9'; ?>" class="text-center"
+                                <td colspan="9" class="text-center"
                                     style="padding: 40px; text-align: center; color: #666;">
                                     No dispatched orders found
                                 </td>
@@ -712,21 +686,21 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                     <div class="pagination-controls">
                         <?php if ($page > 1): ?>
                         <button class="page-btn"
-                            onclick="window.location.href='?page=<?php echo $page - 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&user_id_filter=<?php echo urlencode($user_id_filter); ?>&tracking_id=<?php echo urlencode($tracking_id); ?>&updated_date_from=<?php echo urlencode($updated_date_from); ?>&updated_date_to=<?php echo urlencode($updated_date_to); ?>&handover_filter=<?php echo urlencode($handover_filter); ?>&tenant_id_filter=<?php echo urlencode($tenant_id_filter); ?>&search=<?php echo urlencode($search); ?>'">
+                            onclick="window.location.href='?page=<?php echo $page - 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&user_id_filter=<?php echo urlencode($user_id_filter); ?>&tracking_id=<?php echo urlencode($tracking_id); ?>&updated_date_from=<?php echo urlencode($updated_date_from); ?>&updated_date_to=<?php echo urlencode($updated_date_to); ?>&handover_filter=<?php echo urlencode($handover_filter); ?>&search=<?php echo urlencode($search); ?>'">
                             <i class="fas fa-chevron-left"></i>
                         </button>
                         <?php endif; ?>
 
                         <?php for ($i = max(1, $page - 2); $i <= min($totalPages, $page + 2); $i++): ?>
                         <button class="page-btn <?php echo ($i == $page) ? 'active' : ''; ?>"
-                            onclick="window.location.href='?page=<?php echo $i; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&user_id_filter=<?php echo urlencode($user_id_filter); ?>&tracking_id=<?php echo urlencode($tracking_id); ?>&updated_date_from=<?php echo urlencode($updated_date_from); ?>&updated_date_to=<?php echo urlencode($updated_date_to); ?>&handover_filter=<?php echo urlencode($handover_filter); ?>&tenant_id_filter=<?php echo urlencode($tenant_id_filter); ?>&search=<?php echo urlencode($search); ?>'">
+                            onclick="window.location.href='?page=<?php echo $i; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&user_id_filter=<?php echo urlencode($user_id_filter); ?>&tracking_id=<?php echo urlencode($tracking_id); ?>&updated_date_from=<?php echo urlencode($updated_date_from); ?>&updated_date_to=<?php echo urlencode($updated_date_to); ?>&handover_filter=<?php echo urlencode($handover_filter); ?>&search=<?php echo urlencode($search); ?>'">
                             <?php echo $i; ?>
                         </button>
                         <?php endfor; ?>
 
                         <?php if ($page < $totalPages): ?>
                         <button class="page-btn"
-                            onclick="window.location.href='?page=<?php echo $page + 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&user_id_filter=<?php echo urlencode($user_id_filter); ?>&tracking_id=<?php echo urlencode($tracking_id); ?>&updated_date_from=<?php echo urlencode($updated_date_from); ?>&updated_date_to=<?php echo urlencode($updated_date_to); ?>&handover_filter=<?php echo urlencode($handover_filter); ?>&tenant_id_filter=<?php echo urlencode($tenant_id_filter); ?>&search=<?php echo urlencode($search); ?>'">
+                            onclick="window.location.href='?page=<?php echo $page + 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&user_id_filter=<?php echo urlencode($user_id_filter); ?>&tracking_id=<?php echo urlencode($tracking_id); ?>&updated_date_from=<?php echo urlencode($updated_date_from); ?>&updated_date_to=<?php echo urlencode($updated_date_to); ?>&handover_filter=<?php echo urlencode($handover_filter); ?>&search=<?php echo urlencode($search); ?>'">
                             <i class="fas fa-chevron-right"></i>
                         </button>
                         <?php endif; ?>
@@ -920,7 +894,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
         }
 
         // Construct the payment slip URL
-        const slipUrl = '/OMS/dist/uploads/' + encodeURIComponent(currentPaymentSlip);
+        const slipUrl = '/OMS/dist/uploads/payment_slips/' + encodeURIComponent(currentPaymentSlip);
 
         // Open payment slip in new tab
         window.open(slipUrl, '_blank');

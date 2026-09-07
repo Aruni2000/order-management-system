@@ -14,15 +14,6 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
 // Include the database connection file
 include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
-
-if ((int)($_SESSION['role_id'] ?? 0) === 3 && (int)($_SESSION['is_main_admin'] ?? 0) !== 1) {
-    if (ob_get_level()) {
-        ob_end_clean();
-    }
-    header("Location: /OMS/dist/pages/access_denied.php");
-    exit();
-}
-
 // Check database connection
 if ($conn->connect_error) {
     error_log("Database connection failed: " . $conn->connect_error);
@@ -303,7 +294,7 @@ $role_id = $_SESSION['role_id'];
                     <div class="form-section">
                         <div class="section-content">
 
-                            <?php if ($is_main_admin == 1 && $role_id == 1) { ?>
+                            <?php if (($is_main_admin == 1) && ($role_id == 1)) { ?>
                             <div class="form-row">
                                 <div class="customer-form-group">
                                     <label for="status" class="form-label">

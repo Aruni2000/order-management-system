@@ -177,7 +177,7 @@ $initial_batch_number = 'BN-' . date('Ymd') . '-' . date('His') . '-0'; // depre
                             <div class="customer-info-grid">
                                 <div class="form-group">
                                     <label class="form-label" for="tenant_id">
-                                        Tenant Company <span class="required">*</span>
+                                        Target Company / Tenant <span class="required">*</span>
                                     </label>
                                     <select class="form-select" id="tenant_id" name="tenant_id" required>
                                         <?php foreach ($tenants as $t): ?>
@@ -196,7 +196,7 @@ $initial_batch_number = 'BN-' . date('Ymd') . '-' . date('His') . '-0'; // depre
                                     <select class="form-select" id="supplier_id" name="supplier_id" required>
                                         <option value="">-- Select Supplier --</option>
                                         <?php foreach ($suppliers as $sup): ?>
-                                            <option value="<?php echo $sup['id']; ?>">
+                                            <option value="<?php echo $sup['id']; ?>" data-tenant="<?php echo $sup['tenant_id'] ?? ''; ?>">
                                                 <?php echo htmlspecialchars($sup['name']); ?>
                                             </option>
                                         <?php endforeach; ?>

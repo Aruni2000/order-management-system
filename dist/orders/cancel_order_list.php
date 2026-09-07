@@ -19,34 +19,34 @@ class RoleBasedAccessControl {
     }
     
     /**
-     * Check if current user is main admin
+     * Check if current user is admin
      */
-    public function isMainAdmin() {
-        return $this->is_main_admin == 1;
+    public function isAdmin() {
+        return $this->current_user_role == 1;
     }
     
     /**
      * Get role-based SQL condition for filtering orders
      */
     public function getRoleBasedCondition($table_alias = 'i') {
-        if ($this->isMainAdmin()) {
-            return ""; // Main admin sees all orders
+        if ($this->isAdmin()) {
+            return ""; // Admin sees all orders
         }
-        return " AND {$table_alias}.tenant_id = {$this->tenant_id}";
+        return " AND {$table_alias}.user_id = {$this->current_user_id}";
     }
     
     /**
      * Get table colspan based on role (for empty state)
      */
     public function getTableColspan() {
-        return $this->isMainAdmin() ? '9' : '8';
+        return '6';
     }
     
     /**
      * Get appropriate "no records" message
      */
     public function getNoRecordsMessage($record_type = 'orders') {
-        if ($this->isMainAdmin()) {
+        if ($this->isAdmin()) {
             return "No cancel {$record_type} found";
         } else {
             return "No cancel {$record_type} found for your account";
@@ -57,7 +57,7 @@ class RoleBasedAccessControl {
      * Get order count subtitle
      */
     public function getOrderCountSubtitle() {
-        return $this->isMainAdmin() ? 'Total Cancel Orders' : ' Total Orders';
+        return $this->isAdmin() ? 'Total Cancel Orders' : ' Total Orders';
     }
 }
 
@@ -138,7 +138,6 @@ $date_from = isset($_GET['date_from']) ? trim($_GET['date_from']) : '';
 $date_to = isset($_GET['date_to']) ? trim($_GET['date_to']) : '';
 $pay_status_filter = isset($_GET['pay_status_filter']) ? trim($_GET['pay_status_filter']) : '';
 $tenant_id_filter = isset($_GET['tenant_id_filter']) ? trim($_GET['tenant_id_filter']) : '';
-$user_id_filter = isset($_GET['user_id_filter']) ? trim($_GET['user_id_filter']) : '';
 
 $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 10;
 $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
@@ -242,22 +241,8 @@ if (!empty($pay_status_filter)) {
 
 // Specific tenant ID filter
 if (!empty($tenant_id_filter)) {
-    $tenantIdTerm = (int)$tenant_id_filter;
-    $searchConditions[] = "i.tenant_id = $tenantIdTerm";
-}
-
-//Specific User ID filter - MODIFIED: Apply role-based restrictions
-if (!empty($user_id_filter)) {
-    $userIdTerm = $conn->real_escape_string($user_id_filter);
-    if ($current_user_role == 1) {
-        // Admin can filter by any user
-        $searchConditions[] = "i.user_id = '$userIdTerm'";
-    } else {
-        // Non-admin can only filter by their own user ID
-        if ($userIdTerm == $current_user_id) {
-            $searchConditions[] = "i.user_id = '$userIdTerm'";
-        }
-    }
+    $tenantIdTerm = $conn->real_escape_string($tenant_id_filter);
+    $searchConditions[] = "i.tenant_id = '$tenantIdTerm'";
 }
 
 // Apply all search conditions
@@ -285,19 +270,9 @@ $result = $conn->query($sql);
 // Include navigation components
 
 
-// Fetch all users for the User ID dropdown based on permissions
-if ($is_main_admin == 1 && $current_user_role == 1) {
-    $usersQuery = "SELECT id, name FROM users ORDER BY name ASC";
-} else {
-    $usersQuery = "SELECT id, name FROM users WHERE tenant_id = " . (int)$tenant_id . " ORDER BY name ASC";
-}
-$usersResult = $conn->query($usersQuery);
-
-
 // Get unique tenants for filter dropdown
 $tenant_sql = "SELECT DISTINCT tenant_id, company_name 
-               FROM tenants
-               WHERE status = 'active'";
+               FROM tenants";
 $tenant_result = $conn->query($tenant_sql);
 $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
 
@@ -326,22 +301,6 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
 }
 
 .issued-time-only {
-    display: block;
-    color: #666;
-    font-size: 0.85em;
-}
-    .updated-time {
-    font-size: 0.9em;
-    color: #333;
-    line-height: 1.2;
-}
-
-.updated-date {
-    display: block;
-    font-weight: 600;
-}
-
-.updated-time-only {
     display: block;
     color: #666;
     font-size: 0.85em;
@@ -463,6 +422,18 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                         </div>
 
                         <div class="form-group">
+                            <label for="date_from">Date From</label>
+                            <input type="date" id="date_from" name="date_from"
+                                value="<?php echo htmlspecialchars($date_from); ?>">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="date_to">Date To</label>
+                            <input type="date" id="date_to" name="date_to"
+                                value="<?php echo htmlspecialchars($date_to); ?>">
+                        </div>
+
+                        <div class="form-group">
                             <label for="pay_status_filter">Payment Status</label>
                             <select id="pay_status_filter" name="pay_status_filter">
                                 <option value="">All Payment Status</option>
@@ -475,7 +446,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
 
                         <?php if ($is_admin && $is_main_admin) { ?>
                         <div class="form-group">
-                            <label for="tenant_id_filter">Tenant</label>
+                            <label for="tenant_id_filter">Tenant ID</label>
                             <select id="tenant_id_filter" name="tenant_id_filter">
                                 <option value="">All Companies</option>
                                 <?php foreach ($tenants as $tenant): ?>
@@ -486,37 +457,8 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                 <?php endforeach; ?>
                             </select>
                         </div>
+                        <?php } else { ?>
                         <?php } ?>
-
-                        <!-- User ID Filter - Only show for admin users -->
-                        <?php if ($current_user_role == 1): ?>
-                        <div class="form-group">
-                            <label for="user_id_filter">User</label>
-                            <select id="user_id_filter" name="user_id_filter">
-                                <option value="">All Users</option>
-                                <?php if ($usersResult && $usersResult->num_rows > 0): ?>
-                                <?php while ($userRow = $usersResult->fetch_assoc()): ?>
-                                <option value="<?php echo htmlspecialchars($userRow['id']); ?>"
-                                    <?php echo ($user_id_filter == $userRow['id']) ? 'selected' : ''; ?>>
-                                    <?php echo htmlspecialchars($userRow['name']) . ' (ID: ' . $userRow['id'] . ')'; ?>
-                                </option>
-                                <?php endwhile; ?>
-                                <?php endif; ?>
-                            </select>
-                        </div>
-                        <?php endif; ?>
-
-                        <div class="form-group">
-                            <label for="date_from">Date From</label>
-                            <input type="date" id="date_from" name="date_from"
-                                value="<?php echo htmlspecialchars($date_from); ?>">
-                        </div>
-
-                        <div class="form-group">
-                            <label for="date_to">Date To</label>
-                            <input type="date" id="date_to" name="date_to"
-                                value="<?php echo htmlspecialchars($date_to); ?>">
-                        </div>
 
                         <div class="form-group">
                             <div class="button-group">
@@ -550,13 +492,13 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                             <tr>
                                 <th>Order ID</th>
                                 <th>Issue Date</th>
-                                <th>Updated Time</th>
                                 <th>Customer Name</th>
+                                <?php if ($is_main_admin == 1) { ?>
+                                <th>Tenant Company</th>
+                                <?php } else { ?>
+                                        <?php } ?>
                                 <th>Total Amount</th>
                                 <th>Cancellation Reason</th>
-                                <?php if ($is_main_admin == 1 && $_SESSION['role_id'] == 1) { ?>
-                                <th>Tenant Company</th>
-                                <?php } ?>
                                 <th>Actions</th>
                             </tr>
                         </thead>
@@ -583,19 +525,6 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                             ?>
                                         </td>
 
-                                <!-- Updated Time -->
-                                <td class="updated-time">
-                                    <?php
-                                            if (isset($row['updated_at']) && !empty($row['updated_at'])) {
-                                                $updatedAt = new DateTime($row['updated_at']);
-                                                echo '<span class="updated-date">' . $updatedAt->format('Y-m-d') . '</span>';
-                                                echo '<span class="updated-time-only">' . $updatedAt->format('h:i:s A') . '</span>';
-                                            } else {
-                                                echo '<span style="color: #999; font-style: italic;">N/A</span>';
-                                            }
-                                            ?>
-                                </td>
-
                                 <!-- FIXED: Customer Name with ID - now using full_name from order_header -->
                                 <td class="customer-name">
                                     <?php
@@ -604,6 +533,17 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                             echo $customerName . ($customerId ? " ($customerId)" : "");
                                             ?>
                                 </td>
+
+                                <!-- Tenant Company Name -->
+                                <?php if ($is_main_admin == 1) { ?>
+                                <td class="customer-name">
+                                    <div class="customer-info">
+                                        <h6 style="margin: 0; font-size: 14px;">
+                                            <?php echo htmlspecialchars($row['company_name']); ?></h6>
+                                    </div>
+                                </td>
+                                <?php } else { ?>
+                                        <?php } ?>
 
                                 <!-- Total Amount with Currency -->
                                 <td class="amount">
@@ -616,6 +556,8 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                             $payStatus = isset($row['pay_status']) ? $row['pay_status'] : 'unpaid';
                                             if ($payStatus == 'paid'): ?>
                                                 <br><span class="status-badge pay-status-paid">Paid</span>
+                                            <?php elseif ($payStatus == 'partial'): ?>
+                                                <br><span class="status-badge pay-status-partial">Partial</span>
                                             <?php else: ?>
                                                 <br><span class="status-badge pay-status-unpaid">Unpaid</span>
                                             <?php endif; ?>
@@ -632,16 +574,6 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                     }
                                     ?>
                                 </td>
-
-                                <!-- Tenant Company Name -->
-                                <?php if ($is_main_admin == 1 && $_SESSION['role_id'] == 1) { ?>
-                                <td class="customer-name">
-                                    <div class="customer-info">
-                                        <h6 style="margin: 0; font-size: 14px;">
-                                            <?php echo htmlspecialchars($row['company_name']); ?></h6>
-                                    </div>
-                                </td>
-                                <?php } ?>
 
                                 <!-- Action Buttons -->
                                 <td class="actions">
@@ -682,21 +614,21 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                     <div class="pagination-controls">
                         <?php if ($page > 1): ?>
                         <button class="page-btn"
-                            onclick="window.location.href='?page=<?php echo $page - 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&tenant_id_filter=<?php echo urlencode($tenant_id_filter); ?>&user_id_filter=<?php echo urlencode($user_id_filter); ?>&search=<?php echo urlencode($search); ?>'">
+                            onclick="window.location.href='?page=<?php echo $page - 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&search=<?php echo urlencode($search); ?>'">
                             <i class="fas fa-chevron-left"></i>
                         </button>
                         <?php endif; ?>
 
                         <?php for ($i = max(1, $page - 2); $i <= min($totalPages, $page + 2); $i++): ?>
                         <button class="page-btn <?php echo ($i == $page) ? 'active' : ''; ?>"
-                            onclick="window.location.href='?page=<?php echo $i; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&tenant_id_filter=<?php echo urlencode($tenant_id_filter); ?>&user_id_filter=<?php echo urlencode($user_id_filter); ?>&search=<?php echo urlencode($search); ?>'">
+                            onclick="window.location.href='?page=<?php echo $i; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&search=<?php echo urlencode($search); ?>'">
                             <?php echo $i; ?>
                         </button>
                         <?php endfor; ?>
 
                         <?php if ($page < $totalPages): ?>
                         <button class="page-btn"
-                            onclick="window.location.href='?page=<?php echo $page + 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&tenant_id_filter=<?php echo urlencode($tenant_id_filter); ?>&user_id_filter=<?php echo urlencode($user_id_filter); ?>&search=<?php echo urlencode($search); ?>'">
+                            onclick="window.location.href='?page=<?php echo $page + 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&search=<?php echo urlencode($search); ?>'">
                             <i class="fas fa-chevron-right"></i>
                         </button>
                         <?php endif; ?>
@@ -731,7 +663,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
     // Simplified role variables from PHP
     const currentUserRole = <?php echo $current_user_role; ?>;
     const currentUserId = <?php echo $current_user_id; ?>;
-    const isAdmin = <?php echo $rbac->isMainAdmin() ? 'true' : 'false'; ?>;
+    const isAdmin = <?php echo $rbac->isAdmin() ? 'true' : 'false'; ?>;
 
     // Clear all filter inputs - SIMPLIFIED
     function clearFilters() {
@@ -740,15 +672,6 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
         document.getElementById('date_from').value = '';
         document.getElementById('date_to').value = '';
         document.getElementById('pay_status_filter').value = '';
-
-        const tenantFilter = document.getElementById('tenant_id_filter');
-        if (tenantFilter) {
-            tenantFilter.value = '';
-        }
-        const userIdFilter = document.getElementById('user_id_filter');
-        if (userIdFilter) {
-            userIdFilter.value = '';
-        }
 
         window.location.href = window.location.pathname;
     }
@@ -886,7 +809,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
             return;
         }
 
-        const slipUrl = '/OMS/dist/uploads/' + encodeURIComponent(currentPaymentSlip);
+        const slipUrl = '/OMS/dist/uploads/payment_slips/' + encodeURIComponent(currentPaymentSlip);
         window.open(slipUrl, '_blank');
     }
 

@@ -23,7 +23,7 @@ if ($product_id <= 0) {
 
 // Fetch confirmed batches for the product with remaining stock (with tenant isolation)
 $batches = [];
-if ($is_main_admin && $_SESSION['role_id'] == 1) {
+if ($is_main_admin) {
     $sql = "SELECT b.batch_id, b.batch_number, b.selling_price, b.buying_price,
                    b.remaining_qty, b.received_date
             FROM batches b

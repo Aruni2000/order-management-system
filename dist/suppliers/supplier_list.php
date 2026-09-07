@@ -8,15 +8,6 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
 
 include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
-// Store role (role_id 3, non-main-admin) is limited to Products & Order Management
-if ((int)($_SESSION['role_id'] ?? 0) === 3 && (int)($_SESSION['is_main_admin'] ?? 0) !== 1) {
-    if (ob_get_level()) {
-        ob_end_clean();
-    }
-    header("Location: /OMS/dist/pages/access_denied.php");
-    exit();
-}
-
 $search = isset($_GET['search']) ? trim($_GET['search']) : '';
 $status_filter = isset($_GET['status_filter']) ? trim($_GET['status_filter']) : '';
 $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 10;
@@ -135,7 +126,7 @@ $result = $conn->query($sql);
                             <?php if ($result && $result->num_rows > 0): ?>
                                 <?php while ($row = $result->fetch_assoc()): ?>
                                     <tr>
-                                        <td class="order-id"><?php echo htmlspecialchars($row['id']); ?></td>
+                                        <td><?php echo htmlspecialchars($row['id']); ?></td>
                                         <td class="customer-name">
                                             <div class="customer-info">
                                                 <h6 style="margin: 0; font-size: 14px;">
@@ -162,9 +153,9 @@ $result = $conn->query($sql);
                                         </td>
                                         <td>
                                             <?php if ($row['status'] == 'active'): ?>
-                                                <span class="status-badge pay-status-paid">Active</span>
+                                                <span class="status-badge status-active">Active</span>
                                             <?php else: ?>
-                                                <span class="status-badge pay-status-unpaid">Inactive</span>
+                                                <span class="status-badge status-inactive">Inactive</span>
                                             <?php endif; ?>
                                         </td>
                                         <td>

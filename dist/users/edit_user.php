@@ -56,7 +56,15 @@ $errorMsg = "";
 
 $is_main_admin = isset($_SESSION['is_main_admin']) && $_SESSION['is_main_admin'] == 1;
 
-
+// Fetch active positions for dropdown
+$positions = [];
+$positions_sql = "SELECT id, name FROM positions WHERE status = 'active' ORDER BY name ASC";
+$positions_result = mysqli_query($conn, $positions_sql);
+if ($positions_result) {
+    while ($pos = mysqli_fetch_assoc($positions_result)) {
+        $positions[] = $pos;
+    }
+}
 
 if (isset($_GET['id']) && !empty($_GET['id'])) {
     $userId = (int)$_GET['id'];
@@ -408,7 +416,24 @@ input[type="password"] {
                                     <div class="error-feedback" id="role-error"></div>
                                 </div>
 
-
+                                <div class="customer-form-group">
+                                    <label for="position" class="form-label">
+                                        <i class="fas fa-briefcase"></i> Position
+                                    </label>
+                                    <select class="form-select" id="position" name="position">
+                                        <option value="">Select Position (optional)...</option>
+                                        <?php 
+                                        $currentPositionId = $user_data['position_id'] ?? '';
+                                        foreach ($positions as $pos): 
+                                            $selected = ($currentPositionId == $pos['id']) ? 'selected' : '';
+                                        ?>
+                                            <option value="<?php echo $pos['id']; ?>" <?php echo $selected; ?>>
+                                                <?php echo htmlspecialchars($pos['name']); ?>
+                                            </option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                    <div class="error-feedback" id="position-error"></div>
+                                </div>
                             </div>
 
                             <!-- Fifth Row: Address (Full Width) -->

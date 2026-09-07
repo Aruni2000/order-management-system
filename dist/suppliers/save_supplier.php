@@ -13,12 +13,6 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 
 include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
-// Store role (role_id 3, non-main-admin) is limited to Products & Order Management
-if (($_SESSION['role_id'] ?? 0) == 3 && (($_SESSION['is_main_admin'] ?? 0) !== 1)) {
-    echo json_encode(['success' => false, 'message' => 'Unauthorized access.']);
-    exit();
-}
-
 if (!isset($_POST['csrf_token']) || !isset($_SESSION['csrf_token']) || $_POST['csrf_token'] !== $_SESSION['csrf_token']) {
     echo json_encode(['success' => false, 'message' => 'Security token mismatch.']);
     exit();
@@ -37,6 +31,7 @@ try {
     $email = sanitizeInput($_POST['email'] ?? '');
     $address = sanitizeInput($_POST['address'] ?? '');
     $status = sanitizeInput($_POST['status'] ?? 'active');
+    $tenant_id = $_SESSION['tenant_id'] ?? null;
 
     if (empty($name)) {
         $response['errors']['name'] = 'Supplier name is required';
@@ -52,10 +47,10 @@ try {
         exit();
     }
 
-    $insertQuery = "INSERT INTO suppliers (name, contact_person, phone, email, address, status) VALUES (?, ?, ?, ?, ?, ?)";
+    $insertQuery = "INSERT INTO suppliers (name, contact_person, phone, email, address, status, tenant_id) VALUES (?, ?, ?, ?, ?, ?, ?)";
     $stmt = $conn->prepare($insertQuery);
     if (!$stmt) throw new Exception("Database prepare error: " . $conn->error);
-    $stmt->bind_param("ssssss", $name, $contact_person, $phone, $email, $address, $status);
+    $stmt->bind_param("ssssssi", $name, $contact_person, $phone, $email, $address, $status, $tenant_id);
 
     if ($stmt->execute()) {
         $supplier_id = $conn->insert_id;
