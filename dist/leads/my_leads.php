@@ -28,6 +28,15 @@ if ($logged_user_id <= 0) {
 // Include database connection
 include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
+// Store role (role_id 3, non-main-admin) is limited to Products & Order Management
+if ((int)($_SESSION['role_id'] ?? 0) === 3 && (int)($_SESSION['is_main_admin'] ?? 0) !== 1) {
+    if (ob_get_level()) {
+        ob_end_clean();
+    }
+    header("Location: /OMS/dist/pages/access_denied.php");
+    exit();
+}
+
 /**
  * SEARCH AND PAGINATION PARAMETERS
  */
@@ -104,13 +113,13 @@ if (!empty($order_id_filter)) {
 // Specific Customer Name filter
 if (!empty($customer_name_filter)) {
     $customerNameTerm = $conn->real_escape_string($customer_name_filter);
-    $searchConditions[] = "c.name LIKE '%$customerNameTerm%'";
+    $searchConditions[] = "(c.name LIKE '%$customerNameTerm%' OR i.full_name LIKE '%$customerNameTerm%')";
 }
 
 // Phone filter
 if (!empty($phone_filter)) {
     $phoneTerm = $conn->real_escape_string($phone_filter);
-    $searchConditions[] = "c.phone LIKE '%$phoneTerm%'";
+    $searchConditions[] = "(c.phone LIKE '%$phoneTerm%' OR i.mobile LIKE '%$phoneTerm%')";
 }
 
 // Date range filter
@@ -223,6 +232,40 @@ $userInfo = $userInfoResult->fetch_assoc();
     font-size: 14px;
     opacity: 0.9;
 }
+
+.issued-time {
+    font-size: 0.9em;
+    color: #333;
+    line-height: 1.2;
+}
+
+.issued-date {
+    display: block;
+    font-weight: 600;
+}
+
+.issued-time-only {
+    display: block;
+    color: #666;
+    font-size: 0.85em;
+}
+
+.updated-time {
+    font-size: 0.9em;
+    color: #333;
+    line-height: 1.2;
+}
+
+.updated-date {
+    display: block;
+    font-weight: 600;
+}
+
+.updated-time-only {
+    display: block;
+    color: #666;
+    font-size: 0.85em;
+}
 </style>
 </head>
 
@@ -271,22 +314,10 @@ $userInfo = $userInfoResult->fetch_assoc();
                         </div>
                         
                         <div class="form-group">
-                            <label for="phone_filter">Phone Number</label>
+                            <label for="phone_filter">Phone</label>
                             <input type="text" id="phone_filter" name="phone_filter" 
                                    placeholder="Enter phone number" 
                                    value="<?php echo htmlspecialchars($phone_filter); ?>">
-                        </div>
-                        
-                        <div class="form-group">
-                            <label for="date_from">Date From</label>
-                            <input type="date" id="date_from" name="date_from" 
-                                   value="<?php echo htmlspecialchars($date_from); ?>">
-                        </div>
-                        
-                        <div class="form-group">
-                            <label for="date_to">Date To</label>
-                            <input type="date" id="date_to" name="date_to" 
-                                   value="<?php echo htmlspecialchars($date_to); ?>">
                         </div>
                         
                         <div class="form-group">
@@ -336,6 +367,18 @@ $userInfo = $userInfoResult->fetch_assoc();
                         </div>
                         
                         <div class="form-group">
+                            <label for="date_from">Date From</label>
+                            <input type="date" id="date_from" name="date_from" 
+                                   value="<?php echo htmlspecialchars($date_from); ?>">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="date_to">Date To</label>
+                            <input type="date" id="date_to" name="date_to" 
+                                   value="<?php echo htmlspecialchars($date_to); ?>">
+                        </div>
+                        
+                        <div class="form-group">
                             <div class="button-group">
                                 <button type="submit" class="search-btn">
                                     <i class="fas fa-search"></i>
@@ -363,6 +406,8 @@ $userInfo = $userInfoResult->fetch_assoc();
                         <thead>
                             <tr>
                                 <th>Order ID</th>
+                                <th>Issue Date</th>
+                                <th>Updated Time</th>
                                 <th>Customer Name</th>
                                 <th>Total Amount</th>
                                 <th>Status</th>
@@ -380,7 +425,33 @@ $userInfo = $userInfoResult->fetch_assoc();
                                         <td class="order-id">
                                             <?php echo isset($row['order_id']) ? htmlspecialchars($row['order_id']) : ''; ?>
                                         </td>
-                                        
+
+                                        <!-- Issue Date -->
+                                        <td class="issued-time">
+                                            <?php
+                                            if (isset($row['created_at']) && !empty($row['created_at'])) {
+                                                $createdAt = new DateTime($row['created_at']);
+                                                echo '<span class="issued-date">' . $createdAt->format('Y-m-d') . '</span>';
+                                                echo '<span class="issued-time-only">' . $createdAt->format('h:i:s A') . '</span>';
+                                            } else {
+                                                echo '<span style="color: #999; font-style: italic;">N/A</span>';
+                                            }
+                                            ?>
+                                        </td>
+
+                                        <!-- Updated Time -->
+                                        <td class="updated-time">
+                                            <?php
+                                            if (isset($row['updated_at']) && !empty($row['updated_at'])) {
+                                                $updatedAt = new DateTime($row['updated_at']);
+                                                echo '<span class="updated-date">' . $updatedAt->format('Y-m-d') . '</span>';
+                                                echo '<span class="updated-time-only">' . $updatedAt->format('h:i:s A') . '</span>';
+                                            } else {
+                                                echo '<span style="color: #999; font-style: italic;">N/A</span>';
+                                            }
+                                            ?>
+                                        </td>
+
                                         <!-- Customer Name with ID - Prioritize order_header full_name for leads -->
                                             <td class="customer-name">
                                                 <?php 
@@ -597,7 +668,7 @@ $userInfo = $userInfoResult->fetch_assoc();
                                 <?php endwhile; ?>
                             <?php else: ?>
                                 <tr>
-                                    <td colspan="8" class="text-center" style="padding: 40px; text-align: center; color: #666;">
+                                    <td colspan="10" class="text-center" style="padding: 40px; text-align: center; color: #666;">
                                         No leads assigned to you
                                     </td>
                                 </tr>
@@ -774,7 +845,7 @@ $userInfo = $userInfoResult->fetch_assoc();
         }
         
         // Construct the payment slip URL
-        const slipUrl = '/OMS/dist/uploads/payment_slips/' + encodeURIComponent(currentLeadId) + '.jpg';
+        const slipUrl = '/OMS/dist/uploads/' + encodeURIComponent(currentLeadId) + '.jpg';
         
         // Open payment slip in new tab
         window.open(slipUrl, '_blank');
@@ -865,8 +936,6 @@ $userInfo = $userInfoResult->fetch_assoc();
             console.error('Modal elements not found! Check HTML structure.');
         }
     });
-    </script>
-
     </script>
 
     <!-- Include Footer and Scripts -->

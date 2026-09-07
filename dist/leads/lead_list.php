@@ -45,6 +45,7 @@ $date_from = isset($_GET['date_from']) ? trim($_GET['date_from']) : '';
 $date_to = isset($_GET['date_to']) ? trim($_GET['date_to']) : '';
 $status_filter = isset($_GET['status_filter']) ? trim($_GET['status_filter']) : '';
 $pay_status_filter = isset($_GET['pay_status_filter']) ? trim($_GET['pay_status_filter']) : '';
+$user_id_filter = isset($_GET['user_id_filter']) ? trim($_GET['user_id_filter']) : '';
 
 $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 10;
 $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
@@ -176,6 +177,20 @@ if (!empty($pay_status_filter)) {
     $searchConditions[] = "i.pay_status = '$payStatusTerm'";
 }
 
+// Specific User ID filter - MODIFIED: Apply role-based restrictions
+if (!empty($user_id_filter)) {
+    $userIdTerm = $conn->real_escape_string($user_id_filter);
+    if ($is_admin == 1) {
+        // Admin can filter by any user
+        $searchConditions[] = "i.user_id = '$userIdTerm'";
+    } else {
+        // Non-admin can only filter by their own user ID
+        if ($userIdTerm == $logged_user_id) {
+            $searchConditions[] = "i.user_id = '$userIdTerm'";
+        }
+    }
+}
+
 // Apply all search conditions
 if (!empty($searchConditions)) {
     $finalSearchCondition = " AND (" . implode(' AND ', $searchConditions) . ")";
@@ -234,6 +249,40 @@ $result = $conn->query($sql);
 .actions {
     white-space: nowrap;
 }
+
+.issued-time {
+    font-size: 0.9em;
+    color: #333;
+    line-height: 1.2;
+}
+
+.issued-date {
+    display: block;
+    font-weight: 600;
+}
+
+.issued-time-only {
+    display: block;
+    color: #666;
+    font-size: 0.85em;
+}
+
+.updated-time {
+    font-size: 0.9em;
+    color: #333;
+    line-height: 1.2;
+}
+
+.updated-date {
+    display: block;
+    font-weight: 600;
+}
+
+.updated-time-only {
+    display: block;
+    color: #666;
+    font-size: 0.85em;
+}
 </style>
 </head>
 
@@ -275,21 +324,15 @@ $result = $conn->query($sql);
                                 }
                             }
                         }
-                        ?>
-                        <?php if ($is_main_admin_tenant == 1 && count($tenants) > 0): ?>
-                        <div class="form-group">
-                            <label for="tenant_filter">Tenant Company</label>
-                            <select id="tenant_filter" name="tenant_filter">
-                                <option value="">All Companies</option>
-                                <?php foreach ($tenants as $t): ?>
-                                    <option value="<?php echo $t['tenant_id']; ?>" <?php echo ($tenant_filter == $t['tenant_id']) ? 'selected' : ''; ?>>
-                                        <?php echo htmlspecialchars($t['company_name']); ?>
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
-                        <?php endif; ?>
 
+                        // Fetch all users for the User ID dropdown based on permissions
+                        if ($is_main_admin_tenant == 1) {
+                            $usersQuery = "SELECT id, name FROM users ORDER BY name ASC";
+                        } else {
+                            $usersQuery = "SELECT id, name FROM users WHERE tenant_id = " . (int)$tenant_id . " ORDER BY name ASC";
+                        }
+                        $usersResult = $conn->query($usersQuery);
+                        ?>
                         <div class="form-group">
                             <label for="order_id_filter">Order ID</label>
                             <input type="text" id="order_id_filter" name="order_id_filter" 
@@ -304,17 +347,11 @@ $result = $conn->query($sql);
                                    value="<?php echo htmlspecialchars($customer_name_filter); ?>">
                         </div>
                         
-                        
                         <div class="form-group">
-                            <label for="date_from">Date From</label>
-                            <input type="date" id="date_from" name="date_from" 
-                                   value="<?php echo htmlspecialchars($date_from); ?>">
-                        </div>
-                        
-                        <div class="form-group">
-                            <label for="date_to">Date To</label>
-                            <input type="date" id="date_to" name="date_to" 
-                                   value="<?php echo htmlspecialchars($date_to); ?>">
+                            <label for="phone_filter">Phone</label>
+                            <input type="text" id="phone_filter" name="phone_filter" 
+                                   placeholder="Enter phone number" 
+                                   value="<?php echo htmlspecialchars($phone_filter); ?>">
                         </div>
                         
                         <div class="form-group">
@@ -353,6 +390,49 @@ $result = $conn->query($sql);
                             </select>
                         </div>
                         
+                        <?php if ($is_main_admin_tenant == 1 && count($tenants) > 0): ?>
+                        <div class="form-group">
+                            <label for="tenant_filter">Tenant</label>
+                            <select id="tenant_filter" name="tenant_filter">
+                                <option value="">All Companies</option>
+                                <?php foreach ($tenants as $t): ?>
+                                    <option value="<?php echo $t['tenant_id']; ?>" <?php echo ($tenant_filter == $t['tenant_id']) ? 'selected' : ''; ?>>
+                                        <?php echo htmlspecialchars($t['company_name']); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <?php endif; ?>
+
+                        <?php if ($is_admin == 1): ?>
+                        <div class="form-group">
+                            <label for="user_id_filter">User</label>
+                            <select id="user_id_filter" name="user_id_filter">
+                                <option value="">All Users</option>
+                                <?php if ($usersResult && $usersResult->num_rows > 0): ?>
+                                <?php while ($userRow = $usersResult->fetch_assoc()): ?>
+                                <option value="<?php echo htmlspecialchars($userRow['id']); ?>"
+                                    <?php echo ($user_id_filter == $userRow['id']) ? 'selected' : ''; ?>>
+                                    <?php echo htmlspecialchars($userRow['name']) . ' (ID: ' . $userRow['id'] . ')'; ?>
+                                </option>
+                                <?php endwhile; ?>
+                                <?php endif; ?>
+                            </select>
+                        </div>
+                        <?php endif; ?>
+
+                        <div class="form-group">
+                            <label for="date_from">Date From</label>
+                            <input type="date" id="date_from" name="date_from" 
+                                   value="<?php echo htmlspecialchars($date_from); ?>">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="date_to">Date To</label>
+                            <input type="date" id="date_to" name="date_to" 
+                                   value="<?php echo htmlspecialchars($date_to); ?>">
+                        </div>
+                        
                         <div class="form-group">
                             <div class="button-group">
                                 <button type="submit" class="search-btn">
@@ -382,15 +462,17 @@ $result = $conn->query($sql);
                         <thead>
                             <tr>
                                 <th>Order ID</th>
+                                <th>Issue Date</th>
+                                <th>Updated Time</th>
                                 <th>Customer Name</th>
-                                <?php if ($is_main_admin_tenant == 1): ?>
-                                <th>Tenant</th>
-                                <?php endif; ?>
                                 <th>Total Amount</th>
                                 <th>Status</th>
-                                <th>Processed By</th>
                                 <th>Success Rate</th>
                                 <th>Assigned User</th>
+                                <?php if ($is_main_admin_tenant == 1): ?>
+                                <th>Tenant Company</th>
+                                <?php endif; ?>
+                                <th>Processed By</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
@@ -402,7 +484,33 @@ $result = $conn->query($sql);
                                         <td class="order-id">
                                             <?php echo isset($row['order_id']) ? htmlspecialchars($row['order_id']) : ''; ?>
                                         </td>
-                                        
+
+                                        <!-- Issue Date -->
+                                        <td class="issued-time">
+                                            <?php
+                                            if (isset($row['created_at']) && !empty($row['created_at'])) {
+                                                $createdAt = new DateTime($row['created_at']);
+                                                echo '<span class="issued-date">' . $createdAt->format('Y-m-d') . '</span>';
+                                                echo '<span class="issued-time-only">' . $createdAt->format('h:i:s A') . '</span>';
+                                            } else {
+                                                echo '<span style="color: #999; font-style: italic;">N/A</span>';
+                                            }
+                                            ?>
+                                        </td>
+
+                                        <!-- Updated Time -->
+                                        <td class="updated-time">
+                                            <?php
+                                            if (isset($row['updated_at']) && !empty($row['updated_at'])) {
+                                                $updatedAt = new DateTime($row['updated_at']);
+                                                echo '<span class="updated-date">' . $updatedAt->format('Y-m-d') . '</span>';
+                                                echo '<span class="updated-time-only">' . $updatedAt->format('h:i:s A') . '</span>';
+                                            } else {
+                                                echo '<span style="color: #999; font-style: italic;">N/A</span>';
+                                            }
+                                            ?>
+                                        </td>
+
                                         <!-- Customer Name with ID - Prioritize order_header full_name for leads -->
                                             <td class="customer-name">
                                                 <?php 
@@ -422,14 +530,7 @@ $result = $conn->query($sql);
                                                 ?>
                                             </td>
 
-                                        <?php if ($is_main_admin_tenant == 1): ?>
-                                        <!-- Tenant Column -->
-                                        <td class="tenant-info">
-                                            <?php echo isset($row['tenant_name']) ? htmlspecialchars($row['tenant_name']) : 'N/A'; ?>
-                                        </td>
-                                        <?php endif; ?>
-                                       
-                                        <!-- Total Amount with Currency + Pay Status -->
+<!-- Total Amount with Currency + Pay Status -->
                                         <td class="amount">
                                             <?php
                                             $amount = isset($row['total_amount']) ? (float)$row['total_amount'] : 0;
@@ -515,24 +616,6 @@ $result = $conn->query($sql);
                                             <span class="status-badge <?php echo $badgeClass; ?>"><?php echo $statusText; ?></span>
                                         </td>
 
-                                        <!-- Processed By -->
-                                        <td>
-                                            <?php
-                                            $paidByName = isset($row['paid_by_name']) ? htmlspecialchars($row['paid_by_name']) : '';
-                                            $paymentMethod = isset($row['payment_method']) ? htmlspecialchars($row['payment_method']) : '';
-                                            
-                                            if ($payStatus == 'paid' && !empty($paidByName)) {
-                                                echo '<span style="font-weight: 600; color: #28a745;">' . $paidByName . '</span>';
-                                                if (!empty($paymentMethod)) {
-                                                    $methodDisplay = ucwords(str_replace('_', ' ', $paymentMethod));
-                                                    echo '<br><span style="font-size: 11px; color: #6c757d;">' . $methodDisplay . '</span>';
-                                                }
-                                            } else {
-                                                echo '<span style="color: #adb5bd;">-</span>';
-                                            }
-                                            ?>
-                                        </td>
-
                                         <!-- Success Rate Badge -->
                                         <td>
                                             <?php
@@ -569,7 +652,32 @@ $result = $conn->query($sql);
                                             }
                                             ?>
                                         </td>
-                                        
+
+                                        <?php if ($is_main_admin_tenant == 1): ?>
+                                        <!-- Tenant Company -->
+                                        <td class="tenant-info">
+                                            <?php echo isset($row['tenant_name']) ? htmlspecialchars($row['tenant_name']) : 'N/A'; ?>
+                                        </td>
+                                        <?php endif; ?>
+
+                                        <!-- Processed By -->
+                                        <td>
+                                            <?php
+                                            $paidByName = isset($row['paid_by_name']) ? htmlspecialchars($row['paid_by_name']) : '';
+                                            $paymentMethod = isset($row['payment_method']) ? htmlspecialchars($row['payment_method']) : '';
+                                            
+                                            if ($payStatus == 'paid' && !empty($paidByName)) {
+                                                echo '<span style="font-weight: 600; color: #28a745;">' . $paidByName . '</span>';
+                                                if (!empty($paymentMethod)) {
+                                                    $methodDisplay = ucwords(str_replace('_', ' ', $paymentMethod));
+                                                    echo '<br><span style="font-size: 11px; color: #6c757d;">' . $methodDisplay . '</span>';
+                                                }
+                                            } else {
+                                                echo '<span style="color: #adb5bd;">-</span>';
+                                            }
+                                            ?>
+                                        </td>
+
                                         <!-- Action Buttons -->
                                         <td class="actions">
                                             <button class="action-btn view-btn" title="View Lead Details" 
@@ -586,12 +694,8 @@ $result = $conn->query($sql);
                                 <?php endwhile; ?>
                             <?php else: ?>
                                  <tr>
-                                    <td colspan="9" class="text-center" style="padding: 40px; text-align: center; color: #666;">
-                                        <?php if (!empty($search) || !empty($order_id_filter) || !empty($customer_name_filter) || !empty($phone_filter) || !empty($date_from) || !empty($date_to) || !empty($status_filter) || !empty($pay_status_filter)): ?>
-                                            No leads found
-                                        <?php else: ?>
-                                            No leads found
-                                        <?php endif; ?>
+                                    <td colspan="<?php echo ($is_main_admin_tenant == 1) ? '11' : '10'; ?>" class="text-center" style="padding: 40px; text-align: center; color: #666;">
+                                        No leads found
                                     </td>
                                 </tr>
                             <?php endif; ?>
@@ -606,20 +710,20 @@ $result = $conn->query($sql);
                     </div>
                     <div class="pagination-controls">
                         <?php if ($page > 1): ?>
-                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page - 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&tenant_filter=<?php echo urlencode($tenant_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&status_filter=<?php echo urlencode($status_filter); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&search=<?php echo urlencode($search); ?>'">
+                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page - 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&tenant_filter=<?php echo urlencode($tenant_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&status_filter=<?php echo urlencode($status_filter); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&user_id_filter=<?php echo urlencode($user_id_filter); ?>&search=<?php echo urlencode($search); ?>'">
                                 <i class="fas fa-chevron-left"></i>
                             </button>
                         <?php endif; ?>
                         
                         <?php for ($i = max(1, $page - 2); $i <= min($totalPages, $page + 2); $i++): ?>
                             <button class="page-btn <?php echo ($i == $page) ? 'active' : ''; ?>" 
-                                    onclick="window.location.href='?page=<?php echo $i; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&tenant_filter=<?php echo urlencode($tenant_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&status_filter=<?php echo urlencode($status_filter); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&search=<?php echo urlencode($search); ?>'">
+                                    onclick="window.location.href='?page=<?php echo $i; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&tenant_filter=<?php echo urlencode($tenant_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&status_filter=<?php echo urlencode($status_filter); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&user_id_filter=<?php echo urlencode($user_id_filter); ?>&search=<?php echo urlencode($search); ?>'">
                                 <?php echo $i; ?>
                             </button>
                         <?php endfor; ?>
                         
                         <?php if ($page < $totalPages): ?>
-                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page + 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&tenant_filter=<?php echo urlencode($tenant_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&status_filter=<?php echo urlencode($status_filter); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&search=<?php echo urlencode($search); ?>'">
+                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page + 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&tenant_filter=<?php echo urlencode($tenant_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&status_filter=<?php echo urlencode($status_filter); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&user_id_filter=<?php echo urlencode($user_id_filter); ?>&search=<?php echo urlencode($search); ?>'">
                                 <i class="fas fa-chevron-right"></i>
                             </button>
                         <?php endif; ?>
@@ -640,12 +744,16 @@ $result = $conn->query($sql);
     function clearFilters() {
         document.getElementById('order_id_filter').value = '';
         document.getElementById('customer_name_filter').value = '';
+        document.getElementById('phone_filter').value = '';
         document.getElementById('date_from').value = '';
         document.getElementById('date_to').value = '';
         document.getElementById('status_filter').value = '';
         document.getElementById('pay_status_filter').value = '';
         if (document.getElementById('tenant_filter')) {
             document.getElementById('tenant_filter').value = '';
+        }
+        if (document.getElementById('user_id_filter')) {
+            document.getElementById('user_id_filter').value = '';
         }
         
         window.location.href = window.location.pathname;
@@ -765,7 +873,7 @@ $result = $conn->query($sql);
         }
         
         // Construct the payment slip URL
-        const slipUrl = '/OMS/dist/uploads/payment_slips/' + encodeURIComponent(currentLeadId) + '.jpg';
+        const slipUrl = '/OMS/dist/uploads/' + encodeURIComponent(currentLeadId) + '.jpg';
         
         // Open payment slip in new tab
         window.open(slipUrl, '_blank');

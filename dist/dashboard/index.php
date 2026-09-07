@@ -28,11 +28,13 @@ class DashboardRBAC {
     private $current_user_id;
     private $current_user_role;
     private $conn;
+    private $is_store_limited;
     
-    public function __construct($conn, $current_user_id = 0, $current_user_role = 0) {
+    public function __construct($conn, $current_user_id = 0, $current_user_role = 0, $is_store_limited = false) {
         $this->conn = $conn;
         $this->current_user_id = (int)$current_user_id;
         $this->current_user_role = (int)$current_user_role;
+        $this->is_store_limited = (bool)$is_store_limited;
     }
     
     /**
@@ -48,6 +50,12 @@ class DashboardRBAC {
     public function getRoleBasedCondition($table_alias = '') {
         if ($this->isAdmin()) {
             return ""; // Admin sees all orders
+        }
+        
+        // Store role users see all orders in their company (no user_id filter;
+        // the tenant filter is applied by the caller based on is_main_admin)
+        if ($this->is_store_limited) {
+            return "";
         }
         
         $table_prefix = $table_alias ? $table_alias . '.' : '';
@@ -92,7 +100,8 @@ if ($current_user_id == 0) {
 }
 
 // Initialize RBAC helper
-$rbac = new DashboardRBAC($conn, $current_user_id, $current_user_role);
+$is_store_limited = ($current_user_role == 3);
+$rbac = new DashboardRBAC($conn, $current_user_id, $current_user_role, $is_store_limited);
 
 // Set default to today's date if no date parameters are provided
 $today = date('Y-m-d');
@@ -850,6 +859,7 @@ if (isset($_SESSION['customer_id'])) {
                     </a>
                 </div>
 
+                <?php if (!$is_store_limited): ?>
                 <!-- Total Customers -->
                 <div class="col-span-12 xl:col-span-4 md:col-span-6">
                     <a href="/OMS/dist/customers/customer_list.php" class="card-link">
@@ -878,6 +888,7 @@ if (isset($_SESSION['customer_id'])) {
                         </div>
                     </a>
                 </div>
+                <?php endif; ?>
 
                 <!-- Total Products - All users can view products -->
                 <div class="col-span-12 xl:col-span-4 md:col-span-6">

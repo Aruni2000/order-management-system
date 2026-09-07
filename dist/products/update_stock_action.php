@@ -18,13 +18,14 @@ if (!isset($_SESSION['user_id'])) {
 
 // Include database connection
 include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
+include_once($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/stock_ledger.php');
 
 // Set content type to JSON
 header('Content-Type: application/json');
 
-// Check if user is main admin (Admin only access)
-$is_main_admin = isset($_SESSION['is_main_admin']) ? (int)$_SESSION['is_main_admin'] : 0;
-if ($is_main_admin != 1) {
+// Check if user is admin role (Admin only access); non-main-admins are tenant-scoped below
+$role_id = isset($_SESSION['role_id']) ? (int)$_SESSION['role_id'] : 0;
+if ($role_id != 1) {
     echo json_encode(['success' => false, 'message' => 'Access denied. Only administrators can update stock.']);
     exit();
 }
@@ -85,12 +86,12 @@ try {
     $session_tenant_id = isset($_SESSION['tenant_id']) ? (int)$_SESSION['tenant_id'] : 0;
     $is_main_admin = isset($_SESSION['is_main_admin']) ? (int)$_SESSION['is_main_admin'] : 0;
     
-    if ($is_main_admin) {
-        $checkSql = "SELECT id, name, stock_quantity FROM products WHERE id = ?";
+    if ($is_main_admin && $_SESSION['role_id'] == 1) {
+        $checkSql = "SELECT id, name, stock_quantity, tenant_id FROM products WHERE id = ?";
         $checkStmt = $conn->prepare($checkSql);
         $checkStmt->bind_param("i", $product_id);
     } else {
-        $checkSql = "SELECT id, name, stock_quantity FROM products WHERE id = ? AND tenant_id = ?";
+        $checkSql = "SELECT id, name, stock_quantity, tenant_id FROM products WHERE id = ? AND tenant_id = ?";
         $checkStmt = $conn->prepare($checkSql);
         $checkStmt->bind_param("ii", $product_id, $session_tenant_id);
     }
@@ -109,11 +110,11 @@ try {
     }
     
     $product = $result->fetch_assoc();
-    $old_stock = $product['stock_quantity'];
+    $old_stock = (int)$product['stock_quantity'];
     $checkStmt->close();
 
     // Check batch exists, belongs to product, and supports the operation
-    if ($is_main_admin) {
+    if ($is_main_admin && $_SESSION['role_id'] == 1) {
         $batchSql = "SELECT batch_id, batch_number, remaining_qty, status FROM batches WHERE batch_id = ? AND product_id = ?";
         $batchStmt = $conn->prepare($batchSql);
         $batchStmt->bind_param("ii", $batch_id, $product_id);
@@ -157,10 +158,12 @@ try {
         $new_stock = $old_stock + $adjustment;
         $new_batch_qty = $old_batch_qty + $adjustment;
         $description = "Increased by " . $adjustment;
+        $qty_change = $adjustment;
     } else {
         $new_stock = max(0, $old_stock - $adjustment);
         $new_batch_qty = max(0, $old_batch_qty - $adjustment);
         $description = "Decreased by " . $adjustment;
+        $qty_change = $new_stock - (int)$old_stock;
     }
     
     // Begin transaction
@@ -183,7 +186,7 @@ try {
         $updateBatchStmt->close();
 
         // Update product stock (with tenant isolation)
-        if ($is_main_admin) {
+        if ($is_main_admin && $_SESSION['role_id'] == 1) {
             $updateSql = "UPDATE products SET stock_quantity = ? WHERE id = ?";
             $updateStmt = $conn->prepare($updateSql);
             $updateStmt->bind_param("ii", $new_stock, $product_id);
@@ -201,7 +204,9 @@ try {
             throw new Exception('Failed to update stock: ' . $updateStmt->error);
         }
         $updateStmt->close();
-        
+        $movementUserId = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : null;
+        log_stock_movement($conn, (int)($product['tenant_id'] ?? $session_tenant_id), $product_id, (int)$batch_id, 'manual_adjustment', (int)$qty_change, 'product', $product_id, $movementUserId, 'Manual ' . $operation . ' batch ' . ($batch_number ?: $batch_id) . ': ' . $reason);
+
         // Log the action
         $action_type = 'product_stock_updated';
         $details = "Updated Stock for Product '{$product['name']}' " . $description

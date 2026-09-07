@@ -21,6 +21,7 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
 
 // Include database connection
 include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
+include_once($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/stock_ledger.php');
 
 // Session role context (main admin vs tenant-restricted users)
 $is_main_admin = isset($_SESSION['is_main_admin']) ? (int)$_SESSION['is_main_admin'] : 0;
@@ -99,7 +100,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             // Live mode - update database
             
             // First, check if tracking number exists in orders (scoped to courier + tenant)
-            if ($is_main_admin === 1 && $role_id === 1) {
+            if ($is_main_admin === 1) {
                 $checkSql = "SELECT order_id, status, tracking_number FROM order_header WHERE tracking_number = ? AND co_id = ? LIMIT 1";
                 $checkStmt = $conn->prepare($checkSql);
                 $checkStmt->bind_param("si", $tracking_number, $co_id);
@@ -193,6 +194,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                             $oibStmt->bind_param("i", $item['item_id']);
                             $oibStmt->execute();
                             $oibResult = $oibStmt->get_result();
+                            $restoredBatchQty = 0;
                             while ($oib = $oibResult->fetch_assoc()) {
                                 if ($is_main_admin) {
                                     $updateBatch->bind_param("ii", $oib['quantity'], $oib['batch_id']);
@@ -202,6 +204,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                                 if (!$updateBatch->execute()) {
                                     throw new Exception("Failed to restore batch stock.");
                                 }
+                                $restoredBatchQty += (int)$oib['quantity'];
+                                log_stock_movement($conn, (int)$tenant_id, (int)$productId, (int)$oib['batch_id'], 'return_in', (int)$oib['quantity'], 'order', (int)$order['order_id'], isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : null, 'Return handover scan - batch restore');
                             }
                             $oibStmt->close();
                         }
@@ -216,6 +220,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                         }
                         $inventoryUpdatedCount++;
                         $stockStmt->close();
+                        // Ledger: product rollup (non-batch part, if any)
+                        $nonBatchQty = (int)$quantity - (int)($restoredBatchQty ?? 0);
+                        if ($nonBatchQty > 0) {
+                            log_stock_movement($conn, (int)$tenant_id, (int)$productId, null, 'return_in', $nonBatchQty, 'order', (int)$order['order_id'], isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : null, 'Return handover scan - non-batch restore');
+                        }
                     }
                     if ($updateBatch) $updateBatch->close();
                     $itemsStmt->close();
@@ -297,7 +306,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
 // Fetch tenants for the dropdown
 $tenants = [];
-if ($is_main_admin === 1 && $role_id === 1) {
+if ($is_main_admin === 1 && $_SESSION['role_id'] == 1) {
     // Main Admin gets all active tenants
     $tenantResult = $conn->query("SELECT tenant_id, company_name FROM tenants WHERE status = 'active' ORDER BY company_name");
 } else {
@@ -312,7 +321,7 @@ if ($tenantResult && $tenantResult->num_rows > 0) {
         $tenants[] = $row;
     }
 }
-$restricted_tenant_id = (count($tenants) === 1 && !($is_main_admin === 1 && $role_id === 1)) ? $tenants[0]['tenant_id'] : 0;
+$restricted_tenant_id = (count($tenants) === 1 && !($is_main_admin === 1 && $_SESSION['role_id'] == 1)) ? $tenants[0]['tenant_id'] : 0;
 
 ?>
 

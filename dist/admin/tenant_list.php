@@ -305,8 +305,8 @@ if (!$result) {
                                 <?php while ($row = $result->fetch_assoc()): ?>
                                     <tr>
                                         <!-- ID -->
-                                        <td>
-                                            <div><?php echo htmlspecialchars($row['tenant_id']); ?></div>
+                                        <td class="order-id">
+                                            <?php echo htmlspecialchars($row['tenant_id']); ?>
                                         </td>
                                         <!-- Company Info -->
                                         <td class="customer-name">

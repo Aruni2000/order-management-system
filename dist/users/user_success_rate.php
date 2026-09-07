@@ -590,15 +590,15 @@ function getSuccessRateBadgeClass($rate) {
                                    value="<?php echo htmlspecialchars($date_to); ?>">
                         </div>
 
-                        <?php if ($is_main_admin): ?>
+                        <?php if ($is_main_admin && $_SESSION['role_id'] == 1): ?>
                         <!-- Tenant Filter: Only for Main Admins -->
                         <div class="form-group">
                             <label for="tenant_filter">
-                                Tenant
+                                Tenant Company
                                 <small style="color: #6c757d; font-weight: normal;"></small>
                             </label>
                             <select id="tenant_filter" name="tenant_filter">
-                                <option value="">All Tenants</option>
+                                <option value="">All Companies</option>
                                 <?php foreach ($tenants_list as $tenant): ?>
                                     <option value="<?php echo $tenant['tenant_id']; ?>" 
                                             <?php echo ($tenant_filter == $tenant['tenant_id']) ? 'selected' : ''; ?>>
@@ -655,8 +655,8 @@ function getSuccessRateBadgeClass($rate) {
                             <tr>
                                 <th>ID</th>
                                 <th>User Name</th>
-                                <?php if ($is_main_admin): ?>
-                                <th>Tenant</th>
+                                <?php if ($is_main_admin && $_SESSION['role_id'] == 1): ?>
+                                <th>Tenant Company</th>
                                 <?php endif; ?>
                                 <th>Contact Info</th>
                                 <th>Role & Status</th>
@@ -672,10 +672,8 @@ function getSuccessRateBadgeClass($rate) {
                                 ?>
                                     <tr>
                                         <!-- ID -->
-                                        <td>
-                                            <div class="customer-info">
-                                                <h6><?php echo htmlspecialchars($row['user_id']); ?></h6>
-                                            </div>
+                                        <td class="order-id">
+                                            <?php echo htmlspecialchars($row['user_id']); ?>
                                         </td>
                                         <!-- User Name -->
                                         <td class="customer-name">
@@ -685,7 +683,7 @@ function getSuccessRateBadgeClass($rate) {
                                         </td>
 
                                         <!-- Tenant Info - Only for Main Admins -->
-                                        <?php if ($is_main_admin): ?>
+                                        <?php if ($is_main_admin && $_SESSION['role_id'] == 1): ?>
                                         <td>
                                             <div style="font-weight: 500; color: #495057;">
                                                 <?php echo htmlspecialchars($row['tenant_name'] ?: 'N/A'); ?>
@@ -822,7 +820,7 @@ function getSuccessRateBadgeClass($rate) {
                     <span class="detail-label">Role:</span>
                     <span class="detail-value" id="modal-user-role"></span>
                 </div>
-                <?php if ($is_main_admin): ?>
+                <?php if ($is_main_admin && $_SESSION['role_id'] == 1): ?>
                 <div class="customer-detail-row">
                     <span class="detail-label">Tenant:</span>
                     <span class="detail-value" id="modal-user-tenant"></span>

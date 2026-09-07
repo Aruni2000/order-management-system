@@ -58,7 +58,7 @@ try {
     // Check if payment slip file exists on server
     $file_exists = false;
     if (!empty($payment_slip)) {
-        $file_path = $_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/uploads/payment_slips/' . $payment_slip;
+        $file_path = $_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/uploads/' . $payment_slip;
         $file_exists = file_exists($file_path);
     }
     
@@ -70,7 +70,7 @@ try {
         'file_exists' => $file_exists,
         'show_button' => !empty($payment_slip) && 
                         $file_exists && 
-                        ($pay_status === 'paid' || $pay_status === 'partial')
+                        ($pay_status === 'paid')
     ]);
     
 } catch (Exception $e) {

@@ -47,11 +47,11 @@ try {
     $is_main_admin = isset($_SESSION['is_main_admin']) ? (int)$_SESSION['is_main_admin'] : 0;
     
     if ($is_main_admin) {
-        $checkOrderSql = "SELECT order_id, pay_status, status FROM order_header WHERE order_id = ?";
+        $checkOrderSql = "SELECT order_id, pay_status, status, slip FROM order_header WHERE order_id = ?";
         $checkOrderStmt = $conn->prepare($checkOrderSql);
         $checkOrderStmt->bind_param("s", $orderId);
     } else {
-        $checkOrderSql = "SELECT order_id, pay_status, status FROM order_header WHERE order_id = ? AND tenant_id = ?";
+        $checkOrderSql = "SELECT order_id, pay_status, status, slip FROM order_header WHERE order_id = ? AND tenant_id = ?";
         $checkOrderStmt = $conn->prepare($checkOrderSql);
         $checkOrderStmt->bind_param("si", $orderId, $session_tenant_id);
     }
@@ -186,6 +186,15 @@ try {
 
         // Commit transaction
         $conn->commit();
+        
+        $paymentSlip = isset($orderData['slip']) ? $orderData['slip'] : '';
+        if (!empty($paymentSlip)) {
+            $uploadDir = $_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/uploads/';
+            $slipFilePath = $uploadDir . $paymentSlip;
+            if (file_exists($slipFilePath)) {
+                unlink($slipFilePath);
+            }
+        }
 
         echo json_encode([
             'success' => true,

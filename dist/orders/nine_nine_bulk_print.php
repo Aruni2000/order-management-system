@@ -51,18 +51,14 @@ $is_main_admin = isset($_SESSION['is_main_admin']) ? (int)$_SESSION['is_main_adm
 $role_id = isset($_SESSION['role_id']) ? (int)$_SESSION['role_id'] : 0;
 $session_tenant_id = isset($_SESSION['tenant_id']) ? (int)$_SESSION['tenant_id'] : 0;
 
-if ($is_main_admin === 1 && $role_id === 1) {
+if ($is_main_admin === 1) {
     // Main Admin
     if (!empty($tenant_filter)) {
         $where[] = "o.tenant_id = " . (int)$tenant_filter;
     }
-} elseif ($role_id === 1 && $is_main_admin === 0) {
-    // Tenant Admin
-    $where[] = "o.tenant_id = $session_tenant_id";
 } else {
-    // Regular User
+    // All other users - own tenant
     $where[] = "o.tenant_id = $session_tenant_id";
-    $where[] = "o.user_id = $logged_user_id";
 }
 
 // Default date

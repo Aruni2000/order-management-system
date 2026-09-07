@@ -94,7 +94,6 @@ try {
     $status = strtolower($_POST['status'] ?? 'active');
     $role_id = isset($_POST['role_id']) ? (int)$_POST['role_id'] : 0;
     $input_tenant_id = $_POST['tenant_id'] ?? null;
-    $position_id = !empty($_POST['position']) ? (int)$_POST['position'] : null;
     $is_main_admin = isset($_SESSION['is_main_admin']) && $_SESSION['is_main_admin'] == 1;
     
     // Essential server-side validation (security-critical only)
@@ -201,36 +200,20 @@ try {
         $tenant_id = $_SESSION['tenant_id'] ?? null;
     }
 
-    // Prepare insert query - with or without position_id
-    if ($position_id !== null) {
-        $stmt = $conn->prepare("INSERT INTO users (name, email, password, mobile, nic, address, status, role_id, 
-                                position_id, tenant_id, created_at) 
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())");
-        
-        if ($stmt === false) {
-            $conn->rollback();
-            jsonResponse(false, 'Database error occurred. Please try again.');
-        }
-        
-        $stmt->bind_param("sssssssiii", 
-            $name, $email, $hashed_password, $mobile, $nic, $address, 
-            $status, $role_id, $position_id, $tenant_id
-        );
-    } else {
-        $stmt = $conn->prepare("INSERT INTO users (name, email, password, mobile, nic, address, status, role_id, 
-                                tenant_id, created_at) 
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())");
-        
-        if ($stmt === false) {
-            $conn->rollback();
-            jsonResponse(false, 'Database error occurred. Please try again.');
-        }
-        
-        $stmt->bind_param("sssssssii", 
-            $name, $email, $hashed_password, $mobile, $nic, $address, 
-            $status, $role_id, $tenant_id
-        );
+    // Prepare insert query
+    $stmt = $conn->prepare("INSERT INTO users (name, email, password, mobile, nic, address, status, role_id, 
+                            tenant_id, created_at) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())");
+    
+    if ($stmt === false) {
+        $conn->rollback();
+        jsonResponse(false, 'Database error occurred. Please try again.');
     }
+    
+    $stmt->bind_param("sssssssii", 
+        $name, $email, $hashed_password, $mobile, $nic, $address, 
+        $status, $role_id, $tenant_id
+    );
 
     // Execute insert
     if ($stmt->execute()) {
@@ -239,16 +222,7 @@ try {
         $stmt->close();
         
         // Log user creation
-        $positionLabel = '';
-        if ($position_id) {
-            $posStmt = $conn->prepare("SELECT name FROM positions WHERE id = ?");
-            $posStmt->bind_param("i", $position_id);
-            $posStmt->execute();
-            $posName = $posStmt->get_result()->fetch_assoc()['name'] ?? null;
-            $posStmt->close();
-            $positionLabel = $posName ? " (Position: $posName)" : "";
-        }
-        $logDetails = "New user account created - Name: {$name}, Email: {$email}, Role: {$role_name}{$positionLabel}";
+        $logDetails = "New user account created - Name: {$name}, Email: {$email}, Role: {$role_name}";
         logUserAction($conn, $currentUserId, 'user_create', $newUserId, $logDetails);
         
         $conn->commit();

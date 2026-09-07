@@ -24,6 +24,8 @@ include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 // Get current user's role information
 $current_user_id = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
 $current_user_role = isset($_SESSION['role_id']) ? (int)$_SESSION['role_id'] : 0;
+$is_main_admin = $_SESSION['is_main_admin'] ?? 0;
+$tenant_id = isset($_SESSION['tenant_id']) ? (int)$_SESSION['tenant_id'] : 0;
 
 // If still no user data, redirect to login
 if ($current_user_id == 0) {
@@ -44,8 +46,9 @@ $pay_status_filter = isset($_GET['pay_status_filter']) ? trim($_GET['pay_status_
 
 // Role-based access control (EXACTLY same as main page)
 $roleBasedCondition = "";
-if ($current_user_role != 1) {
-    $roleBasedCondition = " AND i.user_id = $current_user_id";
+if ($is_main_admin != 1) {
+    // Non-main-admin users can only see their tenant's orders
+    $roleBasedCondition = " AND i.tenant_id = " . (int)$tenant_id;
 }
 
 // Build SQL query with UPDATED customer data fields priority

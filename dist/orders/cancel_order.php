@@ -15,6 +15,7 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
 
 // Include database connection
 include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
+include_once($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/stock_ledger.php');
 
 try {
     // Check if POST request
@@ -40,13 +41,13 @@ try {
        $session_tenant_id = isset($_SESSION['tenant_id']) ? intval($_SESSION['tenant_id']) : 0;
 
        if ($is_main_admin) {
-           $check_sql = "SELECT order_id, status, customer_id, total_amount 
+           $check_sql = "SELECT order_id, status, customer_id, total_amount, tenant_id 
                          FROM order_header 
                          WHERE order_id = ? AND interface IN ('individual', 'leads')";
            $stmt = $conn->prepare($check_sql);
            $stmt->bind_param("s", $order_id);
        } else {
-           $check_sql = "SELECT order_id, status, customer_id, total_amount 
+           $check_sql = "SELECT order_id, status, customer_id, total_amount, tenant_id 
                          FROM order_header 
                          WHERE order_id = ? AND tenant_id = ? AND interface IN ('individual', 'leads')";
            $stmt = $conn->prepare($check_sql);
@@ -109,6 +110,8 @@ try {
         
         // Restore inventory
         if (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1) {
+            $restore_tenant_id = isset($order['tenant_id']) ? (int)$order['tenant_id'] : $session_tenant_id;
+
             $getItemsSql = "SELECT product_id, quantity, item_id FROM order_items WHERE order_id = ? AND status != 'canceled'";
             $items_stmt = $conn->prepare($getItemsSql);
             $items_stmt->bind_param("s", $order_id);
@@ -139,6 +142,7 @@ try {
                 $qty = $item['quantity'];
                 $item_id = $item['item_id'];
 
+                $restored_qty = 0;
                 if ($is_batch_aware) {
                     // Restore each specific batch that fulfilled this order item
                     $oibSql = "SELECT batch_id, quantity FROM order_item_batches WHERE order_item_id = ?";
@@ -146,22 +150,24 @@ try {
                     $oibStmt->bind_param("i", $item_id);
                     $oibStmt->execute();
                     $oibResult = $oibStmt->get_result();
-                    $restored_qty = 0;
                     while ($oib = $oibResult->fetch_assoc()) {
                         $batch_stmt->bind_param("ii", $oib['quantity'], $oib['batch_id']);
                         if (!$batch_stmt->execute()) {
                             throw new Exception('Failed to restore batch stock.');
                         }
                         $restored_qty += $oib['quantity'];
+                        log_stock_movement($conn, $restore_tenant_id, (int)$product_id, (int)$oib['batch_id'], 'order_cancel_return', (int)$oib['quantity'], 'order', (int)$order_id, isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : null, 'Order cancelled - batch restore');
                     }
                     $oibStmt->close();
-                    // Ensure product total is restored by the original item quantity
-                    $qty = $qty; // keep full item qty for product rollup
                 }
 
-                $stock_stmt->bind_param("iii", $qty, $product_id, $session_tenant_id);
+                $stock_stmt->bind_param("iii", $qty, $product_id, $restore_tenant_id);
                 if (!$stock_stmt->execute()) {
                     throw new Exception('Failed to restore stock for product ID: ' . $product_id);
+                }
+                $nonBatchQty = (int)$qty - (int)$restored_qty;
+                if ($nonBatchQty > 0) {
+                    log_stock_movement($conn, $restore_tenant_id, (int)$product_id, null, 'order_cancel_return', $nonBatchQty, 'order', (int)$order_id, isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : null, 'Order cancelled - non-batch restore');
                 }
             }
             $items_stmt->close();

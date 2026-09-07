@@ -16,6 +16,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
+include_once($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/stock_ledger.php');
 
 if (!isset($_POST['csrf_token']) || !isset($_SESSION['csrf_token']) || $_POST['csrf_token'] !== $_SESSION['csrf_token']) {
     echo json_encode(['success' => false, 'message' => 'Security token mismatch.']);
@@ -69,6 +70,7 @@ try {
 
     // Collect and validate items
     $items = [];
+    $usedBatchNumbers = [];
     $total_amount = 0;
 
     // Helper function to generate unique batch number starting with product code
@@ -79,14 +81,11 @@ try {
         $randomPart = strtoupper(substr(md5(uniqid(mt_rand(), true)), 0, 4));
         $batch_number = "{$product_code}-{$datePart}-{$timePart}-{$randomPart}";
         
-        // Check for uniqueness and increment if needed
+        // Check for uniqueness against BOTH tables (batches is the inventory
+        // source of truth; grn_items is the document record) and increment if needed
         $counter = $counter_offset;
         while (true) {
-            $checkStmt = $conn->prepare("SELECT id FROM grn_items WHERE batch_number = ? LIMIT 1");
-            $checkStmt->bind_param("s", $batch_number);
-            $checkStmt->execute();
-            $exists = $checkStmt->get_result()->num_rows > 0;
-            $checkStmt->close();
+            $exists = batchNumberExists($conn, $batch_number);
             if (!$exists) {
                 break;
             }
@@ -97,16 +96,33 @@ try {
         return $batch_number;
     }
 
-    // Fetch product codes for batch number generation
+    function batchNumberExists($conn, $batch_number) {
+        $checkStmt = $conn->prepare("SELECT id FROM grn_items WHERE batch_number = ? LIMIT 1");
+        $checkStmt->bind_param("s", $batch_number);
+        $checkStmt->execute();
+        $existsInItems = $checkStmt->get_result()->num_rows > 0;
+        $checkStmt->close();
+        if ($existsInItems) {
+            return true;
+        }
+        $checkStmt = $conn->prepare("SELECT batch_id FROM batches WHERE batch_number = ? LIMIT 1");
+        $checkStmt->bind_param("s", $batch_number);
+        $checkStmt->execute();
+        $existsInBatches = $checkStmt->get_result()->num_rows > 0;
+        $checkStmt->close();
+        return $existsInBatches;
+    }
+
     $productCodes = [];
     if (isset($_POST['items']) && is_array($_POST['items'])) {
         $productIds = array_unique(array_map(fn($item) => intval($item['product_id'] ?? 0), $_POST['items']));
         $productIds = array_filter($productIds, fn($id) => $id > 0);
         if (!empty($productIds)) {
             $placeholders = str_repeat('?,', count($productIds) - 1) . '?';
-            $codeStmt = $conn->prepare("SELECT id, product_code FROM products WHERE id IN ($placeholders)");
-            $codeTypes = str_repeat('i', count($productIds));
-            $codeStmt->bind_param($codeTypes, ...$productIds);
+            $codeStmt = $conn->prepare("SELECT id, product_code FROM products WHERE id IN ($placeholders) AND tenant_id = ? AND status = 'active'");
+            $codeTypes = str_repeat('i', count($productIds)) . 'i';
+            $codeParams = array_merge($productIds, [$tenant_id]);
+            $codeStmt->bind_param($codeTypes, ...$codeParams);
             $codeStmt->execute();
             $codeResult = $codeStmt->get_result();
             while ($row = $codeResult->fetch_assoc()) {
@@ -130,21 +146,30 @@ try {
                 continue; // Skip incomplete items
             }
 
+            if (!isset($productCodes[$product_id])) {
+                $response['errors']["items"] = 'One or more products are invalid, inactive, or do not belong to the selected company.';
+                $response['message'] = 'Please correct the errors below.';
+                echo json_encode($response);
+                exit();
+            }
+
             // Generate unique batch number with product code if not provided
             if (empty($batch_number)) {
                 $batch_number = generateUniqueBatchNumber($conn, $product_code, $batchCounter);
                 $batchCounter++;
             } else {
-                // Validate uniqueness of provided batch number
-                $checkStmt = $conn->prepare("SELECT id FROM grn_items WHERE batch_number = ? LIMIT 1");
-                $checkStmt->bind_param("s", $batch_number);
-                $checkStmt->execute();
-                if ($checkStmt->get_result()->num_rows > 0) {
+                if (batchNumberExists($conn, $batch_number)) {
                     $batch_number = generateUniqueBatchNumber($conn, $product_code, $batchCounter);
                     $batchCounter++;
                 }
-                $checkStmt->close();
             }
+            if (isset($usedBatchNumbers[$batch_number])) {
+                $response['errors']['items'] = 'Duplicate batch number in request: ' . $batch_number;
+                $response['message'] = 'Please correct the errors below.';
+                echo json_encode($response);
+                exit();
+            }
+            $usedBatchNumbers[$batch_number] = true;
 
             $items[] = [
                 'product_id' => $product_id,
@@ -197,9 +222,10 @@ try {
 
     // Insert GRN items and their batch records
     $insertItem = $conn->prepare("INSERT INTO grn_items (grn_id, product_id, batch_number, quantity, buying_price, selling_price) VALUES (?, ?, ?, ?, ?, ?)");
-    $insertBatch = $conn->prepare("INSERT INTO batches (tenant_id, grn_id, grn_item_id, supplier_id, product_id, batch_number, buying_price, selling_price, received_qty, remaining_qty, received_date, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+    $insertBatch = $conn->prepare("INSERT INTO batches (tenant_id, grn_id, grn_item_id, product_id, batch_number, buying_price, selling_price, received_qty, remaining_qty, received_date, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
     $batchStatus = $auto_confirm ? 'confirmed' : 'draft';
-    foreach ($items as $item) {
+    $itemBatchIds = []; 
+    foreach ($items as $idx => $item) {
         $insertItem->bind_param("iisidd", $grn_id, $item['product_id'], $item['batch_number'], $item['quantity'], $item['buying_price'], $item['selling_price']);
         if (!$insertItem->execute()) {
             throw new Exception("Failed to add item: " . $insertItem->error);
@@ -207,27 +233,32 @@ try {
         $grn_item_id = $conn->insert_id;
 
         $insertBatch->bind_param(
-            "iiiiisddiiss",
-            $tenant_id, $grn_id, $grn_item_id, $supplier_id, $item['product_id'],
+            "iiiisddiiss",
+            $tenant_id, $grn_id, $grn_item_id, $item['product_id'],
             $item['batch_number'], $item['buying_price'], $item['selling_price'],
             $item['quantity'], $item['quantity'], $received_date, $batchStatus
-        /* types: i i i i i s d d i i s s */
+        /* types: i i i i s d d i i s s */
         );
         if (!$insertBatch->execute()) {
             throw new Exception("Failed to add batch record: " . $insertBatch->error);
         }
+        $itemBatchIds[$idx] = (int)$conn->insert_id;
     }
     $insertItem->close();
     $insertBatch->close();
 
     // Auto-confirm: update product stock quantities (only if allow_inventory is enabled)
     if ($auto_confirm && isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1) {
-        $updateStock = $conn->prepare("UPDATE products SET stock_quantity = stock_quantity + ? WHERE id = ? AND (tenant_id = ? OR tenant_id IS NULL)");
-        foreach ($items as $item) {
+        $updateStock = $conn->prepare("UPDATE products SET stock_quantity = stock_quantity + ? WHERE id = ? AND tenant_id = ?");
+        foreach ($items as $idx => $item) {
             $updateStock->bind_param("iii", $item['quantity'], $item['product_id'], $tenant_id);
             if (!$updateStock->execute()) {
                 throw new Exception("Failed to update stock for product ID " . $item['product_id']);
             }
+            if ($updateStock->affected_rows === 0) {
+                throw new Exception("Product does not belong to the selected company (ID " . $item['product_id'] . ")");
+            }
+            log_stock_movement($conn, (int)$tenant_id, (int)$item['product_id'], $itemBatchIds[$idx] ?? null, 'grn_in', (int)$item['quantity'], 'grn', (int)$grn_id, $created_by ? (int)$created_by : null, 'GRN ' . $grn_number);
         }
         $updateStock->close();
     }

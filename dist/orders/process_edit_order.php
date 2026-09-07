@@ -108,7 +108,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         }
 
         // Validate tenant access - non-main admins can only edit orders from their own tenant
-        if (!($is_main_admin === 1 && $role_id === 1)) {
+        if (!($is_main_admin === 1)) {
             if ($order_tenant_id !== $session_tenant_id) {
                 throw new Exception("You do not have permission to edit this order.");
             }

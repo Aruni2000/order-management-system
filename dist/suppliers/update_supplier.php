@@ -13,6 +13,12 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 
 include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
+// Store role (role_id 3, non-main-admin) is limited to Products & Order Management
+if (($_SESSION['role_id'] ?? 0) == 3 && (($_SESSION['is_main_admin'] ?? 0) !== 1)) {
+    echo json_encode(['success' => false, 'message' => 'Unauthorized access.']);
+    exit();
+}
+
 if (!isset($_POST['csrf_token']) || !isset($_SESSION['csrf_token']) || $_POST['csrf_token'] !== $_SESSION['csrf_token']) {
     echo json_encode(['success' => false, 'message' => 'Security token mismatch.']);
     exit();
