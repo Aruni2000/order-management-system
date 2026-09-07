@@ -18,12 +18,13 @@ include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
 // Multi-tenant permissions
 $is_main_admin = isset($_SESSION['is_main_admin']) && $_SESSION['is_main_admin'] == 1;
+$is_user = isset($_SESSION['role_id']) && (int)$_SESSION['role_id'] == 2;
 $session_tenant_id = isset($_SESSION['tenant_id']) ? (int)$_SESSION['tenant_id'] : 0;
 $tenant_filter = isset($_GET['tenant_filter']) ? intval($_GET['tenant_filter']) : 0;
 
 // Fetch tenants for main admin filter
 $tenants = [];
-if ($is_main_admin) {
+if ($is_main_admin && $_SESSION['role_id'] == 1) {
     $tRes = $conn->query("SELECT tenant_id, company_name FROM tenants WHERE status = 'active' ORDER BY is_main_admin DESC, company_name ASC");
     if ($tRes) {
         while ($row = $tRes->fetch_assoc()) {
@@ -43,9 +44,17 @@ $date_to = isset($_GET['date_to']) ? trim($_GET['date_to']) : '';
 $category_filter = isset($_GET['category_filter']) ? trim($_GET['category_filter']) : '';
 $low_stock_filter = isset($_GET['low_stock_filter']) ? trim($_GET['low_stock_filter']) : '';
 
-// Fetch all categories for filter
+// Fetch categories for filter (scoped to effective tenant)
 $categories = [];
-$catRes = $conn->query("SELECT id, name FROM categories ORDER BY name ASC");
+if ($is_main_admin && $_SESSION['role_id'] == 1) {
+    if ($tenant_filter > 0) {
+        $catRes = $conn->query("SELECT id, name, tenant_id FROM categories WHERE tenant_id = $tenant_filter ORDER BY name ASC");
+    } else {
+        $catRes = $conn->query("SELECT id, name, tenant_id FROM categories ORDER BY name ASC");
+    }
+} else {
+    $catRes = $conn->query("SELECT id, name, tenant_id FROM categories WHERE tenant_id = $session_tenant_id ORDER BY name ASC");
+}
 if ($catRes) {
     while ($crow = $catRes->fetch_assoc()) {
         $categories[] = $crow;
@@ -70,7 +79,7 @@ $sql = "SELECT p.*, c.name as category_name, t.company_name
 $searchConditions = [];
 
 // Enforce tenant isolation for sub-tenants vs main admin filter
-if ($is_main_admin) {
+if ($is_main_admin && $_SESSION['role_id'] == 1) {
     if ($tenant_filter > 0) {
         $searchConditions[] = "p.tenant_id = $tenant_filter";
     }
@@ -266,9 +275,9 @@ $result = $conn->query($sql);
                                 <?php endforeach; ?>
                             </select>
                         </div>
-                        <?php if ($is_main_admin): ?>
+                        <?php if ($is_main_admin && $_SESSION['role_id'] == 1): ?>
                         <div class="form-group">
-                            <label for="tenant_filter">Company / Tenant</label>
+                            <label for="tenant_filter">Tenant Company</label>
                             <select id="tenant_filter" name="tenant_filter">
                                 <option value="">All Companies</option>
                                 <?php foreach ($tenants as $t): ?>
@@ -330,8 +339,8 @@ $result = $conn->query($sql);
                         <thead>
                             <tr>
                                 <th>ID</th>
-                                <?php if ($is_main_admin): ?>
-                                <th>Company</th>
+                                <?php if ($is_main_admin && $_SESSION['role_id'] == 1): ?>
+                                <th>Tenant Company</th>
                                 <?php endif; ?>
                                 <th>Product Name</th>
                                 <th>Category</th>
@@ -339,7 +348,7 @@ $result = $conn->query($sql);
                                 <?php if (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1): ?>
                                 <th>Stock</th>
                                 <?php endif; ?>
-                                <th>Created Date</th>
+                                <th>Created</th>
                                 <th>Status</th>
                                 <th>Actions</th>
                             </tr>
@@ -349,14 +358,14 @@ $result = $conn->query($sql);
                                 <?php while ($row = $result->fetch_assoc()): ?>
                                     <tr>
                                         <!-- Product ID -->
-                                        <td><?php echo htmlspecialchars($row['id']); ?></td>
+                                        <td class="order-id"><?php echo htmlspecialchars($row['id']); ?></td>
 
-                                        <?php if ($is_main_admin): ?>
-                                        <!-- Company / Tenant -->
+                                        <?php if ($is_main_admin && $_SESSION['role_id'] == 1): ?>
+                                        <!-- Tenant Company -->
                                         <td>
-                                            <span class="badge" style="background: #e0f2fe; color: #0369a1; padding: 4px 8px; border-radius: 4px; font-weight: 600; font-size: 12px;">
+                                            <div style="font-weight: 500; color: #495057; font-size: 13px;">
                                                 <?php echo htmlspecialchars($row['company_name'] ?? 'N/A'); ?>
-                                            </span>
+                                            </div>
                                         </td>
                                         <?php endif; ?>
                                         
@@ -437,7 +446,7 @@ $result = $conn->query($sql);
                                                     <i class="fas fa-eye"></i>
                                                 </button>
                                                 
-                                                <?php if ($is_main_admin && isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1): ?>
+                                                <?php if ($_SESSION['role_id'] == 1 && isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1): ?>
                                                 <button type="button" class="action-btn stock-update-btn" 
                                                         style="background: #17a2b8; color: white;"
                                                         title="Update Stock (Admin Only)"
@@ -449,7 +458,7 @@ $result = $conn->query($sql);
                                                 </button>
                                                 <?php endif; ?>
                                                 
-                                                <?php if ($is_main_admin): ?>
+                                                <?php if ($_SESSION['role_id'] == 1): ?>
                                                 <button type="button" class="action-btn" 
                                                         style="background: #6f42c1; color: white;"
                                                         title="Update Selling Price (Admin Only)"
@@ -460,6 +469,7 @@ $result = $conn->query($sql);
                                                 </button>
                                                 <?php endif; ?>
                                                 
+<?php if (!$is_user): ?>
                                                 <button class="action-btn dispatch-btn" title="Edit Product" 
                                                         onclick="editProduct(<?php echo $row['id']; ?>)">
                                                     <i class="fas fa-edit"></i>
@@ -472,8 +482,9 @@ $result = $conn->query($sql);
                                                   data-product-name="<?= htmlspecialchars($row['name']) ?>"
                                                    title="<?= $row['status'] == 'active' ? 'Deactivate Product' : 'Activate Product' ?>"
                                                    data-action="<?= $row['status'] == 'active' ? 'deactivate' : 'activate' ?>">
-                                                       <i class="fas <?= $row['status'] == 'active' ? 'fa-toggle-off' : 'fa-toggle-on' ?>"></i>
+                                                        <i class="fas <?= $row['status'] == 'active' ? 'fa-toggle-off' : 'fa-toggle-on' ?>"></i>
                                                 </button>
+                                                <?php endif; ?>
                                             </div>
                                         </td>
                                     </tr>
@@ -844,14 +855,14 @@ $result = $conn->query($sql);
             if (dateFromInput && dateToInput) {
                 dateFromInput.addEventListener('change', function() {
                     if (this.value && dateToInput.value && new Date(this.value) > new Date(dateToInput.value)) {
-                        alert('From date cannot be later than To date');
+                        alert('Date From cannot be later than Date To');
                         this.value = '';
                     }
                 });
                 
                 dateToInput.addEventListener('change', function() {
                     if (this.value && dateFromInput.value && new Date(this.value) < new Date(dateFromInput.value)) {
-                        alert('To date cannot be earlier than From date');
+                        alert('Date To cannot be earlier than Date From');
                         this.value = '';
                     }
                 });

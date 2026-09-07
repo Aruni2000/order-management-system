@@ -49,7 +49,7 @@ $roleResult = mysqli_query($conn, $roleQuery);
 // Fetch tenants if user is main admin 
 $tenants = [];
 $is_main_admin = isset($_SESSION['is_main_admin']) && $_SESSION['is_main_admin'] == 1;
-if ($is_main_admin) {
+if ($is_main_admin && $_SESSION['role_id'] == 1) {
     $tenantQuery = "SELECT tenant_id, company_name FROM tenants WHERE status = 'active' ORDER BY company_name";
     $tenantResult = mysqli_query($conn, $tenantQuery);
     if ($tenantResult) {
@@ -59,15 +59,7 @@ if ($is_main_admin) {
     }
 }
 
-// Fetch active positions for dropdown
-$positions = [];
-$positionsQuery = "SELECT id, name FROM positions WHERE status = 'active' ORDER BY name ASC";
-$positionsResult = mysqli_query($conn, $positionsQuery);
-if ($positionsResult) {
-    while ($pos = mysqli_fetch_assoc($positionsResult)) {
-        $positions[] = $pos;
-    }
-}
+
 
 ?>
 
@@ -357,10 +349,10 @@ input[type="password"] {
                                     <div class="error-feedback" id="role-error"></div>
                                 </div>
 
-                                <?php if ($is_main_admin): ?>
+                                <?php if ($is_main_admin && $_SESSION['role_id'] == 1): ?>
                                 <div class="customer-form-group">
                                     <label for="tenant_id" class="form-label">
-                                        <i class="fas fa-building"></i> Tenant/Company<span class="required">*</span>
+                                        <i class="fas fa-building"></i> Tenant Company<span class="required">*</span>
                                     </label>
                                     <select class="form-select" id="tenant_id" name="tenant_id" required>
                                         <option value="">Select Tenant...</option>
@@ -374,18 +366,7 @@ input[type="password"] {
                                 </div>
                                 <?php endif; ?>
 
-                                <div class="customer-form-group">
-                                    <label for="position" class="form-label">
-                                        <i class="fas fa-briefcase"></i> Position
-                                    </label>
-                                    <select class="form-select" id="position" name="position">
-                                        <option value="">Select Position (optional)...</option>
-                                        <?php foreach ($positions as $pos): ?>
-                                            <option value="<?php echo $pos['id']; ?>"><?php echo htmlspecialchars($pos['name']); ?></option>
-                                        <?php endforeach; ?>
-                                    </select>
-                                    <div class="error-feedback" id="position-error"></div>
-                                </div>
+
                             </div>
 
                             <!-- Fifth Row: Address (Full Width) -->
@@ -712,7 +693,7 @@ input[type="password"] {
                 }
             });
 
-            <?php if ($is_main_admin): ?>
+            <?php if ($is_main_admin && $_SESSION['role_id'] == 1): ?>
             $('#tenant_id').on('change', function() {
                 if ($(this).val() === '') {
                     showError('tenant_id', 'Please select a tenant');

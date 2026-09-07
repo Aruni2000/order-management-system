@@ -130,7 +130,6 @@ function getPaymentStatusBadge($status) {
     $status = strtolower($status ?? 'unpaid');
     switch ($status) {
         case 'paid': return "bg-success";
-        case 'partial': return "bg-warning";
         case 'unpaid':
         default: return "bg-danger";
     }
@@ -439,9 +438,14 @@ if ($grand_total_words) {
                     <img src="<?php echo htmlspecialchars($logo_url); ?>" alt="<?php echo htmlspecialchars($company['company_name']); ?> Logo">
                 </div>
                 <?php endif; ?>
-                <h1><?php echo htmlspecialchars($company['company_name'] ?: '<Company Name>'); ?></h1>
-                <div><?php echo !empty($company['address']) ? nl2br(htmlspecialchars($company['address'])) : '&lt;123 Street Address, City, State, Zip/Post&gt;'; ?></div>
-                <div><?php echo htmlspecialchars($company['email'] ?: '&lt;Website, Email Address&gt;'); ?> | <?php echo htmlspecialchars($company['hotline'] ?: '&lt;Phone Number&gt;'); ?></div>
+                <h1><?php echo htmlspecialchars($company['company_name'] ?: 'Company Name'); ?></h1>
+                <div><?php echo !empty($company['address']) ? nl2br(htmlspecialchars($company['address'])) : ''; ?></div>
+                <div>
+                    <?php
+                    $tenantContactParts = array_filter([$company['email'], $company['hotline']]);
+                    echo !empty($tenantContactParts) ? htmlspecialchars(implode(' | ', $tenantContactParts)) : '';
+                    ?>
+                </div>
             </div>
             <div class="receipt-right-section">
                 <h2 class="receipt-title">RECEIPT</h2>

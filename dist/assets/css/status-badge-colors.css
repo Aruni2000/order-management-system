@@ -114,12 +114,6 @@
   border: 1px solid #86efac;
 }
 
-.pay-status-partial {
-  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
-  color: #92400e;
-  border: 1px solid #fcd34d;
-}
-
 .pay-status-unpaid {
   background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
   color: #991b1b;

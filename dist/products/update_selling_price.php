@@ -13,9 +13,9 @@ if (!isset($_SESSION['user_id'])) {
     exit();
 }
 
-// Check if user is main admin (Admin only access)
-$is_main_admin = isset($_SESSION['is_main_admin']) ? (int)$_SESSION['is_main_admin'] : 0;
-if ($is_main_admin != 1) {
+// Check if user is admin role (Admin only access); non-main-admins are tenant-scoped below
+$role_id = isset($_SESSION['role_id']) ? (int)$_SESSION['role_id'] : 0;
+if ($role_id != 1) {
     http_response_code(403);
     echo json_encode(['success' => false, 'message' => 'Access denied. Only administrators can update selling prices.']);
     exit();
@@ -56,7 +56,7 @@ try {
     $session_tenant_id = isset($_SESSION['tenant_id']) ? (int)$_SESSION['tenant_id'] : 0;
     $is_main_admin = isset($_SESSION['is_main_admin']) ? (int)$_SESSION['is_main_admin'] : 0;
 
-    if ($is_main_admin) {
+    if ($is_main_admin && $_SESSION['role_id'] == 1) {
         $checkSql = "SELECT id, name FROM products WHERE id = ?";
         $checkStmt = $conn->prepare($checkSql);
         if (!$checkStmt) {
@@ -82,7 +82,7 @@ try {
     $product = $result->fetch_assoc();
     $checkStmt->close();
 
-    if ($is_main_admin) {
+    if ($is_main_admin && $_SESSION['role_id'] == 1) {
         if ($batch_id > 0) {
             $batchSql = "SELECT batch_id, batch_number, selling_price FROM batches WHERE batch_id = ? AND product_id = ? AND status = 'confirmed'";
             $batchStmt = $conn->prepare($batchSql);
@@ -138,7 +138,7 @@ try {
     $conn->autocommit(FALSE);
 
     try {
-        if ($is_main_admin) {
+        if ($is_main_admin && $_SESSION['role_id'] == 1) {
             if ($batch_id > 0) {
                 $updateSql = "UPDATE batches SET selling_price = ? WHERE batch_id = ? AND product_id = ? AND status = 'confirmed'";
                 $updateStmt = $conn->prepare($updateSql);

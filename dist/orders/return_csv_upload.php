@@ -14,6 +14,7 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
 
 // Include the database connection file early
 include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
+include_once($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/stock_ledger.php');
 
 // Handle AJAX request for fetching couriers
 if (isset($_GET['action']) && $_GET['action'] === 'get_couriers' && isset($_GET['tenant_id'])) {
@@ -63,7 +64,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['co_id'])) {
 
 // Fetch tenants for the dropdown
 $tenants = [];
-if ($is_main_admin === 1 && $role_id === 1) {
+if ($is_main_admin === 1 && $_SESSION['role_id'] == 1) {
     // Main Admin gets all active tenants
     $tenantResult = $conn->query("SELECT tenant_id, company_name FROM tenants WHERE status = 'active' ORDER BY company_name");
 } else {
@@ -78,7 +79,7 @@ if ($tenantResult && $tenantResult->num_rows > 0) {
         $tenants[] = $row;
     }
 }
-$restricted_tenant_id = (count($tenants) === 1 && !($is_main_admin === 1 && $role_id === 1)) ? $tenants[0]['tenant_id'] : 0;
+$restricted_tenant_id = (count($tenants) === 1 && !($is_main_admin === 1 && $_SESSION['role_id'] == 1)) ? $tenants[0]['tenant_id'] : 0;
 
 //function for tenant name
 function TenantName($tenant_id) {
@@ -149,7 +150,7 @@ function validateTrackingNumberInDB($trackingNumber, $conn, $co_id) {
     $cleanTracking = $formatValidation['clean_tracking'];
     
     // Check if tracking number exists in database with return complete status
-    if ($GLOBALS['is_main_admin'] === 1 && $GLOBALS['role_id'] === 1) {
+    if ($GLOBALS['is_main_admin'] === 1) {
         $findTrackingSql = "SELECT order_id, status FROM order_header WHERE tracking_number = ? AND co_id = ? LIMIT 1";
         $findTrackingStmt = $conn->prepare($findTrackingSql);
         if (!$findTrackingStmt) return ['valid' => false, 'message' => 'Database error'];
@@ -356,7 +357,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
             }
             
             // Prepare SQL statement to update order status
-            if ($is_main_admin === 1 && $role_id === 1) {
+            if ($is_main_admin === 1) {
                 $updateOrderSql = "UPDATE order_header SET status = 'return_handover', updated_at = NOW() WHERE order_id = ? AND status = 'return complete'";
                 $updateOrderStmt = $conn->prepare($updateOrderSql);
             } else {
@@ -426,7 +427,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                 
                 // Update order status
                 try {
-                    if ($is_main_admin === 1 && $role_id === 1) {
+                    if ($is_main_admin === 1) {
                         $updateOrderStmt->bind_param("i", $trackingData['order_id']);
                     } else {
                         $updateOrderStmt->bind_param("ii", $trackingData['order_id'], $tenant_id);
@@ -457,7 +458,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
 
                                 $updateBatch = null;
                                 if ($isBatchAware) {
-                                    if ($is_main_admin === 1 && $role_id === 1) {
+                                    if ($is_main_admin === 1) {
                                         $updateBatch = $conn->prepare("UPDATE batches SET remaining_qty = remaining_qty + ? WHERE batch_id = ?");
                                     } else {
                                         $updateBatch = $conn->prepare("UPDATE batches SET remaining_qty = remaining_qty + ? WHERE batch_id = ? AND tenant_id = ?");
@@ -475,13 +476,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                                         $oibStmt->bind_param("i", $item['item_id']);
                                         $oibStmt->execute();
                                         $oibResult = $oibStmt->get_result();
+                                    $restoredBatchQty = 0;
                                     while ($oib = $oibResult->fetch_assoc()) {
-                                        if ($is_main_admin === 1 && $role_id === 1) {
+                                        if ($is_main_admin === 1) {
                                             $updateBatch->bind_param("ii", $oib['quantity'], $oib['batch_id']);
                                         } else {
                                             $updateBatch->bind_param("iii", $oib['quantity'], $oib['batch_id'], $tenant_id);
                                         }
                                         $updateBatch->execute();
+                                        $restoredBatchQty += (int)$oib['quantity'];
+                                        // Ledger: stock back in per restored batch
+                                        log_stock_movement($conn, (int)$tenant_id, (int)$productId, (int)$oib['batch_id'], 'return_in', (int)$oib['quantity'], 'order', (int)$trackingData['order_id'], isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : null, 'Return CSV handover - batch restore');
                                     }
                                         $oibStmt->close();
                                     }
@@ -494,6 +499,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                                         $inventoryUpdatedCount++;
                                     }
                                     $stockStmt->close();
+                                    $nonBatchQty = (int)$quantity - (int)($restoredBatchQty ?? 0);
+                                    if ($nonBatchQty > 0) {
+                                        log_stock_movement($conn, (int)$tenant_id, (int)$productId, null, 'return_in', $nonBatchQty, 'order', (int)$trackingData['order_id'], isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : null, 'Return CSV handover - non-batch restore');
+                                    }
                                 }
                                 if ($updateBatch) $updateBatch->close();
                                 $itemsStmt->close();

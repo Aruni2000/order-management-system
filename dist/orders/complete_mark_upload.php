@@ -25,7 +25,7 @@ $session_tenant_id = $_SESSION['tenant_id'];
 function getTenants($conn, $is_main_admin, $role_id, $session_tenant_id) {
     $tenants = [];
     
-    if ($is_main_admin === 1 && $role_id === 1) {
+    if ($is_main_admin === 1 && $_SESSION['role_id'] == 1) {
         // Main Admin gets all active tenants
         $result = $conn->query("SELECT tenant_id, company_name FROM tenants WHERE status = 'active' ORDER BY company_name");
     } else {
@@ -50,7 +50,7 @@ $tenants = getTenants($conn, $is_main_admin, $role_id, $session_tenant_id);
 
 // If user is restricted to one tenant, pre-select it
 $restricted_tenant_id = 0;
-if (!($is_main_admin === 1 && $role_id === 1) && !empty($tenants)) {
+if (!($is_main_admin === 1 && $_SESSION['role_id'] == 1) && !empty($tenants)) {
     $restricted_tenant_id = $tenants[0]['tenant_id'];
 }
 

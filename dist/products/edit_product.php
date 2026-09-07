@@ -12,6 +12,12 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     exit();
 }
 
+// User role (role_id 2) cannot edit products – view-only
+if (isset($_SESSION['role_id']) && (int)$_SESSION['role_id'] == 2) {
+    header("Location: product_list.php");
+    exit();
+}
+
 // Include the database connection file
 include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
@@ -37,7 +43,7 @@ $session_tenant_id = isset($_SESSION['tenant_id']) ? (int)$_SESSION['tenant_id']
 $is_main_admin = isset($_SESSION['is_main_admin']) ? (int)$_SESSION['is_main_admin'] : 0;
 
 try {
-    if ($is_main_admin) {
+    if ($is_main_admin && $_SESSION['role_id'] == 1) {
         $query = "SELECT * FROM products WHERE id = ? LIMIT 1";
         $stmt = $conn->prepare($query);
         $stmt->bind_param("i", $product_id);
@@ -69,12 +75,21 @@ $categories = [];
 $prodCatId = intval($product['category_id']);
 
 try {
-    $catQuery = "SELECT id, name FROM categories 
-                 WHERE status = 'active' 
-                 OR id = ? 
-                 ORDER BY name ASC";
-    $catStmt = $conn->prepare($catQuery);
-    $catStmt->bind_param("i", $prodCatId);
+    if ($is_main_admin && $_SESSION['role_id'] == 1) {
+        $catQuery = "SELECT id, name, tenant_id FROM categories 
+                     WHERE status = 'active' 
+                     OR id = ? 
+                     ORDER BY name ASC";
+        $catStmt = $conn->prepare($catQuery);
+        $catStmt->bind_param("i", $prodCatId);
+    } else {
+        $catQuery = "SELECT id, name, tenant_id FROM categories 
+                     WHERE tenant_id = ? 
+                     AND (status = 'active' OR id = ?)
+                     ORDER BY name ASC";
+        $catStmt = $conn->prepare($catQuery);
+        $catStmt->bind_param("ii", $session_tenant_id, $prodCatId);
+    }
     $catStmt->execute();
     $catRes = $catStmt->get_result();
     
@@ -89,7 +104,7 @@ try {
 }
 
 $tenants = [];
-if ($is_main_admin) {
+if ($is_main_admin && $_SESSION['role_id'] == 1) {
     try {
         $tRes = $conn->query("SELECT tenant_id, company_name FROM tenants WHERE status = 'active' ORDER BY is_main_admin DESC, company_name ASC");
         if ($tRes) {
@@ -342,11 +357,11 @@ if ($is_main_admin) {
                             </div>
 
                             <!-- Tenant Selector (Main Admin Only) -->
-                            <?php if ($is_main_admin): ?>
+                            <?php if ($is_main_admin && $_SESSION['role_id'] == 1): ?>
                             <div class="form-row">
                                 <div class="product-form-group full-width">
                                     <label for="tenant_id" class="form-label">
-                                        <i class="fas fa-building"></i> Target Company / Tenant<span class="required">*</span>
+                                        <i class="fas fa-building"></i> Tenant Company<span class="required">*</span>
                                     </label>
                                     <select class="form-select" id="tenant_id" name="tenant_id" required>
                                         <?php foreach ($tenants as $t): ?>
@@ -369,7 +384,7 @@ if ($is_main_admin) {
                                     <select class="form-select" id="category_id" name="category_id" data-placeholder="Search category..." required>
                                         <option value=""></option>
                                         <?php foreach ($categories as $cat): ?>
-                                            <option value="<?php echo $cat['id']; ?>" <?php echo $prodCatId == $cat['id'] ? 'selected' : ''; ?>>
+                                            <option value="<?php echo $cat['id']; ?>" data-tenant="<?php echo $cat['tenant_id']; ?>" <?php echo $prodCatId == $cat['id'] ? 'selected' : ''; ?>>
                                                 <?php echo htmlspecialchars($cat['name']); ?>
                                             </option>
                                         <?php endforeach; ?>
@@ -493,6 +508,26 @@ if ($is_main_admin) {
                     searchField.focus();
                 }
             });
+
+            // Main admin: filter category dropdown live by selected Target Company
+            const allCategories = <?php echo json_encode($categories, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?>;
+            const tenantSelect = $('#tenant_id');
+            if (tenantSelect.length) {
+                tenantSelect.on('change', function() {
+                    const selectedTenant = parseInt($(this).val(), 10) || 0;
+                    const filtered = allCategories.filter(function(c) {
+                        return parseInt(c.tenant_id, 10) === selectedTenant;
+                    });
+                    const $cat = $('#category_id');
+                    $cat.empty().append('<option value=""></option>');
+                    filtered.forEach(function(c) {
+                        $cat.append($('<option>', { value: c.id, text: c.name, selected: c.id == originalValues.category_id }));
+                    });
+                    $cat.val('').trigger('change');
+                    originalValues.category_id = '';
+                    showSuccess('category_id');
+                });
+            }
 
             // Initialize form
             initializeForm();

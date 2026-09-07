@@ -111,7 +111,7 @@ try {
         }
 
         // Create upload directory if it doesn't exist
-        $uploadDir = $_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/uploads/payment_slips/';
+        $uploadDir = $_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/uploads/';
         if (!is_dir($uploadDir)) {
             if (!mkdir($uploadDir, 0755, true)) {
                 throw new Exception('Failed to create upload directory');

@@ -213,13 +213,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                             }
 
                             // Redirect by role
-                            switch ($user['role_id']) {
-                                case 1: // Superadmin
-                                case 2: // Regular user
-                                case 3: // Other roles
-                                default:
-                                    header("Location: /OMS/dist/dashboard/index.php");
-                            }
+                            header("Location: /OMS/dist/dashboard/index.php");
                             exit();
                         }
                     } else {

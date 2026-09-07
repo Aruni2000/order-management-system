@@ -8,6 +8,15 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
 
 include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
+// Store role (role_id 3, non-main-admin) is limited to Products & Order Management
+if ((int)($_SESSION['role_id'] ?? 0) === 3 && (int)($_SESSION['is_main_admin'] ?? 0) !== 1) {
+    if (ob_get_level()) {
+        ob_end_clean();
+    }
+    header("Location: /OMS/dist/pages/access_denied.php");
+    exit();
+}
+
 function generateCSRFToken() {
     if (!isset($_SESSION['csrf_token'])) {
         $_SESSION['csrf_token'] = bin2hex(random_bytes(32));

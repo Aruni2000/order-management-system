@@ -35,6 +35,15 @@ if (!isset($_POST['csrf_token']) || !isset($_SESSION['csrf_token']) || $_POST['c
     exit();
 }
 
+// User role (role_id 2) cannot edit products
+if (isset($_SESSION['role_id']) && (int)$_SESSION['role_id'] == 2) {
+    echo json_encode([
+        'success' => false,
+        'message' => 'You do not have permission to edit products.'
+    ]);
+    exit();
+}
+
 // Initialize response array
 $response = [
     'success' => false,
@@ -62,7 +71,7 @@ try {
     $is_main_admin = isset($_SESSION['is_main_admin']) ? (int)$_SESSION['is_main_admin'] : 0;
     $session_tenant_id = isset($_SESSION['tenant_id']) ? (int)$_SESSION['tenant_id'] : 0;
 
-    if ($is_main_admin) {
+    if ($is_main_admin && $_SESSION['role_id'] == 1) {
         $checkQuery = "SELECT * FROM products WHERE id = ? LIMIT 1";
         $checkStmt = $conn->prepare($checkQuery);
         $checkStmt->bind_param("i", $product_id);
@@ -99,7 +108,7 @@ try {
     $low_stock_threshold = $allow_inventory ? intval($_POST['low_stock_threshold'] ?? $originalProduct['low_stock_threshold']) : intval($originalProduct['low_stock_threshold']);
     $category_id = intval($_POST['category_id'] ?? $originalProduct['category_id']);
     
-    if ($is_main_admin) {
+    if ($is_main_admin && $_SESSION['role_id'] == 1) {
         $tenant_id = intval($_POST['tenant_id'] ?? $originalProduct['tenant_id']);
     } else {
         $tenant_id = intval($originalProduct['tenant_id']);

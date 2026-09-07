@@ -14,6 +14,15 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
 // Include the database connection file
 include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
+// Store role (role_id 3, non-main-admin) is limited to Products & Order Management
+if ((int)($_SESSION['role_id'] ?? 0) === 3 && (int)($_SESSION['is_main_admin'] ?? 0) !== 1) {
+    if (ob_get_level()) {
+        ob_end_clean();
+    }
+    header("Location: /OMS/dist/pages/access_denied.php");
+    exit();
+}
+
 
 // Check if user is main admin
 $is_main_admin = $_SESSION['is_main_admin'];
@@ -254,7 +263,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
 
                         <?php if ($is_main_admin == 1 && $is_admin == 1) { ?>
                         <div class="form-group">
-                            <label for="tenant_id_filter">Tenant</label>
+                            <label for="tenant_id_filter">Tenant Company</label>
                             <select id="tenant_id_filter" name="tenant_id_filter">
                                 <option value="">All Companies</option>
                                 <?php foreach ($tenants as $tenant): ?>
@@ -313,7 +322,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                             <?php while ($row = $result->fetch_assoc()): ?>
                             <tr>
                                 <!-- Customer ID -->
-                                <td><?php echo htmlspecialchars($row['customer_id']); ?></td>
+                                <td class="order-id"><?php echo htmlspecialchars($row['customer_id']); ?></td>
 
                                 <!-- Customer Name -->
                                 <td class="customer-name">
@@ -708,7 +717,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
             dateFromInput.addEventListener('change', function() {
                 if (this.value && dateToInput.value && new Date(this.value) > new Date(dateToInput
                         .value)) {
-                    alert('From date cannot be later than To date');
+                    alert('Date From cannot be later than Date To');
                     this.value = '';
                 }
             });
@@ -716,7 +725,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
             dateToInput.addEventListener('change', function() {
                 if (this.value && dateFromInput.value && new Date(this.value) < new Date(dateFromInput
                         .value)) {
-                    alert('To date cannot be earlier than From date');
+                    alert('Date To cannot be earlier than Date From');
                     this.value = '';
                 }
             });

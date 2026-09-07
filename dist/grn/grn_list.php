@@ -136,7 +136,7 @@ $result = $conn->query($sql);
                         </div>
 
                         <div class="form-group">
-                            <label for="tenant_filter">Company / Tenant</label>
+                            <label for="tenant_filter">Tenant Company</label>
                             <select id="tenant_filter" name="tenant_filter">
                                 <option value="">All Companies</option>
                                 <?php foreach ($tenants as $t): ?>
@@ -207,7 +207,7 @@ $result = $conn->query($sql);
                         <thead>
                             <tr>
                                 <th>GRN Number</th>
-                                <th>Company</th>
+                                <th>Tenant Company</th>
                                 <th>Supplier</th>
                                 <th>Received Date</th>
                                 <th>Total Amount</th>
@@ -224,11 +224,11 @@ $result = $conn->query($sql);
                                     $itemData = $itemCountResult ? $itemCountResult->fetch_assoc() : ['cnt' => 0, 'total_qty' => 0];
                                     ?>
                                     <tr>
-                                        <td><strong><?php echo htmlspecialchars($row['grn_number']); ?></strong></td>
+                                        <td class="order-id"><?php echo htmlspecialchars($row['grn_number']); ?></td>
                                         <td>
-                                            <span class="badge" style="background: #e0f2fe; color: #0369a1; padding: 4px 8px; border-radius: 4px; font-weight: 600; font-size: 12px;">
+                                            <div style="font-weight: 500; color: #495057; font-size: 13px;">
                                                 <?php echo htmlspecialchars($row['company_name'] ?? 'N/A'); ?>
-                                            </span>
+                                            </div>
                                         </td>
                                         <td>
                                             <div style="font-weight: 600; color: #1e293b;">

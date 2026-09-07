@@ -132,7 +132,7 @@ if ($order['status'] !== 'pending') {
 
 // Validate tenant access - non-main admins can only edit orders from their own tenant
 $order_tenant_id = isset($order['tenant_id']) ? intval($order['tenant_id']) : 0;
-if (!($is_main_admin === 1 && $role_id === 1)) {
+if (!($is_main_admin === 1)) {
     // Regular user - must belong to same tenant as order
     if ($order_tenant_id !== $session_tenant_id) {
         $_SESSION['order_error'] = "You do not have permission to edit this order.";

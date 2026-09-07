@@ -70,7 +70,7 @@ try {
     
     // ✅ NEW: Check tenant access permissions
     // Main admins can manage any courier, regular users only their own tenant
-    if (!($is_main_admin === 1 && $role_id === 1)) {
+    if (!($is_main_admin === 1)) {
         // Regular user - must match tenant
         if ($courier_tenant_id !== $session_tenant_id) {
             throw new Exception('Access denied: You can only manage couriers from your own tenant');
@@ -99,7 +99,7 @@ try {
     // Now filters by tenant for regular users, but allows main admins to manage across tenants
     if (in_array($is_default, [1, 2, 3])) {
         // Build the check query based on user permissions
-        if ($is_main_admin === 1 && $role_id === 1) {
+        if ($is_main_admin === 1) {
             // Main admin: Only check within the SAME tenant as the courier being updated
             $checkActiveCourierSql = "SELECT co_id, courier_name, is_default FROM couriers 
                                       WHERE co_id != ? 

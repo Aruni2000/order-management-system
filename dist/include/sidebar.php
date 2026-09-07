@@ -74,18 +74,24 @@ if (!function_exists('get_logo_with_fallback')) {
 // =========================================================================
 $is_admin = false;
 $is_moderator = false;
+$is_user = false;
+$is_store = false;
 $is_main_admin_tenant = false;
 $user_id = $_SESSION['user_id'] ?? null;
 
 // Look up role IDs from database by name (avoid hardcoded IDs)
 $admin_role_id = 0;
 $moderator_role_id = 0;
+$user_role_id = 0;
+$store_role_id = 0;
 if (isset($conn) && $conn) {
     $roleLookup = $conn->query("SELECT id, LOWER(name) AS l_name FROM roles");
     if ($roleLookup && $roleLookup->num_rows > 0) {
         while ($r = $roleLookup->fetch_assoc()) {
             if ($r['l_name'] === 'admin') $admin_role_id = (int)$r['id'];
             if ($r['l_name'] === 'moderator') $moderator_role_id = (int)$r['id'];
+            if ($r['l_name'] === 'user') $user_role_id = (int)$r['id'];
+            if ($r['l_name'] === 'store') $store_role_id = (int)$r['id'];
         }
     }
 }
@@ -94,6 +100,8 @@ if (isset($conn) && $conn) {
 if (isset($_SESSION['role_id'])) {
     $is_admin = ($_SESSION['role_id'] == $admin_role_id && $admin_role_id > 0);
     $is_moderator = ($_SESSION['role_id'] == $moderator_role_id && $moderator_role_id > 0);
+    $is_user = ($_SESSION['role_id'] == $user_role_id && $user_role_id > 0);
+    $is_store = ($_SESSION['role_id'] == $store_role_id && $store_role_id > 0);
 }
 if (isset($_SESSION['is_main_admin'])) {
     $is_main_admin_tenant = ($_SESSION['is_main_admin'] == 1);
@@ -111,12 +119,18 @@ if ((!$is_admin || !isset($_SESSION['is_main_admin'])) && $user_id && isset($con
         if ($perm_res && $perm_data = $perm_res->fetch_assoc()) {
             $is_admin = ($perm_data['role_id'] == $admin_role_id && $admin_role_id > 0);
             $is_moderator = ($perm_data['role_id'] == $moderator_role_id && $moderator_role_id > 0);
+            $is_user = ($perm_data['role_id'] == $user_role_id && $user_role_id > 0);
+            $is_store = ($perm_data['role_id'] == $store_role_id && $store_role_id > 0);
             $is_main_admin_tenant = ($perm_data['is_main_admin'] == 1);
             $_SESSION['is_main_admin'] = $is_main_admin_tenant;
         }
         $stmt->close();
     }
 }
+
+// Store-limited users (role = store) can only access Products & Order Management
+// (main-admin Store users additionally get Suppliers & GRN via the purchasing checks below)
+$is_store_limited = $is_store;
 
 // LOGO & COMPANY CONTEXT (from tenants table)
 $sidebar_tenant_id = $_SESSION['tenant_id'] ?? null;
@@ -246,13 +260,13 @@ $safe_company_name = htmlspecialchars($company_name, ENT_QUOTES, 'UTF-8');
           <ul class="pc-submenu">
             <li class="pc-item"><a class="pc-link" href="../users/add_user.php">Add New User</a></li>
             <li class="pc-item"><a class="pc-link" href="../users/users.php">All Users</a></li>
-            <li class="pc-item"><a class="pc-link" href="../users/positions.php">Positions</a></li>
             <li class="pc-item"><a class="pc-link" href="../users/user_success_rate.php">User Success Rate</a></li>
             <li class="pc-item"><a class="pc-link" href="../users/user_logs.php">User Activity Log</a></li>
           </ul>
         </li>
         <?php endif; ?>
         
+        <?php if (!$is_store_limited): ?>
         <li class="pc-item pc-hasmenu">
           <a href="#!" class="pc-link"><span class="pc-micon"> <i data-feather="user-check"></i></span><span class="pc-mtext">Customers</span><span class="pc-arrow"><i class="ti ti-chevron-right"></i></span></a>
           <ul class="pc-submenu">
@@ -260,20 +274,26 @@ $safe_company_name = htmlspecialchars($company_name, ENT_QUOTES, 'UTF-8');
             <li class="pc-item"><a class="pc-link" href="../customers/customer_list.php">All Customers</a></li>
           </ul>
         </li>
+        <?php endif; ?>
         
         <li class="pc-item pc-hasmenu">
           <a href="#!" class="pc-link"><span class="pc-micon"> <i data-feather="package"></i></span><span class="pc-mtext">Products</span><span class="pc-arrow"><i class="ti ti-chevron-right"></i></span></a>
           <ul class="pc-submenu">
+            <?php if (!$is_user): ?>
             <li class="pc-item"><a class="pc-link" href="../products/add_product.php">Add New Product</a></li>
+            <?php endif; ?>
             <li class="pc-item"><a class="pc-link" href="../products/product_list.php">All Products</a></li>
             <li class="pc-item"><a class="pc-link" href="../products/category_list.php">Category List</a></li>
-            <?php if ($is_admin && $is_main_admin_tenant): ?>
+            <?php if ($is_admin || $is_user): ?>
             <li class="pc-item"><a class="pc-link" href="../products/product_analysis.php">Product Analysis</a></li>
+            <?php endif; ?>
+            <?php if ($is_main_admin_tenant): ?>
+            <li class="pc-item"><a class="pc-link" href="../products/stock_movements.php">Stock Movements</a></li>
             <?php endif; ?>
           </ul>
         </li>
 
-        <?php if ($is_admin && $is_main_admin_tenant): ?>
+        <?php if ($is_main_admin_tenant && ($is_admin || $is_store)): ?>
         <li class="pc-item pc-caption"><label>Purchasing Management</label></li>
 
         <li class="pc-item pc-hasmenu">
@@ -298,6 +318,7 @@ $safe_company_name = htmlspecialchars($company_name, ENT_QUOTES, 'UTF-8');
         <?php endif; ?>
         <?php endif; ?>
 
+        <?php if (!$is_store_limited): ?>
         <li class="pc-item pc-caption"><label>Lead Management</label></li>
         <li class="pc-item pc-hasmenu">
           <a href="#!" class="pc-link"><span class="pc-micon"> <i data-feather="user-plus"></i></span><span class="pc-mtext">Leads</span><span class="pc-arrow"><i class="ti ti-chevron-right"></i></span></a>
@@ -310,6 +331,7 @@ $safe_company_name = htmlspecialchars($company_name, ENT_QUOTES, 'UTF-8');
             <li class="pc-item"><a class="pc-link" href="../leads/city_list.php">City List</a></li>
           </ul>
         </li>
+        <?php endif; ?>
 
         <?php if ($is_admin && !$is_main_admin_tenant): ?>
     <li class="pc-item pc-hasmenu">

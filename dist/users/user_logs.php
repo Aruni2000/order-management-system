@@ -149,7 +149,7 @@ if ($action_types_result && $action_types_result->num_rows > 0) {
 
     // List of tenants for filter (if main admin)
     $tenants_list = [];
-    if ($is_main_admin) {
+    if ($is_main_admin && $_SESSION['role_id'] == 1) {
         $tenants_sql = "SELECT tenant_id, company_name FROM tenants WHERE status = 'active' ORDER BY company_name ASC";
         $tenants_result = $conn->query($tenants_sql);
         if ($tenants_result && $tenants_result->num_rows > 0) {
@@ -194,11 +194,6 @@ function getInquiryPrefix($actionType) {
     // Customer actions
     if (strpos($action, 'customer_') === 0) {
         return 'CUS';
-    }
-    
-    // Position actions
-    if (strpos($action, 'position_') === 0) {
-        return 'POS';
     }
     
     // Courier actions
@@ -324,11 +319,11 @@ function formatLogDetails($details) {
                             </select>
                         </div>
 
-                        <?php if ($is_main_admin): ?>
+                        <?php if ($is_main_admin && $_SESSION['role_id'] == 1): ?>
                         <div class="form-group">
-                            <label for="tenant_filter">Tenant</label>
+                            <label for="tenant_filter">Tenant Company</label>
                             <select id="tenant_filter" name="tenant_filter">
-                                <option value="">All Tenants</option>
+                                <option value="">All Companies</option>
                                 <?php foreach ($tenants_list as $tenant): ?>
                                     <option value="<?php echo $tenant['tenant_id']; ?>" 
                                             <?php echo ($tenant_filter == $tenant['tenant_id']) ? 'selected' : ''; ?>>
@@ -403,7 +398,7 @@ function formatLogDetails($details) {
                                 <th style="width: 200px; min-width: 200px;">Action Type</th>
                                 <th style="width: 140px; min-width: 140px;">Ref ID</th>
                                 <th style="width: 450px; min-width: 450px; max-width: 450px;">Details</th>
-                                <th style="width: 170px; min-width: 170px;">Date & Time</th>
+                                <th style="width: 170px; min-width: 170px;">Date</th>
                             </tr>
                         </thead>
                         <tbody id="userLogsTableBody">
@@ -411,10 +406,8 @@ function formatLogDetails($details) {
                                 <?php while ($row = $result->fetch_assoc()): ?>
                                     <tr>
                                         <!-- Log ID -->
-                                        <td>
-                                            <div style="font-weight: 600; color: #007bff;">
-                                                #<?php echo htmlspecialchars($row['log_id']); ?>
-                                            </div>
+                                        <td class="order-id">
+                                            <?php echo htmlspecialchars($row['log_id']); ?>
                                         </td>
                                         
                                         <!-- User Info -->

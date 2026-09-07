@@ -329,7 +329,7 @@ if (!$courierResult) {
                                     <label class="form-label">
                                         <i class="fas fa-code"></i> API Integration Type<span class="required">*</span>
                                     </label>
-                                    <div class="checkbox-group">
+                                    <div class="checkbox-group" id="api_integration">
                                         <div class="checkbox-item">
                                             <input type="checkbox" id="has_api_new" name="has_api_new" value="1">
                                             <label for="has_api_new">API New</label>

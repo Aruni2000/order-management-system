@@ -82,7 +82,7 @@ $itemsSql = "SELECT gi.*, p.name as product_name, p.product_code, p.stock_quanti
                     b.remaining_qty as batch_remaining_qty, b.status as batch_status
              FROM grn_items gi
              LEFT JOIN products p ON gi.product_id = p.id
-             LEFT JOIN batches b ON (b.grn_item_id = gi.id OR (b.grn_id = gi.grn_id AND b.batch_number = gi.batch_number))
+             LEFT JOIN batches b ON b.grn_item_id = gi.id
              WHERE gi.grn_id = ?
              ORDER BY gi.id ASC";
 $itemsStmt = $conn->prepare($itemsSql);

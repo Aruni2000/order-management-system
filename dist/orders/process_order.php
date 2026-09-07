@@ -13,6 +13,7 @@ ini_set('display_errors', 0);
 
 // Include the database connection file
 include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
+include_once($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/stock_ledger.php');
 
 // NEW: Session recovery logic
 $user_id = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
@@ -178,7 +179,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $tenant_id = isset($_POST['tenant_id']) ? intval($_POST['tenant_id']) : ($_SESSION['tenant_id'] ?? 1);
 
         // Validate that tenant_id is accessible by this user
-        if (!($is_main_admin === 1 && $role_id === 1)) {
+        if (!($is_main_admin === 1)) {
             if ($tenant_id !== intval($_SESSION['tenant_id'])) {
                 throw new Exception("Invalid tenant access.");
             }
@@ -687,16 +688,16 @@ foreach ($order_items as $item) {
     
     // Insert order item FIRST so we have order_item_id for the batch join table
     $stmt->bind_param(
-        "iiidissss",
-        $order_id,                      // order_id
-        $item['product_id'],            // product_id
-        $item['quantity'],              // quantity
-        $item['original_price'],        // unit_price
-        $item['discount'],              // discount (total discount for this row)
-        $item_total,                    // total_amount
-        $pay_status,                    // pay_status
-        $status,                        // status
-        $item['description']            // description
+        "iiidddsss",                    // 9 params: i,i,i,d,d,d,s,s,s
+        $order_id,                      // order_id    (i)
+        $item['product_id'],            // product_id  (i)
+        $item['quantity'],              // quantity    (i)
+        $item['original_price'],        // unit_price  (d)
+        $item['discount'],              // discount    (d) - fixed: was 'i', floats need 'd'
+        $item_total,                    // total_amount (d) - fixed: was 'i'
+        $pay_status,                    // pay_status  (s)
+        $status,                        // status      (s)
+        $item['description']            // description (s)
     );
     
     if (!$stmt->execute()) {
@@ -706,73 +707,51 @@ foreach ($order_items as $item) {
 
     // Deduct stock (only if allow_inventory is enabled)
     if (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1) {
-        $batchConsumed = ['consumed' => []];
-        if ($item['batch_price'] > 0) {
-            $batchConsumed = $consumeBatches($item['product_id'], $item['quantity'], $item['batch_price'], $order_id, $order_item_id, $conn, $tenant_id);
-            if (isset($batchConsumed['error'])) {
-                // Fetch product name for better error message
-                $getNameSql = "SELECT name FROM products WHERE id = ?";
-                $nameStmt = $conn->prepare($getNameSql);
-                $nameStmt->bind_param("i", $item['product_id']);
-                $nameStmt->execute();
-                $productResult = $nameStmt->get_result();
-                $productName = "Unknown product";
-                if ($productResult && $productRow = $productResult->fetch_assoc()) {
-                    $productName = $productRow['name'];
-                }
-                $nameStmt->close();
-                throw new Exception("Insufficient stock for product: " . $productName);
-            }
-        } else {
-            // No batch price provided: fall back to product-total deduction (legacy / no-batch product)
-            $batchConsumed['consumed'] = [];
+        if ($item['batch_price'] <= 0) {
+            throw new Exception("Product " . $item['product_id'] . " has no batch price selected and cannot be stocked out. Please pick a batch price for every item.");
         }
 
-        // Update product total stock by the consumed quantity (batch-level source of truth)
-        if (empty($batchConsumed['consumed'])) {
-            // Fallback (no batches): deduct from product total directly
-            $updateStockSql = "UPDATE products SET stock_quantity = stock_quantity - ? WHERE id = ? AND stock_quantity >= ? AND tenant_id = ?";
-            $stockStmt = $conn->prepare($updateStockSql);
-            $stockStmt->bind_param("iiii", $item['quantity'], $item['product_id'], $item['quantity'], $tenant_id);
-            if (!$stockStmt->execute()) {
-                throw new Exception("Failed to update stock for product ID: " . $item['product_id']);
+        $batchConsumed = $consumeBatches($item['product_id'], $item['quantity'], $item['batch_price'], $order_id, $order_item_id, $conn, $tenant_id);
+        if (isset($batchConsumed['error'])) {
+            // Fetch product name for better error message
+            $getNameSql = "SELECT name FROM products WHERE id = ?";
+            $nameStmt = $conn->prepare($getNameSql);
+            $nameStmt->bind_param("i", $item['product_id']);
+            $nameStmt->execute();
+            $productResult = $nameStmt->get_result();
+            $productName = "Unknown product";
+            if ($productResult && $productRow = $productResult->fetch_assoc()) {
+                $productName = $productRow['name'];
             }
-            if ($stockStmt->affected_rows === 0) {
-                $getNameSql = "SELECT name FROM products WHERE id = ?";
-                $nameStmt = $conn->prepare($getNameSql);
-                $nameStmt->bind_param("i", $item['product_id']);
-                $nameStmt->execute();
-                $productResult = $nameStmt->get_result();
-                $productName = "Unknown product";
-                if ($productResult && $productRow = $productResult->fetch_assoc()) {
-                    $productName = $productRow['name'];
-                }
-                $nameStmt->close();
-                throw new Exception("Insufficient stock for product: " . $productName);
-            }
+            $nameStmt->close();
+            throw new Exception("Insufficient stock for product: " . $productName);
+        }
+
+        // Deduct product total by the amount consumed across batches (kept in sync)
+        $updateStockSql = "UPDATE products SET stock_quantity = stock_quantity - ? WHERE id = ? AND stock_quantity >= ? AND tenant_id = ?";
+        $stockStmt = $conn->prepare($updateStockSql);
+        $stockStmt->bind_param("iiii", $item['quantity'], $item['product_id'], $item['quantity'], $tenant_id);
+        if (!$stockStmt->execute()) {
+            throw new Exception("Failed to update stock for product ID: " . $item['product_id']);
+        }
+        if ($stockStmt->affected_rows === 0) {
             $stockStmt->close();
-        } else {
-            // Deduct product total by the amount consumed across batches (kept in sync)
-            $updateStockSql = "UPDATE products SET stock_quantity = stock_quantity - ? WHERE id = ? AND stock_quantity >= ? AND tenant_id = ?";
-            $stockStmt = $conn->prepare($updateStockSql);
-            $stockStmt->bind_param("iiii", $item['quantity'], $item['product_id'], $item['quantity'], $tenant_id);
-            if (!$stockStmt->execute()) {
-                throw new Exception("Failed to update stock for product ID: " . $item['product_id']);
+            $getNameSql = "SELECT name FROM products WHERE id = ?";
+            $nameStmt = $conn->prepare($getNameSql);
+            $nameStmt->bind_param("i", $item['product_id']);
+            $nameStmt->execute();
+            $productResult = $nameStmt->get_result();
+            $productName = "Unknown product";
+            if ($productResult && $productRow = $productResult->fetch_assoc()) {
+                $productName = $productRow['name'];
             }
-            if ($stockStmt->affected_rows === 0) {
-                $getNameSql = "SELECT name FROM products WHERE id = ?";
-                $nameStmt = $conn->prepare($getNameSql);
-                $nameStmt->bind_param("i", $item['product_id']);
-                $nameStmt->execute();
-                $productResult = $nameStmt->get_result();
-                $productName = "Unknown product";
-                if ($productResult && $productRow = $productResult->fetch_assoc()) {
-                    $productName = $productRow['name'];
-                }
-                $nameStmt->close();
-                throw new Exception("Insufficient stock for product: " . $productName);
-            }
-            $stockStmt->close();
+            $nameStmt->close();
+            throw new Exception("Insufficient stock for product: " . $productName);
+        }
+        $stockStmt->close();
+
+        foreach ($batchConsumed['consumed'] as $c) {
+            log_stock_movement($conn, (int)$tenant_id, (int)$item['product_id'], (int)$c['batch_id'], 'order_out', -1 * (int)$c['qty'], 'order', (int)$order_id, isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : null, 'Order item #' . $order_item_id);
         }
     }
 }
