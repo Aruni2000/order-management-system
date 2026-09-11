@@ -270,30 +270,7 @@ if ($is_main_admin && $_SESSION['role_id'] == 1) {
                     <!-- Product Details Section -->
                     <div class="form-section">
                         <div class="section-content">
-                            <!-- First Row: Name and Status -->
-                            <div class="form-row">
-                                <div class="product-form-group">
-                                    <label for="name" class="form-label">
-                                        <i class="fas fa-box"></i> Product Name<span class="required">*</span>
-                                    </label>
-                                    <input type="text" class="form-control" id="name" name="name"
-                                        placeholder="Enter product name" required maxlength="255">
-                                    <div class="error-feedback" id="name-error"></div>
-                                </div>
-
-                                <div class="product-form-group">
-                                    <label for="status" class="form-label">
-                                        <i class="fas fa-toggle-on"></i> Status<span class="required">*</span>
-                                    </label>
-                                    <select class="form-select" id="status" name="status" required>
-                                        <option value="active" selected>Active</option>
-                                        <option value="inactive">Inactive</option>
-                                    </select>
-                                    <div class="error-feedback" id="status-error"></div>
-                                </div>
-                            </div>
-
-                            <!-- Tenant Selector (Main Admin Only) -->
+                            <!-- Row 1: Tenant (Main Admin Only) -->
                             <?php if ($is_main_admin && $_SESSION['role_id'] == 1): ?>
                             <div class="form-row">
                                 <div class="product-form-group full-width">
@@ -311,8 +288,29 @@ if ($is_main_admin && $_SESSION['role_id'] == 1) {
                                 </div>
                             </div>
                             <?php endif; ?>
-                            
-                            <!-- Category and Product Code -->
+
+                            <!-- Row 2: Product Name, Product Code -->
+                            <div class="form-row">
+                                <div class="product-form-group">
+                                    <label for="name" class="form-label">
+                                        <i class="fas fa-box"></i> Product Name<span class="required">*</span>
+                                    </label>
+                                    <input type="text" class="form-control" id="name" name="name"
+                                        placeholder="Enter product name" required maxlength="255">
+                                    <div class="error-feedback" id="name-error"></div>
+                                </div>
+
+                                <div class="product-form-group">
+                                    <label for="product_code" class="form-label">
+                                        <i class="fas fa-barcode"></i> Product Code<span class="required">*</span>
+                                    </label>
+                                    <input type="text" class="form-control" id="product_code" name="product_code"
+                                        placeholder="Enter product code" required maxlength="50">
+                                    <div class="error-feedback" id="product_code-error"></div>
+                                </div>
+                            </div>
+
+                            <!-- Row 3: Category, Selling Price -->
                             <div class="form-row">
                                 <div class="product-form-group">
                                     <label for="category_id" class="form-label">
@@ -328,21 +326,27 @@ if ($is_main_admin && $_SESSION['role_id'] == 1) {
                                 </div>
 
                                 <div class="product-form-group">
-                                    <label for="product_code" class="form-label">
-                                        <i class="fas fa-barcode"></i> Product Code<span class="required">*</span>
+                                    <label for="selling_price" class="form-label">
+                                        <i class="fas fa-tag"></i> Selling Price<span class="required">*</span>
                                     </label>
-                                    <input type="text" class="form-control" id="product_code" name="product_code"
-                                        placeholder="Enter product code" required maxlength="50">
-                                    <div class="error-feedback" id="product_code-error"></div>
+                                    <input type="number" class="form-control" id="selling_price" name="selling_price"
+                                        placeholder="0.00" required min="0.01" step="0.01" value="0">
+                                    <div class="error-feedback" id="selling_price-error"></div>
                                 </div>
                             </div>
 
-                            <!-- Stock is managed via GRN/orders; new products start at 0 -->
-                            <input type="hidden" name="stock_quantity" value="0">
-
-                            <!-- Stock Warning Level - only if enabled -->
-                            <?php if (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1): ?>
+                            <!-- Row 4: Initial Stock, Stock Warning Level, Status -->
                             <div class="form-row">
+                                <?php if (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1): ?>
+                                <div class="product-form-group">
+                                    <label for="stock_quantity" class="form-label">
+                                        <i class="fas fa-boxes"></i> Initial Stock
+                                    </label>
+                                    <input type="number" class="form-control" id="stock_quantity" name="stock_quantity"
+                                        placeholder="0" min="0" step="1" value="0">
+                                    <div class="error-feedback" id="stock_quantity-error"></div>
+                                </div>
+
                                 <div class="product-form-group">
                                     <label for="low_stock_threshold" class="form-label">
                                         <i class="fas fa-exclamation-circle"></i> Stock Warning Level<span class="required">*</span>
@@ -351,25 +355,37 @@ if ($is_main_admin && $_SESSION['role_id'] == 1) {
                                         placeholder="10" required min="0" step="1" value="10">
                                     <div class="error-feedback" id="low_stock_threshold-error"></div>
                                 </div>
-                            </div>
-                            <?php else: ?>
-                            <input type="hidden" name="low_stock_threshold" value="0">
-                            <?php endif; ?>
+                                <?php else: ?>
+                                <input type="hidden" name="stock_quantity" value="0">
+                                <input type="hidden" name="low_stock_threshold" value="0">
+                                <?php endif; ?>
 
-                            <!-- Fourth Row: Description -->
-                           <div class="form-row">
-                            <div class="product-form-group full-width">
-                                <label for="description" class="form-label">
-                                    <i class="fas fa-align-left"></i> Description <span class="required">*</span>
-                                </label>
-                                <textarea class="form-control" id="description" name="description" rows="4"
-                                    placeholder="Enter product description" required></textarea>
-                                <div class="error-feedback" id="description-error"></div>
-                                <div class="char-counter">
-                                    <span id="desc-char-count">0</span> characters
+                                <div class="product-form-group">
+                                    <label for="status" class="form-label">
+                                        <i class="fas fa-toggle-on"></i> Status<span class="required">*</span>
+                                    </label>
+                                    <select class="form-select" id="status" name="status" required>
+                                        <option value="active" selected>Active</option>
+                                        <option value="inactive">Inactive</option>
+                                    </select>
+                                    <div class="error-feedback" id="status-error"></div>
                                 </div>
                             </div>
-                        </div>
+
+                            <!-- Row 5: Description -->
+                            <div class="form-row">
+                                <div class="product-form-group full-width">
+                                    <label for="description" class="form-label">
+                                        <i class="fas fa-align-left"></i> Description <span class="required">*</span>
+                                    </label>
+                                    <textarea class="form-control" id="description" name="description" rows="4"
+                                        placeholder="Enter product description" required></textarea>
+                                    <div class="error-feedback" id="description-error"></div>
+                                    <div class="char-counter">
+                                        <span id="desc-char-count">0</span> characters
+                                    </div>
+                                </div>
+                            </div>
 
                         </div>
                     </div>
@@ -634,6 +650,15 @@ if ($is_main_admin && $_SESSION['role_id'] == 1) {
                     showError('category_id', 'Please select a category');
                 }
             });
+
+            $('#selling_price').on('blur', function() {
+                const validation = validatePrice($(this).val());
+                if (!validation.valid) {
+                    showError('selling_price', validation.message);
+                } else {
+                    showSuccess('selling_price');
+                }
+            });
         }
 
         // Setup other event listeners
@@ -726,6 +751,14 @@ if ($is_main_admin && $_SESSION['role_id'] == 1) {
             return { valid: true, message: '' };
         }
 
+        function validatePrice(price) {
+            const val = parseFloat(price);
+            if (isNaN(val) || val <= 0) {
+                return { valid: false, message: 'Selling price must be greater than zero' };
+            }
+            return { valid: true, message: '' };
+        }
+
         // Show/hide error functions
         function showError(fieldId, message) {
             const $field = $('#' + fieldId);
@@ -771,7 +804,8 @@ if ($is_main_admin && $_SESSION['role_id'] == 1) {
                 { field: 'name', validator: validateName, value: name },
                 { field: 'product_code', validator: validateProductCode, value: productCode },
                 { field: 'description', validator: validateDescription, value: description },
-                { field: 'category_id', validator: validateCategory, value: $('#category_id').val() }
+                { field: 'category_id', validator: validateCategory, value: $('#category_id').val() },
+                { field: 'selling_price', validator: validatePrice, value: $('#selling_price').val() }
             ];
             
             validations.forEach(function(validation) {

@@ -13,7 +13,6 @@ ini_set('display_errors', 0);
 
 // Include the database connection file
 include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
-include_once($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/stock_ledger.php');
 
 // Session validation - fail if user_id is missing
 $user_id = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
@@ -506,7 +505,6 @@ $product_prices = $_POST['order_product_price'];
 $product_quantities = $_POST['order_product_quantity'] ?? [];
 $discounts = $_POST['order_product_discount'] ?? [];
 $product_descriptions = $_POST['order_product_description'] ?? [];
-$product_batches = $_POST['order_product_batch'] ?? [];
 
 $subtotal_before_discounts = 0;
 $total_discount = 0;
@@ -521,7 +519,6 @@ foreach ($products as $key => $product_id) {
     $quantity = intval($product_quantities[$key] ?? 1);
     $discount = floatval($discounts[$key] ?? 0); // This is TOTAL discount for all items in this row
     $description = $product_descriptions[$key] ?? '';
-    $batch_price = floatval($product_batches[$key] ?? 0); // Selected price group (from batch dropdown)
     
     // Ensure quantity is at least 1
     if ($quantity < 1) {
@@ -546,8 +543,7 @@ foreach ($products as $key => $product_id) {
         'quantity' => $quantity,
         'original_price' => $original_price,
         'discount' => $discount, // This is the TOTAL discount for this row
-        'description' => $description,
-        'batch_price' => $batch_price
+        'description' => $description
     ];
 }
             if (empty($order_items)) {
@@ -659,65 +655,12 @@ if (!$stmt) {
     throw new Exception("Failed to prepare order items insert query: " . $conn->error);
 }
 
-// Helper closure for FIFO batch consumption within a price group
-$consumeBatches = function($product_id, $quantity, $batch_price, $order_id, $order_item_id, $conn, $tenant_id) {
-    $consumed = []; // list of [batch_id, qty]
-    $available_total = 0;
-
-    if ($batch_price > 0) {
-        // Select confirmed batches at the given selling price, oldest first (FIFO)
-        $batchSql = "SELECT batch_id, remaining_qty FROM batches
-                     WHERE product_id = ? AND selling_price = ? AND tenant_id = ? AND status = 'confirmed' AND remaining_qty > 0
-                     ORDER BY received_date ASC, batch_id ASC
-                     FOR UPDATE";
-        $batchStmt = $conn->prepare($batchSql);
-        if ($batchStmt) {
-            $batchStmt->bind_param("idi", $product_id, $batch_price, $tenant_id);
-            $batchStmt->execute();
-            $batchResult = $batchStmt->get_result();
-            $batches = [];
-            while ($b = $batchResult->fetch_assoc()) {
-                $available_total += intval($b['remaining_qty']);
-                $batches[] = ['batch_id' => intval($b['batch_id']), 'remaining_qty' => intval($b['remaining_qty'])];
-            }
-            $batchStmt->close();
-
-            if ($available_total < $quantity) {
-                return ['error' => 'Insufficient stock at that price'];
-            }
-
-            // Deduct FIFO
-            $need = $quantity;
-            $updateBatch = $conn->prepare("UPDATE batches SET remaining_qty = remaining_qty - ? WHERE batch_id = ? AND remaining_qty >= ?");
-            foreach ($batches as $b) {
-                if ($need <= 0) break;
-                $take = min($need, $b['remaining_qty']);
-                $updateBatch->bind_param("iii", $take, $b['batch_id'], $take);
-                $updateBatch->execute();
-                $consumed[] = ['batch_id' => $b['batch_id'], 'qty' => $take];
-                $need -= $take;
-            }
-            $updateBatch->close();
-
-            // Record consumed batches
-            $insertOib = $conn->prepare("INSERT INTO order_item_batches (order_item_id, order_id, batch_id, quantity) VALUES (?, ?, ?, ?)");
-            foreach ($consumed as $c) {
-                $insertOib->bind_param("iiii", $order_item_id, $order_id, $c['batch_id'], $c['qty']);
-                $insertOib->execute();
-            }
-            $insertOib->close();
-        }
-    }
-    return ['consumed' => $consumed];
-};
-
 foreach ($order_items as $item) {
     // ✅ FIXED: Calculate total_amount: (unit_price × quantity) - total_discount
     $row_total_price = $item['original_price'] * $item['quantity'];
     $item_total = $row_total_price - $item['discount']; // Discount is already total for this row
-    $item['batch_price'] = isset($item['batch_price']) ? floatval($item['batch_price']) : 0;
     
-    // Insert order item FIRST so we have order_item_id for the batch join table
+    // Insert order item FIRST so we have order_item_id for stock ledger logging
     $stmt->bind_param(
         "iiidddsss",                    // 9 params: i,i,i,d,d,d,s,s,s
         $order_id,                      // order_id    (i)
@@ -738,27 +681,7 @@ foreach ($order_items as $item) {
 
     // Deduct stock (only if allow_inventory is enabled)
     if (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1) {
-        if ($item['batch_price'] <= 0) {
-            throw new Exception("Product " . $item['product_id'] . " has no batch price selected and cannot be stocked out. Please pick a batch price for every item.");
-        }
-
-        $batchConsumed = $consumeBatches($item['product_id'], $item['quantity'], $item['batch_price'], $order_id, $order_item_id, $conn, $tenant_id);
-        if (isset($batchConsumed['error'])) {
-            // Fetch product name for better error message
-            $getNameSql = "SELECT name FROM products WHERE id = ?";
-            $nameStmt = $conn->prepare($getNameSql);
-            $nameStmt->bind_param("i", $item['product_id']);
-            $nameStmt->execute();
-            $productResult = $nameStmt->get_result();
-            $productName = "Unknown product";
-            if ($productResult && $productRow = $productResult->fetch_assoc()) {
-                $productName = $productRow['name'];
-            }
-            $nameStmt->close();
-            throw new Exception("Insufficient stock for product: " . $productName);
-        }
-
-        // Deduct product total by the amount consumed across batches (kept in sync)
+        // Direct product-level stock deduction
         $updateStockSql = "UPDATE products SET stock_quantity = stock_quantity - ? WHERE id = ? AND stock_quantity >= ? AND tenant_id = ?";
         $stockStmt = $conn->prepare($updateStockSql);
         $stockStmt->bind_param("iiii", $item['quantity'], $item['product_id'], $item['quantity'], $tenant_id);
@@ -780,10 +703,6 @@ foreach ($order_items as $item) {
             throw new Exception("Insufficient stock for product: " . $productName);
         }
         $stockStmt->close();
-
-        foreach ($batchConsumed['consumed'] as $c) {
-            log_stock_movement($conn, (int)$tenant_id, (int)$item['product_id'], (int)$c['batch_id'], 'order_out', -1 * (int)$c['qty'], 'order', (int)$order_id, isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : null, 'Order item #' . $order_item_id);
-        }
     }
 }
 

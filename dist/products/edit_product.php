@@ -385,7 +385,7 @@ try {
                                         <i class="fas fa-cubes"></i> Stock Quantity
                                     </label>
                                     <input type="text" class="form-control" id="stock_quantity" value="<?php echo (int)($product['stock_quantity'] ?? 0); ?>" readonly>
-                                    <div class="code-hint">Current stock level (managed via GRN, orders and stock updates)</div>
+                                    <div class="code-hint">Current stock level (managed via stock adjustments, orders and returns)</div>
                                 </div>
 
                                 <div class="product-form-group">
@@ -402,6 +402,19 @@ try {
                             <input type="hidden" name="stock_quantity" value="<?php echo (int)($product['stock_quantity'] ?? 0); ?>">
                             <input type="hidden" name="low_stock_threshold" value="<?php echo (int)($product['low_stock_threshold'] ?? 0); ?>">
                             <?php endif; ?>
+
+                            <!-- Pricing -->
+                            <div class="form-row">
+                                <div class="product-form-group">
+                                    <label for="selling_price" class="form-label">
+                                        <i class="fas fa-tag"></i> Selling Price<span class="required">*</span>
+                                    </label>
+                                    <input type="number" class="form-control" id="selling_price" name="selling_price"
+                                        placeholder="0.00" required min="0.01" step="0.01"
+                                        value="<?php echo number_format((float)($product['selling_price'] ?? 0), 2, '.', ''); ?>">
+                                    <div class="error-feedback" id="selling_price-error"></div>
+                                </div>
+                            </div>
 
                           <!-- Fourth Row: Description -->
                             <div class="form-row">
@@ -462,7 +475,8 @@ try {
             status: '<?php echo $product['status']; ?>',
             product_code: '<?php echo addslashes($product['product_code']); ?>',
             description: '<?php echo addslashes($product['description'] ?? ''); ?>',
-            category_id: '<?php echo $product['category_id']; ?>'
+            category_id: '<?php echo $product['category_id']; ?>',
+            selling_price: '<?php echo number_format((float)($product['selling_price'] ?? 0), 2, '.', ''); ?>'
         };
 
         $(document).ready(function() {
@@ -588,6 +602,7 @@ try {
             originalValues.product_code = $('#product_code').val();
             originalValues.description = $('#description').val();
             originalValues.category_id = $('#category_id').val();
+            originalValues.selling_price = $('#selling_price').val();
         }
         
         // Show field-specific errors from server
@@ -617,6 +632,7 @@ try {
             $('#product_code').val(originalValues.product_code);
             $('#description').val(originalValues.description);
             $('#category_id').val(originalValues.category_id);
+            $('#selling_price').val(originalValues.selling_price);
             
             // Refresh Select2
             $('#category_id, #status').trigger('change');
@@ -686,6 +702,15 @@ try {
                     showSuccess('category_id');
                 } else {
                     showError('category_id', 'Please select a category');
+                }
+            });
+
+            $('#selling_price').on('blur', function() {
+                const validation = validatePrice($(this).val());
+                if (!validation.valid) {
+                    showError('selling_price', validation.message);
+                } else {
+                    showSuccess('selling_price');
                 }
             });
         }
@@ -763,6 +788,14 @@ try {
             
             return { valid: true, message: '' };
         }
+
+        function validatePrice(price) {
+            const val = parseFloat(price);
+            if (isNaN(val) || val <= 0) {
+                return { valid: false, message: 'Selling price must be greater than zero' };
+            }
+            return { valid: true, message: '' };
+        }
             function validateDescription(desc) {
                 if (desc.trim() === '') {
                     return { valid: false, message: 'Description is required' };
@@ -819,7 +852,8 @@ try {
                 { field: 'name', validator: validateName, value: name },
                 { field: 'product_code', validator: validateProductCode, value: productCode },
                 { field: 'description', validator: validateDescription, value: description },
-                { field: 'category_id', validator: validateCategory, value: $('#category_id').val() }
+                { field: 'category_id', validator: validateCategory, value: $('#category_id').val() },
+                { field: 'selling_price', validator: validatePrice, value: $('#selling_price').val() }
             ];
             
             validations.forEach(function(validation) {

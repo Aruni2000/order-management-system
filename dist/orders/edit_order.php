@@ -160,7 +160,7 @@ while ($item = $itemsResult->fetch_assoc()) {
 $stmt->close();
 
 // Fetch necessary data for the form (filtered by order's tenant)
-$productSql = "SELECT id, name, description, stock_quantity, low_stock_threshold FROM products WHERE status = 'active' AND tenant_id = ? ORDER BY name ASC";
+$productSql = "SELECT id, name, description, stock_quantity, low_stock_threshold, selling_price FROM products WHERE status = 'active' AND tenant_id = ? ORDER BY name ASC";
 $productStmt = $conn->prepare($productSql);
 $productStmt->bind_param("i", $order_tenant_id);
 $productStmt->execute();
@@ -606,7 +606,6 @@ $deliveryFeeStmt->close();
                                             <th class="action-col">Action</th>
                                             <th class="product-col">Product</th>
                                             <th class="description-col">Description</th>
-                                            <th class="price-col">Price</th>
                                             <th class="quantity-col">Quantity</th>
                                             <th class="price-col">Price</th>
                                             <th class="discount-col">Discount</th>
@@ -653,6 +652,7 @@ $deliveryFeeStmt->close();
                                                                     data-description="<?= htmlspecialchars($p['description']) ?>"
                                                                     data-base-name="<?= htmlspecialchars($p['name']) ?>"
                                                                     data-stock="<?= $allow_inventory ? ($stock + $orig_qty) : 999999 ?>"
+                                                                    data-price="<?= (float)($p['selling_price'] ?? 0) ?>"
                                                                     class="<?= $is_out_of_stock ? 'out-of-stock-option' : '' ?>"
                                                                     <?= ($is_out_of_stock && $p['id'] != $item['product_id']) ? 'disabled' : '' ?>
                                                                     <?= $p['id'] == $item['product_id'] ? 'selected' : '' ?>>
@@ -663,34 +663,6 @@ $deliveryFeeStmt->close();
                                                     </td>
                                                     <td class="description-col">
                                                         <input type="text" name="order_product_description[]" class="form-control product-description" value="<?= htmlspecialchars($item['description']) ?>">
-                                                    </td>
-                                                    <td class="price-col">
-                                                        <select name="order_product_batch[]" class="form-select batch-select" style="min-width: 150px;" disabled>
-                                                            <option value="">-- Select Price --</option>
-                                                            <?php
-                                                            // Pre-load batch options for this item's product (grouped by selling price).
-                                                            // Include the item's own quantity as returning stock so its price group stays selectable.
-                                                             $batchOptionsStmt = $conn->prepare(
-                                                                "SELECT b.selling_price, SUM(b.remaining_qty) AS total_stock
-                                                                 FROM batches b
-                                                                 WHERE b.product_id = ? AND b.tenant_id = ? AND b.status = 'confirmed'
-                                                                 GROUP BY b.selling_price
-                                                                 ORDER BY b.selling_price ASC, MIN(b.received_date) ASC"
-                                                            );
-                                                            $batchOptionsStmt->bind_param("ii", $item['product_id'], $order_tenant_id);
-                                                            $batchOptionsStmt->execute();
-                                                            $batchOptionsResult = $batchOptionsStmt->get_result();
-                                                            $itemQty = (int)$item['quantity'];
-                                                            while ($bp = $batchOptionsResult->fetch_assoc()) {
-                                                                $avail = (int)$bp['total_stock'];
-                                                                $isSelected = (floatval($bp['selling_price']) == floatval($item['unit_price'])) ? 'selected' : '';
-                                                                $batchStock = $isSelected ? ($avail + $itemQty) : $avail;
-                                                                echo '<option value="' . floatval($bp['selling_price']) . '" data-stock="' . $batchStock . '" ' . $isSelected . '>Rs. ' .
-                                                                     number_format(floatval($bp['selling_price']), 2) . ' (Stock: ' . $batchStock . ')</option>';
-                                                            }
-                                                            $batchOptionsStmt->close();
-                                                            ?>
-                                                        </select>
                                                     </td>
                                                     <td class="quantity-col">
                                                         <input type="number" name="order_product_quantity[]" class="form-control quantity" value="<?= (int)$item['quantity'] ?>" min="1" step="1" disabled>
@@ -736,6 +708,7 @@ $deliveryFeeStmt->close();
                                                                 data-description="<?= htmlspecialchars($p['description']) ?>"
                                                                 data-base-name="<?= htmlspecialchars($p['name']) ?>"
                                                                 data-stock="<?= $allow_inventory ? $stock : 999999 ?>"
+                                                                data-price="<?= (float)($p['selling_price'] ?? 0) ?>"
                                                                 class="<?= $is_out_of_stock ? 'out-of-stock-option' : '' ?>"
                                                                 <?= $is_out_of_stock ? 'disabled' : '' ?>>
                                                                 <?= htmlspecialchars($p['name']) . $stock_label ?>
@@ -745,11 +718,6 @@ $deliveryFeeStmt->close();
                                                 </td>
                                                 <td class="description-col">
                                                     <input type="text" name="order_product_description[]" class="form-control product-description" disabled>
-                                                </td>
-                                                <td class="price-col">
-                                                    <select name="order_product_batch[]" class="form-select batch-select" style="min-width: 150px;" disabled>
-                                                        <option value="">-- Select Price --</option>
-                                                    </select>
                                                 </td>
                                                 <td class="quantity-col">
                                                     <input type="number" name="order_product_quantity[]" class="form-control quantity" value="1" min="1" step="1" disabled>
@@ -1216,12 +1184,6 @@ const ProductManager = {
             row.querySelector('.discount').value = '0.00';
             row.querySelector('.subtotal').value = '0.00';
             
-            // Disable fields and reset batch dropdown
-            const batchSelect = row.querySelector('.batch-select');
-            if (batchSelect) {
-                batchSelect.innerHTML = '<option value="">-- Select Price --</option>';
-                batchSelect.disabled = true;
-            }
             row.querySelector('.quantity').disabled = true;
             row.querySelector('.price').disabled = true;
             row.querySelector('.discount').disabled = true;
@@ -1236,92 +1198,31 @@ const ProductManager = {
         const priceField = row.querySelector('.price');
         const descriptionField = row.querySelector('.product-description');
         const quantityInput = row.querySelector('.quantity');
-        const batchSelect = row.querySelector('.batch-select');
         const description = selectedOption.getAttribute('data-description') || '';
+        const productPrice = parseFloat(selectedOption.getAttribute('data-price') || 0);
 
         descriptionField.value = description;
         descriptionField.disabled = false;
 
-        // Reset batch/price/quantity until a price group is chosen
-        priceField.value = '0.00';
-        priceField.disabled = true;
-        if (batchSelect) {
-            batchSelect.innerHTML = '<option value="">-- Select Price --</option>';
-            batchSelect.disabled = true;
-        }
-        quantityInput.disabled = true;
-        quantityInput.value = 1;
-        row.querySelector('.discount').disabled = true;
-        row.querySelector('.discount').value = '0.00';
-
-        // Load available price groups from batches. Editing requires a real batch.
-        const tenantId = <?php echo $order_tenant_id; ?>;
-        fetch('get_product_batches.php?product_id=' + encodeURIComponent(productSelect.value) + '&tenant_id=' + encodeURIComponent(tenantId))
-            .then(response => response.json())
-            .then(data => {
-                if (data.success && data.prices && data.prices.length > 0) {
-                    let opts = '<option value="">-- Select Price --</option>';
-                    data.prices.forEach(p => {
-                        const lbl = p.formatted_label || ('Rs. ' + Number(p.selling_price).toFixed(2) + ' (Stock: ' + p.stock + ')');
-                        opts += '<option value="' + p.selling_price + '" data-stock="' + p.stock + '">' + lbl + '</option>';
-                    });
-                    batchSelect.innerHTML = opts;
-                    batchSelect.disabled = false;
-                } else {
-                    // No confirmed batches for this product -> cannot set a batch price
-                    const noPriceText = (data && data.allow_inventory) ? '-- No Stock --' : '-- No Price --';
-                    batchSelect.innerHTML = '<option value="">' + noPriceText + '</option>';
-                    batchSelect.disabled = true;
-                    quantityInput.disabled = true;
-                    priceField.disabled = true;
-                }
-                ProductManager.updateRowTotal(row);
-                ProductManager.checkForProducts();
-                FormValidator.validateAndToggleSubmit();
-            })
-            .catch(() => {
-                batchSelect.innerHTML = '<option value="">-- No Stock --</option>';
-                batchSelect.disabled = true;
-                quantityInput.disabled = true;
-                priceField.disabled = true;
-                ProductManager.updateRowTotal(row);
-                ProductManager.checkForProducts();
-                FormValidator.validateAndToggleSubmit();
-            });
-    },
-
-    selectBatch: (row) => {
-        const batchSelect = row.querySelector('.batch-select');
-        const selectedOption = batchSelect.options[batchSelect.selectedIndex];
-        const priceField = row.querySelector('.price');
-        const quantityInput = row.querySelector('.quantity');
-
-        if (!batchSelect.value) {
-            priceField.value = '0.00';
-            priceField.disabled = true;
-            quantityInput.disabled = true;
-            quantityInput.value = 1;
-            row.querySelector('.discount').disabled = true;
-            ProductManager.updateRowTotal(row);
-            FormValidator.validateAndToggleSubmit();
-            return;
-        }
-
-        const price = parseFloat(batchSelect.value) || 0;
-        priceField.value = price.toFixed(2);
+        // Auto-fill price from the product's selling price
+        priceField.value = productPrice.toFixed(2);
         priceField.disabled = false;
         quantityInput.disabled = false;
+        quantityInput.value = 1;
         row.querySelector('.discount').disabled = false;
-        batchSelect.disabled = false;
+        row.querySelector('.discount').value = '0.00';
 
-        // Duplicate check: block same product at the SAME selling price.
-        // Same product at a different price group is allowed.
-        const productSelect = row.querySelector('.product-select');
-        const existingRow = ProductManager.checkDuplicateProductAndPrice(productSelect.value, price, row);
+        // Enforce stock limit as the quantity ceiling
+        const stock = parseInt(selectedOption.getAttribute('data-stock') || 0);
+        if (stock > 0) {
+            quantityInput.max = stock;
+        }
+
+        // Duplicate check: block the same product being added twice
+        const existingRow = ProductManager.checkDuplicateProductAndPrice(productSelect.value, productPrice, row);
         if (existingRow) {
-            const productName = productSelect.options[productSelect.selectedIndex].text || 'Product';
             ProductManager.showDuplicateAlert(productName, existingRow);
-            batchSelect.value = '';
+            productSelect.value = '';
             priceField.value = '0.00';
             priceField.disabled = true;
             quantityInput.disabled = true;
@@ -1331,14 +1232,6 @@ const ProductManager = {
             ProductManager.checkForProducts();
             FormValidator.validateAndToggleSubmit();
             return;
-        }
-
-        const stock = parseInt(selectedOption.getAttribute('data-stock') || 0);
-        if (stock > 0) {
-            quantityInput.max = stock;
-            if (parseInt(quantityInput.value) > stock) {
-                quantityInput.value = stock;
-            }
         }
 
         ProductManager.updateRowTotal(row);
@@ -1354,12 +1247,8 @@ const ProductManager = {
             if (row === currentRow) return;
 
             const productSelect = row.querySelector('.product-select');
-            const batchSelect = row.querySelector('.batch-select');
             if (!productSelect || productSelect.value !== productId) return;
-            if (!batchSelect || !batchSelect.value) return;
-            if (parseFloat(batchSelect.value) === price) {
-                existingRow = row;
-            }
+            existingRow = row;
         });
 
         return existingRow;
@@ -1414,8 +1303,6 @@ const ProductManager = {
         const qtyInput = row.querySelector('.quantity');
         const productSelect = row.querySelector('.product-select');
         const selectedOption = productSelect.options[productSelect.selectedIndex];
-        const batchSelect = row.querySelector('.batch-select');
-        const selectedBatch = batchSelect ? batchSelect.options[batchSelect.selectedIndex] : null;
         
         if (qtyInput.value !== "" && parseInt(qtyInput.value) < 1) {
             qtyInput.value = 1;
@@ -1423,9 +1310,9 @@ const ProductManager = {
         
         let quantity = parseInt(qtyInput.value) || 1;
 
-        // Stock validation - use the selected batch/price group stock when available
-        if (selectedBatch && selectedBatch.value !== "") {
-            const stock = parseInt(selectedBatch.getAttribute('data-stock') || 0);
+        // Stock validation - use the product's available stock as the ceiling
+        if (selectedOption && selectedOption.value !== "") {
+            const stock = parseInt(selectedOption.getAttribute('data-stock') || 0);
             if (stock > 0) {
                 if (quantity > stock) {
                     qtyInput.value = stock;
@@ -1433,13 +1320,6 @@ const ProductManager = {
                 }
                 qtyInput.max = stock;
             }
-        } else if (selectedOption && selectedOption.value !== "") {
-            const stock = parseInt(selectedOption.getAttribute('data-stock') || 0);
-            if (quantity > stock) {
-                qtyInput.value = stock;
-                quantity = stock;
-            }
-            qtyInput.max = stock;
         }
 
         if (discount > (price * quantity)) {
@@ -1526,18 +1406,10 @@ const ProductManager = {
         document.querySelectorAll('#order_table tbody tr').forEach(row => {
             const productSelect = row.querySelector('.product-select');
             const descriptionInput = row.querySelector('.product-description');
-            const batchSelect = row.querySelector('.batch-select');
 
             if (productSelect.value !== '') {
                 if (!descriptionInput.value.trim()) {
                     ValidationUtils.showError(descriptionInput, 'Description required', 'product-validation-error');
-                    isValid = false;
-                }
-
-                if (batchSelect && !batchSelect.disabled && !batchSelect.value) {
-                    if (showErrors) {
-                        ValidationUtils.showError(batchSelect, 'Please select a price/batch', 'product-validation-error');
-                    }
                     isValid = false;
                 }
 
@@ -1558,10 +1430,10 @@ const ProductManager = {
         document.querySelectorAll('#order_table tbody tr').forEach(row => {
             const productSelect = row.querySelector('.product-select');
             const descriptionInput = row.querySelector('.product-description');
-            const batchSelect = row.querySelector('.batch-select');
+            const priceInput = row.querySelector('.price');
 
-            const batchOk = !batchSelect || batchSelect.value !== '';
-            if (productSelect.value !== '' && descriptionInput.value.trim() !== '' && batchOk) {
+            const priceOk = priceInput && parseFloat(priceInput.value) > 0;
+            if (productSelect.value !== '' && descriptionInput.value.trim() !== '' && priceOk) {
                 hasValid = true;
             }
         });
@@ -1586,12 +1458,6 @@ const ProductManager = {
         newRow.querySelector('.discount').disabled = true;
         newRow.querySelector('.subtotal').readOnly = true;
 
-        const newBatch = newRow.querySelector('.batch-select');
-        if (newBatch) {
-            newBatch.innerHTML = '<option value="">-- Select Price --</option>';
-            newBatch.disabled = true;
-        }
-
         newRow.querySelector('.product-select').value = '';
         document.querySelector('#order_table tbody').appendChild(newRow);
     },
@@ -1610,11 +1476,6 @@ const ProductManager = {
             row.querySelector('.quantity').value = '1';
             row.querySelector('.discount').value = '0.00';
             row.querySelector('.subtotal').value = '0.00';
-            const batchSel = row.querySelector('.batch-select');
-            if (batchSel) {
-                batchSel.innerHTML = '<option value="">-- Select Price --</option>';
-                batchSel.disabled = true;
-            }
             row.querySelector('.quantity').disabled = true;
             row.querySelector('.price').disabled = true;
             row.querySelector('.discount').disabled = true;
@@ -2023,10 +1884,6 @@ const FormValidator = {
                     ProductManager.updatePrice(e.target.closest('tr'));
                     FormValidator.validateAndToggleSubmit();
                 }
-                if (e.target.classList.contains('batch-select')) {
-                    ProductManager.selectBatch(e.target.closest('tr'));
-                    FormValidator.validateAndToggleSubmit();
-                }
             });
 
             document.addEventListener('input', (e) => {
@@ -2086,19 +1943,25 @@ const FormValidator = {
     CustomerModal.init();
     EventListeners.init();
 
-    // Initialize existing product rows: enable fields based on their pre-selected batch price
+    // Initialize existing product rows: enable fields for rows that already have a product selected
     document.querySelectorAll('#order_table tbody tr').forEach(row => {
         const productSelect = row.querySelector('.product-select');
-        const batchSelect = row.querySelector('.batch-select');
-        if (productSelect && productSelect.value) {
-            if (batchSelect && batchSelect.value) {
-                // Batch/price is pre-selected -> fully enable this row
-                ProductManager.selectBatch(row);
-            } else if (batchSelect && batchSelect.options.length > 1) {
-                // Product chosen but no batch pre-selected -> let the user pick a price group
-                batchSelect.disabled = false;
-            }
+        if (!productSelect || !productSelect.value) return;
+
+        const selectedOption = productSelect.options[productSelect.selectedIndex];
+        const priceField = row.querySelector('.price');
+        const descriptionField = row.querySelector('.product-description');
+        const quantityInput = row.querySelector('.quantity');
+
+        descriptionField.disabled = false;
+        if (parseFloat(priceField.value) <= 0) {
+            priceField.value = (parseFloat(selectedOption.getAttribute('data-price') || 0)).toFixed(2);
         }
+        priceField.disabled = false;
+        quantityInput.disabled = false;
+
+        const stock = parseInt(selectedOption.getAttribute('data-stock') || 0);
+        if (stock > 0) quantityInput.max = stock;
     });
 
     ProductManager.updateTotals();

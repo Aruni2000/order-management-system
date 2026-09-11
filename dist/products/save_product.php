@@ -62,12 +62,20 @@ try {
     $status = sanitizeInput($_POST['status'] ?? '');
     $product_code = sanitizeInput($_POST['product_code'] ?? '');
     $description = sanitizeInput($_POST['description'] ?? '');
+    $selling_price = (float)($_POST['selling_price'] ?? 0);
     
     // Default values for stock if inventory management is disabled
     $allow_inventory = isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1;
     $stock_quantity = $allow_inventory ? intval($_POST['stock_quantity'] ?? 0) : 0;
     $low_stock_threshold = $allow_inventory ? intval($_POST['low_stock_threshold'] ?? 0) : 0;
     $category_id = intval($_POST['category_id'] ?? 0);
+
+    if ($stock_quantity < 0) {
+        $response['errors']['stock_quantity'] = 'Initial stock cannot be negative';
+        $response['message'] = 'Please correct the errors below.';
+        echo json_encode($response);
+        exit();
+    }
     
     // Handle tenant_id based on role
     $is_main_admin = isset($_SESSION['is_main_admin']) ? (int)$_SESSION['is_main_admin'] : 0;
@@ -117,6 +125,13 @@ try {
         exit();
     }
 
+    if ($selling_price <= 0) {
+        $response['errors']['selling_price'] = 'Selling price must be greater than zero';
+        $response['message'] = 'Please correct the errors below.';
+        echo json_encode($response);
+        exit();
+    }
+
     // Validate description minimum length (server-side match to JS)
     if (strlen($description) < 5) {
         $response['errors']['description'] = 'Description must be at least 5 characters long';
@@ -143,8 +158,8 @@ try {
     }
 
     // Prepare insert query
-    $insertQuery = "INSERT INTO products (name, description, status, product_code, stock_quantity, low_stock_threshold, category_id, tenant_id) 
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+    $insertQuery = "INSERT INTO products (name, description, status, product_code, stock_quantity, low_stock_threshold, category_id, tenant_id, selling_price) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
     $insertStmt = $conn->prepare($insertQuery);
 
     if (!$insertStmt) {
@@ -152,7 +167,7 @@ try {
     }
 
     // Bind parameters
-    $insertStmt->bind_param("ssssiiii", $name, $description, $status, $product_code, $stock_quantity, $low_stock_threshold, $category_id, $tenant_id);
+    $insertStmt->bind_param("ssssiiiid", $name, $description, $status, $product_code, $stock_quantity, $low_stock_threshold, $category_id, $tenant_id, $selling_price);
 
     // Execute the query
     if ($insertStmt->execute()) {
@@ -174,7 +189,7 @@ try {
                 }
                 $catStmt->close();
             }
-            $details = "Created Product - Name: {$name}, Code: {$product_code}, Status: {$status}, Stock: {$stock_quantity}, Stock Warning Level: {$low_stock_threshold}, Category: '{$catName}'";
+            $details = "Created Product - Name: {$name}, Code: {$product_code}, Status: {$status}, Stock: {$stock_quantity}, Stock Warning Level: {$low_stock_threshold}, Selling Price: {$selling_price}, Category: '{$catName}'";
 
             $logQuery = "INSERT INTO user_logs (user_id, action_type, inquiry_id, details, created_at) 
                          VALUES (?, ?, ?, ?, NOW())";

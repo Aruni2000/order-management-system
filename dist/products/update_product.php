@@ -98,9 +98,9 @@ try {
     $status = sanitizeInput($_POST['status'] ?? '');
     $product_code = sanitizeInput($_POST['product_code'] ?? '');
     $description = sanitizeInput($_POST['description'] ?? '');
-    
-    // Price and stock are not editable in the product form; preserve existing values.
-    // Stock is managed via GRN, orders and stock updates.
+    $selling_price = (float)($_POST['selling_price'] ?? $originalProduct['selling_price']);
+
+    // Stock is managed via stock adjustments, orders and returns; preserved here.
     
     // Default values for stock if inventory
     $allow_inventory = isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1;
@@ -157,6 +157,11 @@ try {
         $errors['category_id'] = 'Category is required';
     }
 
+    // Validate prices
+    if ($selling_price <= 0) {
+        $errors['selling_price'] = 'Selling price must be greater than zero';
+    }
+
     // Check for duplicate product code (excluding current product) per tenant
     if (empty($errors['product_code'])) {
         $checkCodeQuery = "SELECT id FROM products WHERE product_code = ? AND tenant_id = ? AND id != ? LIMIT 1";
@@ -181,7 +186,7 @@ try {
 
     // Prepare update query
     $updateQuery = "UPDATE products 
-                    SET name = ?, description = ?, status = ?, product_code = ?, stock_quantity = ?, low_stock_threshold = ?, category_id = ?, tenant_id = ?
+                    SET name = ?, description = ?, status = ?, product_code = ?, stock_quantity = ?, low_stock_threshold = ?, category_id = ?, tenant_id = ?, selling_price = ?
                     WHERE id = ?";
 
     $updateStmt = $conn->prepare($updateQuery);
@@ -191,7 +196,7 @@ try {
     }
 
     // Bind parameters
-    $updateStmt->bind_param("ssssiiiii", $name, $description, $status, $product_code, $stock_quantity, $low_stock_threshold, $category_id, $tenant_id, $product_id);
+    $updateStmt->bind_param("ssssiiiidi", $name, $description, $status, $product_code, $stock_quantity, $low_stock_threshold, $category_id, $tenant_id, $selling_price, $product_id);
 
     // Execute the update
     if ($updateStmt->execute()) {
@@ -222,6 +227,9 @@ try {
                 }
                 if (intval($originalProduct['low_stock_threshold'] ?? 10) !== $low_stock_threshold) {
                     $changes[] = "Threshold: {$originalProduct['low_stock_threshold']} to {$low_stock_threshold}";
+                }
+                if (floatval($originalProduct['selling_price'] ?? 0) !== $selling_price) {
+                    $changes[] = "Selling Price: {$originalProduct['selling_price']} to {$selling_price}";
                 }
 
                 $details = "Updated Product '{$name}': " . implode(', ', $changes);

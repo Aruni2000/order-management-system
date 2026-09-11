@@ -124,7 +124,6 @@ if ((!$is_admin || !isset($_SESSION['is_main_admin'])) && $user_id && isset($con
 }
 
 // Store-limited users (role = store) can only access Products & Order Management
-// (main-admin Store users additionally get Suppliers & GRN via the purchasing checks below)
 $is_store_limited = $is_store;
 
 // LOGO & COMPANY CONTEXT (from tenants table)
@@ -280,36 +279,8 @@ $safe_company_name = htmlspecialchars($company_name, ENT_QUOTES, 'UTF-8');
             <?php if ($is_admin || $is_user): ?>
             <li class="pc-item"><a class="pc-link" href="../products/product_analysis.php">Product Analysis</a></li>
             <?php endif; ?>
-            <?php if ($is_admin || $is_store): ?>
-            <li class="pc-item"><a class="pc-link" href="../products/stock_movements.php">Stock Movements</a></li>
-            <?php endif; ?>
           </ul>
         </li>
-
-        <?php if ($is_main_admin_tenant && ($is_admin || $is_store)): ?>
-        <li class="pc-item pc-caption"><label>Purchasing Management</label></li>
-
-        <li class="pc-item pc-hasmenu">
-          <a href="#!" class="pc-link"><span class="pc-micon"> <i data-feather="truck"></i></span><span class="pc-mtext">Suppliers</span><span class="pc-arrow"><i class="ti ti-chevron-right"></i></span></a>
-          <ul class="pc-submenu">
-            <li class="pc-item"><a class="pc-link" href="../suppliers/add_supplier.php">Add New Supplier</a></li>
-            <li class="pc-item"><a class="pc-link" href="../suppliers/supplier_list.php">All Suppliers</a></li>
-          </ul>
-        </li>
-
-        <?php if (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1): ?>
-        <li class="pc-item pc-hasmenu">
-          <a href="#!" class="pc-link"><span class="pc-micon"> <i data-feather="clipboard"></i></span><span class="pc-mtext">GRN</span><span class="pc-arrow"><i class="ti ti-chevron-right"></i></span></a>
-          <ul class="pc-submenu">
-            <li class="pc-item"><a class="pc-link" href="../grn/create_grn.php">Create GRN</a></li>
-            <li class="pc-item"><a class="pc-link" href="../grn/grn_list.php">All GRN</a></li>
-              <li class="pc-item"><a class="pc-link" href="../grn/draft_grn_list.php">Draft GRNs</a></li>
-            <li class="pc-item"><a class="pc-link" href="../grn/confirmed_grn_list.php">Confirmed GRNs</a></li>
-            <li class="pc-item"><a class="pc-link" href="../grn/cancelled_grn_list.php">Cancelled GRNs</a></li>
-          </ul>
-        </li>
-        <?php endif; ?>
-        <?php endif; ?>
 
         <?php if (!$is_store_limited): ?>
         <li class="pc-item pc-caption"><label>Lead Management</label></li>

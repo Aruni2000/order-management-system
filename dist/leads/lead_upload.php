@@ -284,7 +284,7 @@ function cs_condition($conn, $customer_id, $tenant_id) {
 }
 
         // Fetch product data once for all rows (filtered by tenant)
-        $productSql = "SELECT id, product_code, description FROM products WHERE id = ? AND status = 'active' AND tenant_id = ?";
+        $productSql = "SELECT id, product_code, description, selling_price FROM products WHERE id = ? AND status = 'active' AND tenant_id = ?";
         $productStmt = $conn->prepare($productSql);
         if (!$productStmt) {
             throw new Exception("Failed to prepare product query: " . $conn->error);
@@ -314,23 +314,10 @@ function cs_condition($conn, $customer_id, $tenant_id) {
             if ($selectedSellingPrice <= 0) {
                 throw new Exception("The selected selling price is invalid.");
             }
-
-            // Verify a confirmed batch exists for this product at the selected price
-            $priceCheckSql = "SELECT batch_id FROM batches
-                              WHERE product_id = ? AND status = 'confirmed' AND remaining_qty > 0 AND selling_price = ?
-                              LIMIT 1";
-            $priceCheckStmt = $conn->prepare($priceCheckSql);
-            if (!$priceCheckStmt) {
-                throw new Exception("Failed to prepare price validation query: " . $conn->error);
+            $productSellingPrice = (float)($product['selling_price'] ?? 0);
+            if (abs($selectedSellingPrice - $productSellingPrice) > 0.005) {
+                throw new Exception("The selected selling price does not match this product's current selling price.");
             }
-            $priceCheckStmt->bind_param("id", $productId, $selectedSellingPrice);
-            $priceCheckStmt->execute();
-            $priceCheckResult = $priceCheckStmt->get_result();
-            if ($priceCheckResult->num_rows === 0) {
-                $priceCheckStmt->close();
-                throw new Exception("No confirmed batch exists for this product at the selected selling price.");
-            }
-            $priceCheckStmt->close();
 
             $unitPrice = $selectedSellingPrice;
         }
@@ -598,73 +585,8 @@ function cs_condition($conn, $customer_id, $tenant_id) {
                 
                 $itemStmt->close();
                 
-                // Check and deduct stock (FIFO within the selected selling price group)
+                // Check and deduct product stock (with tenant isolation)
                 if (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1) {
-                    // Select confirmed batches at the selected selling price, oldest-first (filtered by tenant)
-                    $batchSql = "SELECT batch_id, remaining_qty FROM batches
-                                 WHERE product_id = ? AND tenant_id = ? AND status = 'confirmed' AND remaining_qty > 0 AND selling_price = ?
-                                 ORDER BY received_date ASC, batch_id ASC
-                                 FOR UPDATE";
-                    $batchStmt = $conn->prepare($batchSql);
-                    if (!$batchStmt) {
-                        throw new Exception("Failed to prepare batch query: " . $conn->error);
-                    }
-                    $batchStmt->bind_param("iid", $productId, $tenant_id, $selectedSellingPrice);
-                    $batchStmt->execute();
-                    $batchResult = $batchStmt->get_result();
-                    $batchList = [];
-                    $available = 0;
-                    while ($br = $batchResult->fetch_assoc()) {
-                        $batchList[] = ['batch_id' => intval($br['batch_id']), 'remaining_qty' => intval($br['remaining_qty'])];
-                        $available += intval($br['remaining_qty']);
-                    }
-                    $batchStmt->close();
-
-                    $hasBatches = !empty($batchList);
-
-                    if ($hasBatches && $available < $quantityInt) {
-                        $getNameSql = "SELECT name FROM products WHERE id = ?";
-                        $nameStmt = $conn->prepare($getNameSql);
-                        $nameStmt->bind_param("i", $productId);
-                        $nameStmt->execute();
-                        $productResult = $nameStmt->get_result();
-                        $productName = $productCode; // Fallback
-                        if ($productResult && $productRow = $productResult->fetch_assoc()) {
-                            $productName = $productRow['name'];
-                        }
-                        $nameStmt->close();
-                        throw new Exception("Insufficient stock for product: " . $productName . " (Code: " . $productCode . ") at price Rs. " . number_format($selectedSellingPrice, 2));
-                    }
-
-                    if ($hasBatches) {
-                        // Deduct FIFO across batches (with tenant isolation)
-                        $need = $quantityInt;
-                        if ($isMainAdmin) {
-                            $updateBatch = $conn->prepare("UPDATE batches SET remaining_qty = remaining_qty - ? WHERE batch_id = ? AND remaining_qty >= ?");
-                        } else {
-                            $updateBatch = $conn->prepare("UPDATE batches SET remaining_qty = remaining_qty - ? WHERE batch_id = ? AND remaining_qty >= ? AND tenant_id = ?");
-                        }
-                        $insertOib = $conn->prepare("INSERT INTO order_item_batches (order_item_id, order_id, batch_id, quantity) VALUES (?, ?, ?, ?)");
-                        foreach ($batchList as $b) {
-                            if ($need <= 0) break;
-                            $take = min($need, $b['remaining_qty']);
-                            if ($isMainAdmin) {
-                                $updateBatch->bind_param("iii", $take, $b['batch_id'], $take);
-                            } else {
-                                $updateBatch->bind_param("iiii", $take, $b['batch_id'], $take, $tenant_id);
-                            }
-                            if (!$updateBatch->execute()) {
-                                throw new Exception("Failed to deduct batch stock.");
-                            }
-                            $insertOib->bind_param("iiii", $order_item_id, $orderId, $b['batch_id'], $take);
-                            $insertOib->execute();
-                            $need -= $take;
-                        }
-                        $updateBatch->close();
-                        $insertOib->close();
-                    }
-
-                    // Deduct product total (with tenant isolation)
                     $updateStockSql = "UPDATE products SET stock_quantity = stock_quantity - ? WHERE id = ? AND stock_quantity >= ? AND tenant_id = ?";
                     $stockUpdateStmt = $conn->prepare($updateStockSql);
                     if (!$stockUpdateStmt) {
@@ -801,7 +723,7 @@ if ($selectedTenantId) {
 // Fetch active products for dropdown based on selected tenant
 $products = [];
 if ($selectedTenantId) {
-    $productsSql = "SELECT id, name, product_code, stock_quantity FROM products WHERE status = 'active' AND tenant_id = ? ORDER BY name ASC";
+    $productsSql = "SELECT id, name, product_code, selling_price, stock_quantity FROM products WHERE status = 'active' AND tenant_id = ? ORDER BY name ASC";
     $productsStmt = $conn->prepare($productsSql);
     if ($productsStmt) {
         $productsStmt->bind_param("i", $selectedTenantId);
@@ -1278,7 +1200,7 @@ if ($selectedTenantId) {
                                     <input type="hidden" name="product_id" id="product_id" required>
                                     <div id="product_dropdown" style="display: none; position: absolute; background: white; border: 1px solid #ced4da; border-top: none; max-height: 200px; overflow-y: auto; width: 100%; z-index: 1000; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
                                         <?php foreach ($products as $prod): ?>
-                                            <div class="product-option" data-id="<?php echo $prod['id']; ?>" data-name="<?php echo htmlspecialchars($prod['name']); ?>" data-code="<?php echo htmlspecialchars($prod['product_code']); ?>" style="padding: 10px; cursor: pointer; border-bottom: 1px solid #f0f0f0;">
+                                            <div class="product-option" data-id="<?php echo $prod['id']; ?>" data-name="<?php echo htmlspecialchars($prod['name']); ?>" data-code="<?php echo htmlspecialchars($prod['product_code']); ?>" data-price="<?php echo (float)$prod['selling_price']; ?>" data-stock="<?php echo (int)$prod['stock_quantity']; ?>" style="padding: 10px; cursor: pointer; border-bottom: 1px solid #f0f0f0;">
                                                 <strong><?php echo htmlspecialchars($prod['name']); ?></strong> (<?php echo htmlspecialchars($prod['product_code']); ?>)
                                                 <?php if (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1): ?>
                                                     <span style="color: #6c757d; font-size: 0.9em;"> - Stock: <?php echo $prod['stock_quantity']; ?></span>
@@ -1504,45 +1426,36 @@ if ($selectedTenantId) {
         });
     });
 
-    // Load distinct batch selling prices for the selected product
+    // Load the selected product's current selling price
     const sellingPriceDropdown = document.getElementById('selling_price_dropdown');
     const sellingPriceHidden = document.getElementById('selling_price');
     const sellingPriceHint = document.getElementById('selling_price_hint');
-    const tenantIdForPrices = <?php echo $selectedTenantId ? (int)$selectedTenantId : 0; ?>;
 
     function loadSellingPrices(productId) {
         if (!sellingPriceDropdown) return;
 
-        sellingPriceDropdown.innerHTML = '<option value="">-- Loading prices... --</option>';
+        sellingPriceDropdown.innerHTML = '<option value="">-- Loading... --</option>';
         sellingPriceDropdown.disabled = true;
         if (sellingPriceHidden) sellingPriceHidden.value = '';
         if (sellingPriceHint) sellingPriceHint.textContent = '';
 
-        fetch('/OMS/dist/orders/get_product_batches.php?product_id=' + encodeURIComponent(productId) +
-              (tenantIdForPrices ? '&tenant_id=' + encodeURIComponent(tenantIdForPrices) : ''))
-            .then(response => response.json())
-            .then(data => {
-                if (data.success && data.prices && data.prices.length > 0) {
-                    let opts = '<option value="">-- Select Selling Price --</option>';
-                    data.prices.forEach(p => {
-                        opts += '<option value="' + p.selling_price + '" data-stock="' + p.stock + '">Rs. ' +
-                                Number(p.selling_price).toFixed(2) + ' (Stock: ' + p.stock + ')</option>';
-                    });
-                    sellingPriceDropdown.innerHTML = opts;
-                    sellingPriceDropdown.disabled = false;
-                    if (sellingPriceHint) sellingPriceHint.textContent = 'Select one selling price for all imported rows.';
-                } else {
-                    sellingPriceDropdown.innerHTML = '<option value="">-- No batch prices available --</option>';
-                    sellingPriceDropdown.disabled = true;
-                    if (sellingPriceHidden) sellingPriceHidden.value = '';
-                    if (sellingPriceHint) sellingPriceHint.textContent = 'This product has no confirmed batches with a selling price.';
-                }
-            })
-            .catch(() => {
-                sellingPriceDropdown.innerHTML = '<option value="">-- Error loading prices --</option>';
-                sellingPriceDropdown.disabled = true;
-                if (sellingPriceHint) sellingPriceHint.textContent = 'Failed to load batch prices.';
-            });
+        const selectedOption = Array.from(productOptions).find(o => o.dataset.id === productId);
+        const price = selectedOption ? parseFloat(selectedOption.dataset.price) : 0;
+        const stock = selectedOption ? selectedOption.dataset.stock : null;
+
+        if (!isNaN(price) && price > 0) {
+            let opts = '<option value="" disabled selected>-- Select Selling Price --</option>';
+            opts += '<option value="' + price + '" data-stock="' + (stock !== null ? stock : '') + '">Rs. ' +
+                    price.toFixed(2) + (stock !== null ? ' (Stock: ' + stock + ')' : '') + '</option>';
+            sellingPriceDropdown.innerHTML = opts;
+            sellingPriceDropdown.disabled = false;
+            if (sellingPriceHint) sellingPriceHint.textContent = 'Use this selling price for all imported rows.';
+        } else {
+            sellingPriceDropdown.innerHTML = '<option value="">-- No selling price set --</option>';
+            sellingPriceDropdown.disabled = true;
+            if (sellingPriceHidden) sellingPriceHidden.value = '';
+            if (sellingPriceHint) sellingPriceHint.textContent = 'This product has no selling price set.';
+        }
     }
 
     if (sellingPriceDropdown) {

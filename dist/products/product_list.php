@@ -342,7 +342,8 @@ $result = $conn->query($sql);
                                 <th>Product Name</th>
                                 <th>Product Code</th>
                                 <th>Category</th>
-                                <?php if (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1): ?>
+<th>Selling Price</th>
+                                 <?php if (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1): ?>
                                 <th>Stock</th>
                                 <?php endif; ?>
                                 <th>Status</th>
@@ -379,6 +380,11 @@ $result = $conn->query($sql);
                                             <span class="product-category">
                                                 <?php echo htmlspecialchars($row['category_name'] ?? 'Uncategorized'); ?>
                                             </span>
+                                        </td>
+                                        
+                                        <!-- Selling Price -->
+                                        <td>
+                                            <span style="font-weight: 600; color: #059669;">Rs. <?php echo number_format((float)$row['selling_price'], 2); ?></span>
                                         </td>
                                         
                                         <!-- Stock -->
@@ -438,6 +444,7 @@ $result = $conn->query($sql);
                                                         data-product-category="<?= htmlspecialchars($row['category_name'] ?? 'Uncategorized') ?>"
                                                         data-product-code="<?= htmlspecialchars($row['product_code'] ?? '') ?>"
                                                         data-product-description="<?= htmlspecialchars($row['description'] ?? '') ?>"
+                                                        data-product-selling-price="<?= htmlspecialchars($row['selling_price'] ?? 0) ?>"
                                                         <?php if (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1): ?>
                                                         data-product-stock="<?= htmlspecialchars($row['stock_quantity']) ?>"
                                                         data-product-threshold="<?= htmlspecialchars($row['low_stock_threshold']) ?>"
@@ -466,6 +473,7 @@ $result = $conn->query($sql);
                                                         title="Update Selling Price (Admin & Store)"
                                                         data-product-id="<?= $row['id'] ?>"
                                                         data-product-name="<?= htmlspecialchars($row['name']) ?>"
+                                                        data-product-selling-price="<?= htmlspecialchars($row['selling_price'] ?? 0) ?>"
                                                         onclick="openPriceUpdateModal(this)">
                                                     <i class="fas fa-tag"></i>
                                                 </button>
@@ -493,7 +501,7 @@ $result = $conn->query($sql);
                                 <?php endwhile; ?>
                             <?php else: ?>
                                 <tr>
-                                    <td colspan="<?= (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1 ? 8 : 7) + ($is_main_admin && $_SESSION['role_id'] == 1 ? 1 : 0) ?>" class="text-center" style="padding: 40px; text-align: center; color: #666;">
+                                    <td colspan="<?= 9 + ($is_main_admin && $_SESSION['role_id'] == 1 ? 1 : 0) + (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1 ? 1 : 0) ?>" class="text-center" style="padding: 40px; text-align: center; color: #666;">
                                         <i class="fas fa-box" style="font-size: 2rem; margin-bottom: 10px; display: block;"></i>
                                         No products found
                                     </td>
@@ -568,6 +576,10 @@ $result = $conn->query($sql);
                     <span class="detail-label">Description:</span>
                     <span class="detail-value" id="modal-product-description"></span>
                 </div>
+                <div class="customer-detail-row">
+                    <span class="detail-label">Selling Price:</span>
+                    <span class="detail-value" id="modal-product-selling-price" style="font-weight: 600; color: #059669;"></span>
+                </div>
                 <?php if (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1): ?>
                 <div class="customer-detail-row">
                     <span class="detail-label">Stock:</span>
@@ -587,21 +599,6 @@ $result = $conn->query($sql);
                 <div class="customer-detail-row">
                     <span class="detail-label">Created:</span>
                     <span class="detail-value" id="modal-product-created"></span>
-                </div>
-
-                <!-- Active Batches & Pricing Breakdown -->
-                <div style="margin-top: 20px; border-top: 1px solid #e2e8f0; padding-top: 15px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                        <h6 style="margin: 0; font-size: 14px; font-weight: 600; color: #1e293b; display: flex; align-items: center; gap: 6px;">
-                            <i class="fas fa-layer-group" style="color: #1565C0;"></i> Active Batches & Pricing
-                        </h6>
-                        <span id="modal-batch-count" class="badge" style="background: #f1f5f9; color: #475569; font-size: 11px; padding: 4px 8px; border-radius: 12px; border: 1px solid #cbd5e1;">0 batches</span>
-                    </div>
-                    <div id="modal-batches-container" style="overflow-x: auto;">
-                        <div style="text-align: center; padding: 15px; color: #64748b; font-size: 13px;">
-                            <i class="fas fa-spinner fa-spin"></i> Loading batch details...
-                        </div>
-                    </div>
                 </div>
             </div>
         </div>
@@ -634,6 +631,7 @@ $result = $conn->query($sql);
             const productThreshold = button.getAttribute('data-product-threshold');
             const productStatus = button.getAttribute('data-product-status');
             const productCreated = button.getAttribute('data-product-created');
+            const productSellingPrice = button.getAttribute('data-product-selling-price');
 
             // Populate modal fields
             document.getElementById('modal-product-id').textContent = productId;
@@ -641,7 +639,12 @@ $result = $conn->query($sql);
             document.getElementById('modal-product-category').textContent = productCategory;
             document.getElementById('modal-product-code').textContent = productCode || 'N/A';
             document.getElementById('modal-product-description').textContent = productDescription || 'N/A';
-            
+
+            document.getElementById('modal-product-selling-price').textContent =
+                (productSellingPrice !== null && productSellingPrice !== undefined)
+                    ? 'Rs. ' + Number(productSellingPrice).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})
+                    : 'N/A';
+
             const stockEl = document.getElementById('modal-product-stock');
             if (stockEl) stockEl.textContent = (productStock !== null && productStock !== undefined) ? productStock : 'N/A';
 
@@ -655,66 +658,6 @@ $result = $conn->query($sql);
             
             // Format dates
             document.getElementById('modal-product-created').textContent = formatDateTime(productCreated);
-
-            // Fetch and render Active Batches & Prices
-            const batchesContainer = document.getElementById('modal-batches-container');
-            const batchCountEl = document.getElementById('modal-batch-count');
-            batchesContainer.innerHTML = '<div style="text-align: center; padding: 15px; color: #64748b; font-size: 13px;"><i class="fas fa-spinner fa-spin"></i> Loading batch details...</div>';
-            batchCountEl.textContent = 'Loading...';
-
-            fetch('/OMS/dist/products/get_stock_batches.php?product_id=' + encodeURIComponent(productId))
-                .then(res => res.json())
-                .then(data => {
-                    if (data.success && data.batches && data.batches.length > 0) {
-                        batchCountEl.textContent = data.batches.length + (data.batches.length === 1 ? ' batch' : ' batches');
-                        let rows = '';
-                        data.batches.forEach(b => {
-                            const sellingPrice = Number(b.selling_price).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-                            rows += `
-                                <tr style="border-bottom: 1px solid #f1f5f9;">
-                                    <td style="padding: 8px 10px; font-family: monospace; font-weight: 600; color: #1e293b; font-size: 12px;">${b.batch_number}</td>
-                                    <td style="padding: 8px 10px; color: #64748b; font-size: 12px;">${b.received_date || 'N/A'}</td>
-                                    <td style="padding: 8px 10px; text-align: right; font-weight: 600; color: #059669; font-size: 12px;">Rs. ${sellingPrice}</td>
-                                    <td style="padding: 8px 10px; text-align: center;">
-                                        <span style="background: #dcfce7; color: #15803d; font-weight: 600; padding: 2px 8px; border-radius: 10px; font-size: 11px;">
-                                            ${b.remaining_qty}
-                                        </span>
-                                    </td>
-                                </tr>
-                            `;
-                        });
-                        batchesContainer.innerHTML = `
-                            <table style="width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 4px; background: #fff; border: 1px solid #e2e8f0; border-radius: 6px; overflow: hidden;">
-                                <thead>
-                                    <tr style="background: #f8fafc; border-bottom: 2px solid #e2e8f0; text-align: left;">
-                                        <th style="padding: 8px 10px; color: #475569; font-weight: 600;">Batch #</th>
-                                        <th style="padding: 8px 10px; color: #475569; font-weight: 600;">Received Date</th>
-                                        <th style="padding: 8px 10px; color: #475569; font-weight: 600; text-align: right;">Selling Price</th>
-                                        <th style="padding: 8px 10px; color: #475569; font-weight: 600; text-align: center;">Stock</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    ${rows}
-                                </tbody>
-                            </table>
-                        `;
-                    } else {
-                        batchCountEl.textContent = '0 batches';
-                        batchesContainer.innerHTML = `
-                            <div style="background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 6px; padding: 12px; text-align: center; color: #64748b; font-size: 13px;">
-                                <i class="fas fa-info-circle" style="margin-right: 4px; color: #94a3b8;"></i> No active stock batches found for this product.
-                            </div>
-                        `;
-                    }
-                })
-                .catch(err => {
-                    batchCountEl.textContent = 'Error';
-                    batchesContainer.innerHTML = `
-                        <div style="color: #dc3545; padding: 10px; font-size: 12px; text-align: center;">
-                            <i class="fas fa-exclamation-triangle"></i> Failed to load batch details.
-                        </div>
-                    `;
-                });
 
             // Show modal
             modal.style.display = 'block';
@@ -898,14 +841,9 @@ $result = $conn->query($sql);
                 </div>
 
                 <div class="form-group" style="margin-bottom: 15px;">
-                    <label for="stock_batch_id" style="display: block; margin-bottom: 8px; font-weight: 500;">Batch</label>
-                    <select id="stock_batch_id" class="form-control" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;"></select>
-                    <div id="stock-batch-error" style="color: #e74c3c; font-size: 13px; margin-top: 4px; display: none;"></div>
-                </div>
-
-                <div class="form-group" style="margin-bottom: 20px;">
                     <label for="adjustment_value" style="display: block; margin-bottom: 8px; font-weight: 500;">Quantity</label>
                     <input type="number" id="adjustment_value" class="form-control" min="1" step="1" value="1" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
+                    <div id="stock-qty-error" style="color: #e74c3c; font-size: 13px; margin-top: 4px; display: none;"></div>
                 </div>
 
                 <div class="form-group" style="margin-bottom: 20px;">
@@ -931,16 +869,8 @@ $result = $conn->query($sql);
             </div>
             <div class="modal-body">
                 <div class="form-group" style="margin-bottom: 15px;">
-                    <label for="price_batch_id" style="display: block; margin-bottom: 8px; font-weight: 500;">Select Batch</label>
-                    <select id="price_batch_id" class="form-control" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;"></select>
-                    <div id="price-batch-error" style="color: #e74c3c; font-size: 13px; margin-top: 4px; display: none;"></div>
-                </div>
-
-                <div style="margin-bottom: 15px;">
-                    <label style="display: block; margin-bottom: 8px; font-weight: 500;">Current Batch Selling Prices</label>
-                    <div id="price-modal-current-prices" style="max-height: 180px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px; background: #f8fafc;">
-                        <div style="text-align: center; color: #64748b; font-size: 13px;"><i class="fas fa-spinner fa-spin"></i> Loading...</div>
-                    </div>
+                    <label style="display: block; margin-bottom: 8px; font-weight: 500;">Current Selling Price</label>
+                    <strong id="price-modal-current-price"></strong>
                 </div>
 
                 <div class="form-group" style="margin-bottom: 20px;">
@@ -948,7 +878,7 @@ $result = $conn->query($sql);
                     <input type="number" id="new_selling_price" class="form-control" min="0.01" step="0.01" placeholder="Enter new selling price" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
                     <div id="price-error" style="color: #e74c3c; font-size: 13px; margin-top: 4px; display: none;"></div>
                     <div style="font-size: 12px; color: #6c757d; margin-top: 5px;">
-                        <i class="fas fa-info-circle"></i> This will update the selling price for the selected batch.
+                        <i class="fas fa-info-circle"></i> This will update the selling price of the product.
                     </div>
                 </div>
 
@@ -963,8 +893,6 @@ $result = $conn->query($sql);
     <script>
         // Stock Update Functionality
         let currentStockValue = 0;
-        let currentBatches = [];
-        let currentSelectedProductId = 0;
 
         function openStockUpdateModal(button) {
             const productId = button.getAttribute('data-product-id');
@@ -972,8 +900,6 @@ $result = $conn->query($sql);
             const productStock = button.getAttribute('data-product-stock');
             
             currentStockValue = parseInt(productStock) || 0;
-            currentSelectedProductId = productId;
-            currentBatches = [];
             
             document.getElementById('stock-modal-title-name').textContent = productName;
             document.getElementById('stock-modal-current-stock').textContent = productStock;
@@ -984,7 +910,7 @@ $result = $conn->query($sql);
             const reasonInput = document.getElementById('stock_reason');
             if (reasonInput) reasonInput.value = '';
             document.getElementById('stock-reason-error').style.display = 'none';
-            document.getElementById('stock-batch-error').style.display = 'none';
+            document.getElementById('stock-qty-error').style.display = 'none';
 
             // Explicitly set default operation to increase
             document.querySelector('input[name="stock_operation"][value="increase"]').checked = true;
@@ -995,58 +921,9 @@ $result = $conn->query($sql);
                 updateProductStock(productId, operation, adjustmentInput.value);
             };
 
-            loadStockBatches(productId);
-
             document.getElementById('stockUpdateModal').style.display = 'block';
             adjustmentInput.focus();
             adjustmentInput.select();
-        }
-
-        function loadStockBatches(productId) {
-            const batchSelect = document.getElementById('stock_batch_id');
-            batchSelect.innerHTML = '<option value="">Loading batches...</option>';
-
-            fetch('/OMS/dist/products/get_stock_batches.php?product_id=' + encodeURIComponent(productId))
-                .then(response => response.json())
-                .then(data => {
-                    if (!data.success) {
-                        batchSelect.innerHTML = '<option value="">No batches available</option>';
-                        return;
-                    }
-                    currentBatches = data.batches || [];
-
-                    if (currentBatches.length === 0) {
-                        batchSelect.innerHTML = '<option value="">No confirmed batches available</option>';
-                        // Reset quantity validation
-                        adjustmentValueChange();
-                        return;
-                    }
-
-                    batchSelect.innerHTML = '';
-                    currentBatches.forEach(batch => {
-                        const opt = document.createElement('option');
-                        opt.value = batch.batch_id;
-                        let label = 'Batch #' + (batch.batch_number || batch.batch_id) +
-                            ' (Stock: ' + batch.remaining_qty + ', Rs. ' +
-                            Number(batch.selling_price).toFixed(2) + ')';
-                        opt.textContent = label;
-                        if (batch.remaining_qty <= 0) {
-                            opt.disabled = true;
-                        }
-                        batchSelect.appendChild(opt);
-                    });
-
-                    adjustmentValueChange();
-                })
-                .catch(() => {
-                    batchSelect.innerHTML = '<option value="">Error loading batches</option>';
-                });
-        }
-
-        function getSelectedBatch() {
-            const batchSelect = document.getElementById('stock_batch_id');
-            const batchId = parseInt(batchSelect.value) || 0;
-            return currentBatches.find(b => b.batch_id === batchId) || null;
         }
 
         function adjustmentValueChange() {
@@ -1059,14 +936,9 @@ $result = $conn->query($sql);
                     document.querySelector('input[name="stock_operation"][value="increase"]').checked = true;
                     return;
                 }
-                const batch = getSelectedBatch();
-                let maxAvailable = currentStockValue;
-                if (batch) {
-                    maxAvailable = Math.min(maxAvailable, batch.remaining_qty);
-                }
                 const enteredValue = parseInt(adjustmentInput.value) || 0;
-                if (enteredValue > maxAvailable) {
-                    adjustmentInput.value = maxAvailable;
+                if (enteredValue > currentStockValue) {
+                    adjustmentInput.value = currentStockValue;
                 }
             }
         }
@@ -1078,11 +950,6 @@ $result = $conn->query($sql);
 
             if (adjustmentInput) {
                 adjustmentInput.addEventListener('input', adjustmentValueChange);
-            }
-
-            const batchSelect = document.getElementById('stock_batch_id');
-            if (batchSelect) {
-                batchSelect.addEventListener('change', adjustmentValueChange);
             }
 
             // Re-validate when switching to decrease operation
@@ -1099,9 +966,12 @@ $result = $conn->query($sql);
         function updateProductStock(productId, operation, adjustmentValue) {
             const adjustmentNum = parseInt(adjustmentValue) || 0;
             if (adjustmentValue === '' || isNaN(adjustmentValue) || adjustmentNum <= 0) {
+                document.getElementById('stock-qty-error').textContent = 'Please enter a valid quantity greater than 0.';
+                document.getElementById('stock-qty-error').style.display = 'block';
                 toastManager.warning('Please enter a valid quantity greater than 0.');
                 return;
             }
+            document.getElementById('stock-qty-error').style.display = 'none';
 
             const reason = (document.getElementById('stock_reason').value || '').trim();
             if (reason === '') {
@@ -1111,28 +981,16 @@ $result = $conn->query($sql);
                 return;
             }
 
-            const batchSelect = document.getElementById('stock_batch_id');
-            const batchId = parseInt(batchSelect.value) || 0;
-            if (batchId <= 0) {
-                document.getElementById('stock-batch-error').textContent = 'Please select a batch.';
-                document.getElementById('stock-batch-error').style.display = 'block';
-                toastManager.warning('Please select a batch.');
-                return;
-            }
-
             // Check if trying to decrease when stock is 0
             if (operation === 'decrease' && currentStockValue <= 0) {
                 toastManager.warning('Cannot decrease stock. Current stock is already 0.');
                 return;
             }
 
-            // For decrease, ensure quantity does not exceed selected batch remaining stock
-            if (operation === 'decrease') {
-                const batch = getSelectedBatch();
-                if (batch && adjustmentNum > batch.remaining_qty) {
-                    toastManager.warning('Cannot decrease more than the selected batch stock (' + batch.remaining_qty + ').');
-                    return;
-                }
+            // For decrease, ensure quantity does not exceed product stock
+            if (operation === 'decrease' && adjustmentNum > currentStockValue) {
+                toastManager.warning('Cannot decrease more than the current product stock (' + currentStockValue + ').');
+                return;
             }
 
             const btn = document.getElementById('confirmStockUpdateBtn');
@@ -1149,7 +1007,6 @@ $result = $conn->query($sql);
                     product_id: productId,
                     operation: operation,
                     adjustment_value: adjustmentValue,
-                    batch_id: batchId,
                     reason: reason
                 })
             })
@@ -1177,78 +1034,31 @@ $result = $conn->query($sql);
     <script>
         // Selling Price Update Functionality
         let currentPriceUpdateProductId = 0;
-        let currentPriceBatches = [];
 
         function openPriceUpdateModal(button) {
             const productId = button.getAttribute('data-product-id');
             const productName = button.getAttribute('data-product-name');
+            const currentPrice = button.getAttribute('data-product-selling-price');
 
             currentPriceUpdateProductId = productId;
-            currentPriceBatches = [];
 
             document.getElementById('price-modal-title-name').textContent = productName;
+            document.getElementById('price-modal-current-price').textContent =
+                (currentPrice !== null && currentPrice !== undefined)
+                    ? 'Rs. ' + Number(currentPrice).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})
+                    : 'N/A';
 
             const priceInput = document.getElementById('new_selling_price');
             priceInput.value = '';
             document.getElementById('price-error').style.display = 'none';
-            document.getElementById('price-batch-error').style.display = 'none';
 
             const confirmBtn = document.getElementById('confirmPriceUpdateBtn');
             confirmBtn.onclick = function() {
                 updateSellingPrice(productId, priceInput.value);
             };
 
-            loadPriceBatches(productId);
-
             document.getElementById('priceUpdateModal').style.display = 'block';
             setTimeout(() => { priceInput.focus(); }, 100);
-        }
-
-        function loadPriceBatches(productId) {
-            const batchSelect = document.getElementById('price_batch_id');
-            const pricesContainer = document.getElementById('price-modal-current-prices');
-            batchSelect.innerHTML = '<option value="">Loading batches...</option>';
-            pricesContainer.innerHTML = '<div style="text-align: center; color: #64748b; font-size: 13px;"><i class="fas fa-spinner fa-spin"></i> Loading...</div>';
-
-            fetch('/OMS/dist/products/get_stock_batches.php?product_id=' + encodeURIComponent(productId))
-                .then(response => response.json())
-                .then(data => {
-                    if (!data.success || !data.batches || data.batches.length === 0) {
-                        batchSelect.innerHTML = '<option value="">No confirmed batches available</option>';
-                        pricesContainer.innerHTML = '<div style="text-align: center; color: #94a3b8; font-size: 13px; padding: 10px;">No confirmed batches found for this product.</div>';
-                        return;
-                    }
-
-                    currentPriceBatches = data.batches;
-
-                    // Populate batch dropdown
-                    batchSelect.innerHTML = '';
-                    currentPriceBatches.forEach(batch => {
-                        const opt = document.createElement('option');
-                        opt.value = batch.batch_id;
-                        let label = 'Batch #' + (batch.batch_number || batch.batch_id) +
-                            ' (Stock: ' + batch.remaining_qty + ', Rs. ' +
-                            Number(batch.selling_price).toFixed(2) + ')';
-                        opt.textContent = label;
-                        batchSelect.appendChild(opt);
-                    });
-
-                    // Populate current prices list
-                    let rows = '';
-                    currentPriceBatches.forEach(b => {
-                        rows += `
-                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #eef2f7; font-size: 13px;">
-                                <span style="font-family: monospace; font-weight: 600; color: #1e293b;">Batch #${b.batch_number || b.batch_id}</span>
-                                <span style="font-weight: 600; color: #059669;">Rs. ${Number(b.selling_price).toFixed(2)}</span>
-                            </div>
-                        `;
-                    });
-                    pricesContainer.innerHTML = rows;
-                })
-                .catch(() => {
-                    batchSelect.innerHTML = '<option value="">Error loading batches</option>';
-                    pricesContainer.innerHTML = '<div style="color: #dc3545; padding: 10px; font-size: 12px; text-align: center;"><i class="fas fa-exclamation-triangle"></i> Failed to load batch prices.</div>';
-                });
         }
 
         function closePriceUpdateModal() {
@@ -1257,21 +1067,14 @@ $result = $conn->query($sql);
         }
 
         function updateSellingPrice(productId, newPrice) {
+            const priceErrorEl = document.getElementById('price-error');
             if (newPrice === '' || isNaN(newPrice) || parseFloat(newPrice) <= 0) {
-                document.getElementById('price-error').textContent = 'Please enter a valid selling price greater than 0.';
-                document.getElementById('price-error').style.display = 'block';
+                priceErrorEl.textContent = 'Please enter a valid selling price greater than 0.';
+                priceErrorEl.style.display = 'block';
                 toastManager.warning('Please enter a valid selling price.');
                 return;
             }
-
-            const batchSelect = document.getElementById('price_batch_id');
-            const batchId = parseInt(batchSelect.value) || 0;
-            if (batchId <= 0) {
-                document.getElementById('price-batch-error').textContent = 'Please select a batch.';
-                document.getElementById('price-batch-error').style.display = 'block';
-                toastManager.warning('Please select a batch.');
-                return;
-            }
+            priceErrorEl.style.display = 'none';
 
             const btn = document.getElementById('confirmPriceUpdateBtn');
             const originalText = btn.textContent;
@@ -1285,7 +1088,6 @@ $result = $conn->query($sql);
                 },
                 body: JSON.stringify({
                     product_id: productId,
-                    batch_id: batchId,
                     new_selling_price: parseFloat(newPrice)
                 })
             })

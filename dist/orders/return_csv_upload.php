@@ -14,7 +14,6 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
 
 // Include the database connection file early
 include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
-include_once($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/stock_ledger.php');
 
 // Handle AJAX request for fetching couriers
 if (isset($_GET['action']) && $_GET['action'] === 'get_couriers' && isset($_GET['tenant_id'])) {
@@ -448,63 +447,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                                 $itemsStmt->execute();
                                 $itemsResult = $itemsStmt->get_result();
 
-                                // Check whether this order used batch-level deduction
-                                $checkAutoBatchesSql = "SELECT 1 FROM order_item_batches WHERE order_id = ? LIMIT 1";
-                                $checkAutoBatchesStmt = $conn->prepare($checkAutoBatchesSql);
-                                $checkAutoBatchesStmt->bind_param("i", $trackingData['order_id']);
-                                $checkAutoBatchesStmt->execute();
-                                $isBatchAware = $checkAutoBatchesStmt->get_result()->num_rows > 0;
-                                $checkAutoBatchesStmt->close();
-
-                                $updateBatch = null;
-                                if ($isBatchAware) {
-                                    if ($is_main_admin === 1 && $role_id === 1) {
-                                        $updateBatch = $conn->prepare("UPDATE batches SET remaining_qty = remaining_qty + ? WHERE batch_id = ?");
-                                    } else {
-                                        $updateBatch = $conn->prepare("UPDATE batches SET remaining_qty = remaining_qty + ? WHERE batch_id = ? AND tenant_id = ?");
-                                    }
-                                }
+                                // Update stock - increment stock for returned items (with tenant isolation)
+                                $updateStockSql = "UPDATE products SET stock_quantity = stock_quantity + ? WHERE id = ? AND tenant_id = ?";
+                                $stockStmt = $conn->prepare($updateStockSql);
 
                                 while ($item = $itemsResult->fetch_assoc()) {
                                     $productId = $item['product_id'];
                                     $quantity = $item['quantity'];
 
-                                    // Restore specific batches that fulfilled this item
-                                    if ($isBatchAware) {
-                                        $oibSql = "SELECT batch_id, quantity FROM order_item_batches WHERE order_item_id = ?";
-                                        $oibStmt = $conn->prepare($oibSql);
-                                        $oibStmt->bind_param("i", $item['item_id']);
-                                        $oibStmt->execute();
-                                        $oibResult = $oibStmt->get_result();
-                                    $restoredBatchQty = 0;
-                                    while ($oib = $oibResult->fetch_assoc()) {
-                                        if ($is_main_admin === 1 && $role_id === 1) {
-                                            $updateBatch->bind_param("ii", $oib['quantity'], $oib['batch_id']);
-                                        } else {
-                                            $updateBatch->bind_param("iii", $oib['quantity'], $oib['batch_id'], $tenant_id);
-                                        }
-                                        $updateBatch->execute();
-                                        $restoredBatchQty += (int)$oib['quantity'];
-                                        // Ledger: stock back in per restored batch
-                                        log_stock_movement($conn, (int)$tenant_id, (int)$productId, (int)$oib['batch_id'], 'return_in', (int)$oib['quantity'], 'order', (int)$trackingData['order_id'], isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : null, 'Return CSV handover - batch restore');
-                                    }
-                                        $oibStmt->close();
-                                    }
-
-                                    // Update stock - Increment stock for returned items (with tenant isolation)
-                                    $updateStockSql = "UPDATE products SET stock_quantity = stock_quantity + ? WHERE id = ? AND tenant_id = ?";
-                                    $stockStmt = $conn->prepare($updateStockSql);
                                     $stockStmt->bind_param("iii", $quantity, $productId, $tenant_id);
                                     if ($stockStmt->execute()) {
                                         $inventoryUpdatedCount++;
                                     }
-                                    $stockStmt->close();
-                                    $nonBatchQty = (int)$quantity - (int)($restoredBatchQty ?? 0);
-                                    if ($nonBatchQty > 0) {
-                                        log_stock_movement($conn, (int)$tenant_id, (int)$productId, null, 'return_in', $nonBatchQty, 'order', (int)$trackingData['order_id'], isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : null, 'Return CSV handover - non-batch restore');
-                                    }
                                 }
-                                if ($updateBatch) $updateBatch->close();
+                                $stockStmt->close();
                                 $itemsStmt->close();
                             }
                             

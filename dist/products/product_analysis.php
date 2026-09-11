@@ -4,15 +4,6 @@
  *              DELIVERED. Cancelled and still-pending orders are NOT
  *              counted, because that money is not earned yet.
  *
- *   Est. Cost = what those same items cost us to buy from suppliers.
- *              Every product arrives in batches, and each batch has its
- *              own buying price. We add up the batch price for every
- *              piece that was sold.
- *
- *   Profit   = Revenue minus Est. Cost.
- *              Example: sold items worth 1,000 LKR, they cost us 700 LKR
- *              -> profit is 300 LKR.
- *
  *   Qty Sold  = how many pieces of the product were sold (completed orders only).
  *
  *   Success % = out of the orders that were either completed OR cancelled,
@@ -25,7 +16,7 @@
  * THE TOP CARDS show the same numbers added up for ALL products together.
  *
  * WHO SEES WHAT:
- *   - Admins (role 1) see everything, including Revenue, Est. Cost and Profit.
+ *   - Admins (role 1) see everything, including Revenue.
  *   - Normal users (role 2) do NOT see money figures - only quantities,
  *     order counts and success rate.
  */
@@ -154,22 +145,15 @@ if ($category_filter > 0) {
 
 $whereClause = " WHERE " . implode(' AND ', $searchConditions) . $roleCondition;
 
-// Shared SQL fragments: the "done/delivered" status list and the batch-cost join
-// are defined once here and reused by every query below.
+// Shared SQL fragments: the "done/delivered" status list is defined once here
+// and reused by every query below.
 $doneStatuses = "'done', 'delivered'";
-$costJoin = "LEFT JOIN (
-            SELECT oib.order_item_id, SUM(oib.quantity * b.buying_price) as item_cost
-            FROM order_item_batches oib
-            JOIN batches b ON oib.batch_id = b.batch_id
-            GROUP BY oib.order_item_id
-        ) oic ON oi.item_id = oic.order_item_id";
 $baseFrom = "FROM order_items oi
         JOIN order_header oh ON oi.order_id = oh.order_id
         LEFT JOIN products p ON oi.product_id = p.id
-        LEFT JOIN categories c ON p.category_id = c.id
-        $costJoin";
+        LEFT JOIN categories c ON p.category_id = c.id";
 
-// Count query: category and batch-cost joins are not needed to count distinct products
+// Count query: category join is not needed to count distinct products
 $countSql = "SELECT COUNT(DISTINCT oi.product_id) as total
              FROM order_items oi
              JOIN order_header oh ON oi.order_id = oh.order_id
@@ -182,7 +166,6 @@ $sql = "SELECT
             c.name as category_name,
             SUM(CASE WHEN oh.status IN ($doneStatuses) THEN oi.quantity ELSE 0 END) as total_quantity,
             SUM(CASE WHEN oh.status IN ($doneStatuses) THEN oi.total_amount ELSE 0 END) as total_earn,
-            SUM(CASE WHEN oh.status IN ($doneStatuses) THEN COALESCE(oic.item_cost, 0) ELSE 0 END) as total_cost,
             COUNT(DISTINCT oi.order_id) as order_count,
             COUNT(DISTINCT CASE WHEN oh.status = 'pending' THEN oh.order_id END) as pending_count,
             COUNT(DISTINCT CASE WHEN oh.status = 'dispatch' THEN oh.order_id END) as dispatched_count,
@@ -206,7 +189,6 @@ $summarySql = "SELECT
                 COUNT(DISTINCT CASE WHEN oh.status IN ($doneStatuses) THEN oi.product_id END) as unique_products,
                 SUM(CASE WHEN oh.status IN ($doneStatuses) THEN oi.quantity ELSE 0 END) as total_items_sold,
                 SUM(CASE WHEN oh.status IN ($doneStatuses) THEN oi.total_amount ELSE 0 END) as total_earn,
-                SUM(CASE WHEN oh.status IN ($doneStatuses) THEN COALESCE(oic.item_cost, 0) ELSE 0 END) as total_cost,
                 COUNT(DISTINCT oi.order_id) as total_orders,
                 COUNT(DISTINCT CASE WHEN oh.status IN ($doneStatuses) THEN oh.order_id END) as completed_orders,
                 COUNT(DISTINCT CASE WHEN oh.status = 'cancel' THEN oh.order_id END) as cancelled_orders
@@ -217,8 +199,6 @@ $summary = [
     'unique_products' => 0,
     'total_items_sold' => 0,
     'total_earn' => 0,
-    'total_cost' => 0,
-    'total_profit' => 0,
     'total_orders' => 0,
     'completed_orders' => 0,
     'cancelled_orders' => 0,
@@ -228,9 +208,8 @@ if ($summaryResult && $summaryResult->num_rows > 0) {
     $summary = $summaryResult->fetch_assoc();
 }
 
-// Derived metrics: profit and success rate are simple arithmetic, so they are
-// computed in PHP instead of being repeated as SQL expressions.
-$summary['total_profit'] = (float)$summary['total_earn'] - (float)$summary['total_cost'];
+// Derived metric: success rate is simple arithmetic, so it is computed in
+// PHP instead of being repeated as SQL expressions.
 $summaryCompleted = (int)$summary['completed_orders'];
 $summaryDecided = $summaryCompleted + (int)$summary['cancelled_orders'];
 $summary['avg_success_rate'] = $summaryDecided > 0 ? $summaryCompleted * 100 / $summaryDecided : 0;
@@ -349,10 +328,6 @@ $summary['avg_success_rate'] = $summaryDecided > 0 ? $summaryCompleted * 100 / $
                         <div class="text-sm text-gray-500 mb-1">Total Revenue</div>
                         <div class="text-2xl font-semibold text-emerald-600">LKR <?php echo number_format($summary['total_earn'] ?? 0, 2); ?></div>
                     </div>
-                    <div class="flex-1 min-w-[170px] bg-white rounded-lg p-4 shadow-sm border border-gray-100">
-                        <div class="text-sm text-gray-500 mb-1">Total Profit</div>
-                        <div class="text-2xl font-semibold text-teal-600">LKR <?php echo number_format($summary['total_profit'] ?? 0, 2); ?></div>
-                    </div>
                     <?php endif; ?>
                     <div class="flex-1 min-w-[170px] bg-white rounded-lg p-4 shadow-sm border border-gray-100">
                         <div class="text-sm text-gray-500 mb-1">Success Rate</div>
@@ -381,16 +356,13 @@ $summary['avg_success_rate'] = $summaryDecided > 0 ? $summaryCompleted * 100 / $
                                 <th>Cancelled</th>
                                 <?php if ($is_admin): ?>
                                 <th>Revenue</th>
-                                <th>Est. Cost</th>
-                                <th>Profit</th>
                                 <?php endif; ?>
                             </tr>
                         </thead>
                         <tbody>
                             <?php if ($result && $result->num_rows > 0): ?>
                                 <?php while ($row = $result->fetch_assoc()):
-                                    // Profit and success rate derived from the raw sums above
-                                    $row['total_profit'] = (float)$row['total_earn'] - (float)$row['total_cost'];
+                                    // Success rate derived from the raw sums above
                                     $rowDecided = (int)$row['completed_count'] + (int)$row['cancelled_count'];
                                     $row['success_rate'] = $rowDecided > 0 ? (int)$row['completed_count'] * 100 / $rowDecided : 0;
                                 ?>
@@ -447,18 +419,12 @@ $summary['avg_success_rate'] = $summaryDecided > 0 ? $summaryCompleted * 100 / $
                                         <td style="font-weight: 600; color: #28a745;">
                                             LKR <?php echo number_format($row['total_earn'] ?? 0, 2); ?>
                                         </td>
-                                        <td style="font-weight: 500; color: #64748b;">
-                                            LKR <?php echo number_format($row['total_cost'] ?? 0, 2); ?>
-                                        </td>
-                                        <td style="font-weight: 600; color: #059669;">
-                                            LKR <?php echo number_format($row['total_profit'] ?? 0, 2); ?>
-                                        </td>
                                         <?php endif; ?>
                                     </tr>
                                 <?php endwhile; ?>
                             <?php else: ?>
                                 <tr>
-                                    <td colspan="<?php echo $is_admin ? 14 : 11; ?>" class="text-center" style="padding: 40px; text-align: center; color: #666;">
+                                    <td colspan="<?php echo $is_admin ? 12 : 11; ?>" class="text-center" style="padding: 40px; text-align: center; color: #666;">
                                         <i class="fas fa-chart-bar" style="font-size: 2rem; margin-bottom: 10px; display: block;"></i>
                                         No product analysis data found for the selected filters
                                     </td>
@@ -522,9 +488,7 @@ $summary['avg_success_rate'] = $summaryDecided > 0 ? $summaryCompleted * 100 / $
                 <span><strong>Items Sold</strong> — total quantity of all items sold</span>'
                 . ($is_admin ? '
                 <span style="color: #10b981;">●</span>
-                <span><strong>Total Revenue</strong> — total sales earnings from completed/delivered orders</span>
-                <span style="color: #0d9488;">●</span>
-                <span><strong>Total Profit</strong> — gross profit (Revenue minus Batch Buying Cost)</span>' : '') . '
+                <span><strong>Total Revenue</strong> — total sales earnings from completed/delivered orders</span>' : '') . '
                 <span style="color: #16a34a;">●</span>
                 <span><strong>Success Rate</strong> — orders completed without cancellation</span>
                 <span style="color: #f59e0b;">●</span>
@@ -536,8 +500,7 @@ $summary['avg_success_rate'] = $summaryDecided > 0 ? $summaryCompleted * 100 / $
             <h6 style="margin: 0 0 10px; font-size: 14px;">📋 Product Table Columns</h6>
             <ul style="margin: 0; padding-left: 20px; color: #374151; font-size: 13px; line-height: 1.7;">
                 <li><strong>' . ($is_admin ? 'Qty Sold & Revenue' : 'Qty Sold') . '</strong> — from completed/delivered orders</li>'
-                . ($is_admin ? '
-                <li><strong>Est. Cost & Profit</strong> — calculated from GRN batch buying prices</li>' : '') . '
+                . '
                 <li><strong>Success %</strong> — completion percentage for this product</li>
                 <li><strong>Status columns</strong> — pending, dispatched, completed, cancelled</li>
             </ul>
