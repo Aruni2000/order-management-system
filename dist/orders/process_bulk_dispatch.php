@@ -16,7 +16,7 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
 }
 
 // Include database connection
-include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
 
 // CRITICAL: Set content type BEFORE any output
 header('Content-Type: application/json; charset=utf-8');
@@ -152,7 +152,7 @@ try {
         }
         
         // Get user ID for logging
-        $user_id = $_SESSION['user_id'] ?? $_SESSION['id'] ?? 0;
+        $user_id = $_SESSION['user_id'] ?? 0;
         
         // STEP 4: Process each order
         foreach ($order_ids as $index => $order_id) {

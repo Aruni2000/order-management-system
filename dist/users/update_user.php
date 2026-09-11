@@ -14,7 +14,7 @@ ob_start();
 session_start();
 
 // Include the database connection file
-include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
 
 // Function to return JSON response and exit
 function jsonResponse($success, $message, $errors = null, $data = null) {
@@ -180,7 +180,7 @@ try {
     $mobile = trim($_POST['mobile'] ?? '');
     $nic = trim(strtoupper($_POST['nic'] ?? ''));
     $address = trim($_POST['address'] ?? '');
-    $status = strtolower($_POST['status'] ?? 'active');
+    $status = strtolower($existingUser['status']);
     $role_id = isset($_POST['role_id']) ? (int)$_POST['role_id'] : 0;
     $input_tenant_id = $_POST['tenant_id'] ?? null;
     
@@ -191,7 +191,11 @@ try {
     if (empty($name)) $fieldErrors['full_name'] = "Full name is required.";
     if (empty($email)) $fieldErrors['email'] = "Email address is required.";
     if (empty($mobile)) $fieldErrors['mobile'] = "Mobile number is required.";
-    if (empty($nic)) $fieldErrors['nic'] = "NIC number is required.";
+    if (empty($nic)) {
+        $fieldErrors['nic'] = "NIC number is required.";
+    } elseif (!preg_match('/^\d{9}[VX]$/i', $nic) && !preg_match('/^\d{12}$/', $nic)) {
+        $fieldErrors['nic'] = "Invalid NIC format. Use old format (9 digits + V/X) or new format (12 digits).";
+    }
     if (empty($address)) $fieldErrors['address'] = "Address is required.";
     if (!empty($password) && strlen($password) < 6) $fieldErrors['password'] = "Password must be at least 6 characters long.";
     

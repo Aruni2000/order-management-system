@@ -14,7 +14,7 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     if (ob_get_level()) {
         ob_end_clean();
     }
-    header("Location: /OMS/dist/pages/login.php");
+    header("Location: /orderhub_nextwave/dist/pages/login.php");
     exit();
 }
 
@@ -27,12 +27,15 @@ $tenant_filter = isset($_GET['tenant_filter']) ? $_GET['tenant_filter'] : 0;
 
 // Access control - Only admins (role_id=1) can access this page
 if ($is_admin != 1) {
-    header("Location: /OMS/dist/dashboard/index.php");
+    if (ob_get_level()) {
+        ob_end_clean();
+    }
+    header("Location: /orderhub_nextwave/dist/pages/access_denied.php");
     exit();
 }
 
 // Include database connection
-include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
 
 /**
  * SEARCH AND PAGINATION PARAMETERS
@@ -41,6 +44,7 @@ $search = isset($_GET['search']) ? trim($_GET['search']) : '';
 $order_id_filter = isset($_GET['order_id_filter']) ? trim($_GET['order_id_filter']) : '';
 $customer_name_filter = isset($_GET['customer_name_filter']) ? trim($_GET['customer_name_filter']) : '';
 $phone_filter = isset($_GET['phone_filter']) ? trim($_GET['phone_filter']) : '';
+$tracking_id = isset($_GET['tracking_id']) ? trim($_GET['tracking_id']) : '';
 $date_from = isset($_GET['date_from']) ? trim($_GET['date_from']) : '';
 $date_to = isset($_GET['date_to']) ? trim($_GET['date_to']) : '';
 $status_filter = isset($_GET['status_filter']) ? trim($_GET['status_filter']) : '';
@@ -140,7 +144,7 @@ if (!empty($search)) {
 // Specific Order ID filter
 if (!empty($order_id_filter)) {
     $orderIdTerm = $conn->real_escape_string($order_id_filter);
-    $searchConditions[] = "i.order_id LIKE '%$orderIdTerm%'";
+    $searchConditions[] = "i.order_id = '$orderIdTerm'";
 }
 
 // Specific Customer Name filter
@@ -151,8 +155,13 @@ if (!empty($customer_name_filter)) {
 
 // Phone filter - Enhanced to search both customer phone and mobile field
 if (!empty($phone_filter)) {
-    $phoneTerm = $conn->real_escape_string($phone_filter);
-    $searchConditions[] = "(c.phone LIKE '%$phoneTerm%' OR i.mobile LIKE '%$phoneTerm%')";
+    $phoneTerm = $conn->real_escape_string($phone_filter);$searchConditions[] = "(c.phone = '$phoneTerm' OR i.mobile = '$phoneTerm')";
+}
+
+// Tracking ID filter
+if (!empty($tracking_id)) {
+    $trackingTerm = $conn->real_escape_string($tracking_id);
+    $searchConditions[] = "i.tracking_number = '$trackingTerm'";
 }
 
 if (!empty($date_from)) {
@@ -221,7 +230,7 @@ $result = $conn->query($sql);
 <head>
     <title>Leads Management - All Leads | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
     
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/head.php'); ?>
     
     <!-- Stylesheets -->
     <link rel="stylesheet" href="../assets/css/orders.css" />
@@ -289,9 +298,9 @@ $result = $conn->query($sql);
 <body>
     <!-- Page Loader -->
     <?php 
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/loader.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/navbar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/sidebar.php');
     ?>
 
     <div class="pc-container">
@@ -348,10 +357,17 @@ $result = $conn->query($sql);
                         </div>
                         
                         <div class="form-group">
-                            <label for="phone_filter">Phone</label>
+                            <label for="phone_filter">Customer Phone</label>
                             <input type="text" id="phone_filter" name="phone_filter" 
                                    placeholder="Enter phone number" 
                                    value="<?php echo htmlspecialchars($phone_filter); ?>">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="tracking_id">Tracking Number</label>
+                            <input type="text" id="tracking_id" name="tracking_id" 
+                                   placeholder="Enter tracking number" 
+                                   value="<?php echo htmlspecialchars($tracking_id); ?>">
                         </div>
                         
                         <div class="form-group">
@@ -470,7 +486,7 @@ $result = $conn->query($sql);
                                 <th>Success Rate</th>
                                 <th>Assigned User</th>
                                 <?php if ($is_main_admin_tenant == 1): ?>
-                                <th>Tenant Company</th>
+                                <th>Tenant</th>
                                 <?php endif; ?>
                                 <th>Processed By</th>
                                 <th>Actions</th>
@@ -654,9 +670,13 @@ $result = $conn->query($sql);
                                         </td>
 
                                         <?php if ($is_main_admin_tenant == 1): ?>
-                                        <!-- Tenant Company -->
-                                        <td class="tenant-info">
-                                            <?php echo isset($row['tenant_name']) ? htmlspecialchars($row['tenant_name']) : 'N/A'; ?>
+                                        <!-- Tenant -->
+                                        <td class="customer-name">
+                                            <div class="customer-info">
+                                                <h6 style="margin: 0; font-size: 14px;">
+                                                    <?php echo isset($row['tenant_name']) && $row['tenant_name'] !== '' ? htmlspecialchars($row['tenant_name']) : 'N/A'; ?>
+                                                </h6>
+                                            </div>
                                         </td>
                                         <?php endif; ?>
 
@@ -710,20 +730,20 @@ $result = $conn->query($sql);
                     </div>
                     <div class="pagination-controls">
                         <?php if ($page > 1): ?>
-                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page - 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&tenant_filter=<?php echo urlencode($tenant_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&status_filter=<?php echo urlencode($status_filter); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&user_id_filter=<?php echo urlencode($user_id_filter); ?>&search=<?php echo urlencode($search); ?>'">
+                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page - 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&tracking_id=<?php echo urlencode($tracking_id); ?>&tenant_filter=<?php echo urlencode($tenant_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&status_filter=<?php echo urlencode($status_filter); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&user_id_filter=<?php echo urlencode($user_id_filter); ?>&search=<?php echo urlencode($search); ?>'">
                                 <i class="fas fa-chevron-left"></i>
                             </button>
                         <?php endif; ?>
                         
                         <?php for ($i = max(1, $page - 2); $i <= min($totalPages, $page + 2); $i++): ?>
                             <button class="page-btn <?php echo ($i == $page) ? 'active' : ''; ?>" 
-                                    onclick="window.location.href='?page=<?php echo $i; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&tenant_filter=<?php echo urlencode($tenant_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&status_filter=<?php echo urlencode($status_filter); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&user_id_filter=<?php echo urlencode($user_id_filter); ?>&search=<?php echo urlencode($search); ?>'">
+                                    onclick="window.location.href='?page=<?php echo $i; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&tracking_id=<?php echo urlencode($tracking_id); ?>&tenant_filter=<?php echo urlencode($tenant_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&status_filter=<?php echo urlencode($status_filter); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&user_id_filter=<?php echo urlencode($user_id_filter); ?>&search=<?php echo urlencode($search); ?>'">
                                 <?php echo $i; ?>
                             </button>
                         <?php endfor; ?>
                         
                         <?php if ($page < $totalPages): ?>
-                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page + 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&tenant_filter=<?php echo urlencode($tenant_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&status_filter=<?php echo urlencode($status_filter); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&user_id_filter=<?php echo urlencode($user_id_filter); ?>&search=<?php echo urlencode($search); ?>'">
+                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page + 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&tracking_id=<?php echo urlencode($tracking_id); ?>&tenant_filter=<?php echo urlencode($tenant_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&status_filter=<?php echo urlencode($status_filter); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&user_id_filter=<?php echo urlencode($user_id_filter); ?>&search=<?php echo urlencode($search); ?>'">
                                 <i class="fas fa-chevron-right"></i>
                             </button>
                         <?php endif; ?>
@@ -734,7 +754,7 @@ $result = $conn->query($sql);
     </div>
 
     <!-- Lead View Modal -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/order_view_modal.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/order_view_modal.php'); ?>
 
     <script>
     // Lead-specific JavaScript functionality
@@ -745,6 +765,7 @@ $result = $conn->query($sql);
         document.getElementById('order_id_filter').value = '';
         document.getElementById('customer_name_filter').value = '';
         document.getElementById('phone_filter').value = '';
+        document.getElementById('tracking_id').value = '';
         document.getElementById('date_from').value = '';
         document.getElementById('date_to').value = '';
         document.getElementById('status_filter').value = '';
@@ -873,7 +894,7 @@ $result = $conn->query($sql);
         }
         
         // Construct the payment slip URL
-        const slipUrl = '/OMS/dist/uploads/' + encodeURIComponent(currentLeadId) + '.jpg';
+        const slipUrl = '/orderhub_nextwave/dist/uploads/' + encodeURIComponent(currentLeadId) + '.jpg';
         
         // Open payment slip in new tab
         window.open(slipUrl, '_blank');
@@ -917,7 +938,7 @@ $result = $conn->query($sql);
         console.log('Printing Order ID:', orderId);
         
         // Construct the print URL
-        const printUrl = '/OMS/dist/orders/download_order_print.php?id=' + encodeURIComponent(orderId.trim());
+        const printUrl = '/orderhub_nextwave/dist/orders/download_order_print.php?id=' + encodeURIComponent(orderId.trim());
 
         // Open print page in new window
         const printWindow = window.open(printUrl, '_blank');
@@ -966,8 +987,8 @@ $result = $conn->query($sql);
     </script>
 
     <!-- Include Footer and Scripts -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php'); ?>
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/footer.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/scripts.php'); ?>
 
 </body>
 </html>

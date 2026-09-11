@@ -19,18 +19,18 @@ class RoleBasedAccessControl {
     }
     
     /**
-     * Check if current user is main admin
+     * Check if current user is super admin (main admin + admin role)
      */
-    public function isMainAdmin() {
-        return $this->is_main_admin == 1;
+    public function isSuperAdmin() {
+        return $this->is_main_admin == 1 && $this->current_user_role == 1;
     }
     
     /**
      * Get role-based SQL condition for filtering orders
      */
     public function getRoleBasedCondition($table_alias = 'i') {
-        if ($this->isMainAdmin()) {
-            return ""; // Main admin sees all orders
+        if ($this->isSuperAdmin()) {
+            return ""; // Super admin sees all orders across tenants
         }
         return " AND {$table_alias}.tenant_id = {$this->tenant_id}";
     }
@@ -39,14 +39,14 @@ class RoleBasedAccessControl {
      * Get table colspan based on role (for empty state)
      */
     public function getTableColspan() {
-        return $this->isMainAdmin() ? '9' : '8';
+        return $this->isSuperAdmin() ? '9' : '8';
     }
     
     /**
      * Get appropriate "no records" message
      */
     public function getNoRecordsMessage($record_type = 'orders') {
-        if ($this->isMainAdmin()) {
+        if ($this->isSuperAdmin()) {
             return "No cancel {$record_type} found";
         } else {
             return "No cancel {$record_type} found for your account";
@@ -57,7 +57,7 @@ class RoleBasedAccessControl {
      * Get order count subtitle
      */
     public function getOrderCountSubtitle() {
-        return $this->isMainAdmin() ? 'Total Cancel Orders' : ' Total Orders';
+        return $this->isSuperAdmin() ? 'Total Cancel Orders' : ' Total Orders';
     }
 }
 
@@ -78,12 +78,12 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     if (ob_get_level()) {
         ob_end_clean();
     }
-    header("Location: /OMS/dist/pages/login.php");
+    header("Location: /orderhub_nextwave/dist/pages/login.php");
     exit();
 }
 
 // Include database connection
-include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
 
 // Check if user is main admin
 $is_main_admin = $_SESSION['is_main_admin'] ?? 0;
@@ -121,7 +121,7 @@ if ($current_user_id == 0 || $current_user_role == 0) {
 
 // If still no user data, redirect to login
 if ($current_user_id == 0) {
-    header("Location: /OMS/dist/pages/login.php");
+    header("Location: /orderhub_nextwave/dist/pages/login.php");
     exit();
 }
 
@@ -134,6 +134,7 @@ $rbac = new RoleBasedAccessControl($conn, $current_user_id, $current_user_role, 
 $search = isset($_GET['search']) ? trim($_GET['search']) : '';
 $order_id_filter = isset($_GET['order_id_filter']) ? trim($_GET['order_id_filter']) : '';
 $customer_name_filter = isset($_GET['customer_name_filter']) ? trim($_GET['customer_name_filter']) : '';
+$phone_filter = isset($_GET['phone_filter']) ? trim($_GET['phone_filter']) : '';
 $date_from = isset($_GET['date_from']) ? trim($_GET['date_from']) : '';
 $date_to = isset($_GET['date_to']) ? trim($_GET['date_to']) : '';
 $pay_status_filter = isset($_GET['pay_status_filter']) ? trim($_GET['pay_status_filter']) : '';
@@ -184,8 +185,8 @@ $roleBasedCondition = $rbac->getRoleBasedCondition();
          WHERE i.interface IN ('individual', 'leads') AND i.status = 'cancel'
         ";
 
-// Add tenant filter for non-main admin users
-if ($is_main_admin == 1){
+// Add tenant filter for non-super-admin users
+if ($is_main_admin == 1 && $current_user_role == 1){
 // Add ordering and pagination
     
 } else {
@@ -214,13 +215,19 @@ if (!empty($search)) {
 // Specific Order ID filter
 if (!empty($order_id_filter)) {
     $orderIdTerm = $conn->real_escape_string($order_id_filter);
-    $searchConditions[] = "i.order_id LIKE '%$orderIdTerm%'";
+    $searchConditions[] = "i.order_id = '$orderIdTerm'";
 }
 
 // FIXED: Specific Customer Name filter - using i.full_name
 if (!empty($customer_name_filter)) {
     $customerNameTerm = $conn->real_escape_string($customer_name_filter);
     $searchConditions[] = "i.full_name LIKE '%$customerNameTerm%'";
+}
+
+// Customer Phone filter
+if (!empty($phone_filter)) {
+    $phoneTerm = $conn->real_escape_string($phone_filter);
+    $searchConditions[] = "i.mobile = '$phoneTerm'";
 }
 
 // Date range filter
@@ -309,7 +316,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
 <head>
     <title>Cancel Orders | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
 
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/head.php'); ?>
 
     <!-- Stylesheets -->
     <link rel="stylesheet" href="../assets/css/orders.css" />
@@ -396,9 +403,9 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
 <body>
     <!-- Page Loader -->
     <?php 
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/loader.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/navbar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/sidebar.php');
     ?>
 
     <div class="pc-container">
@@ -460,6 +467,13 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                             <input type="text" id="customer_name_filter" name="customer_name_filter"
                                 placeholder="Enter customer name"
                                 value="<?php echo htmlspecialchars($customer_name_filter); ?>">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="phone_filter">Customer Phone</label>
+                            <input type="text" id="phone_filter" name="phone_filter"
+                                placeholder="Enter phone number"
+                                value="<?php echo htmlspecialchars($phone_filter); ?>">
                         </div>
 
                         <div class="form-group">
@@ -555,7 +569,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                 <th>Total Amount</th>
                                 <th>Cancellation Reason</th>
                                 <?php if ($is_main_admin == 1 && $_SESSION['role_id'] == 1) { ?>
-                                <th>Tenant Company</th>
+                                <th>Tenant</th>
                                 <?php } ?>
                                 <th>Actions</th>
                             </tr>
@@ -567,7 +581,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                 <!-- Order ID -->
                                 <td class="order-id">
                                     <?php echo isset($row['order_id']) ? htmlspecialchars($row['order_id']) : ''; ?>
-                                    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/leads_badge.php'); ?>
+                                    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/leads_badge.php'); ?>
                                 </td>
 
                                 <!-- NEW: Issue Date Column -->
@@ -633,7 +647,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                     ?>
                                 </td>
 
-                                <!-- Tenant Company Name -->
+                                <!-- Tenant Name -->
                                 <?php if ($is_main_admin == 1 && $_SESSION['role_id'] == 1) { ?>
                                 <td class="customer-name">
                                     <div class="customer-info">
@@ -682,21 +696,21 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                     <div class="pagination-controls">
                         <?php if ($page > 1): ?>
                         <button class="page-btn"
-                            onclick="window.location.href='?page=<?php echo $page - 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&tenant_id_filter=<?php echo urlencode($tenant_id_filter); ?>&user_id_filter=<?php echo urlencode($user_id_filter); ?>&search=<?php echo urlencode($search); ?>'">
+                            onclick="window.location.href='?page=<?php echo $page - 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&tenant_id_filter=<?php echo urlencode($tenant_id_filter); ?>&user_id_filter=<?php echo urlencode($user_id_filter); ?>&search=<?php echo urlencode($search); ?>'">
                             <i class="fas fa-chevron-left"></i>
                         </button>
                         <?php endif; ?>
 
                         <?php for ($i = max(1, $page - 2); $i <= min($totalPages, $page + 2); $i++): ?>
                         <button class="page-btn <?php echo ($i == $page) ? 'active' : ''; ?>"
-                            onclick="window.location.href='?page=<?php echo $i; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&tenant_id_filter=<?php echo urlencode($tenant_id_filter); ?>&user_id_filter=<?php echo urlencode($user_id_filter); ?>&search=<?php echo urlencode($search); ?>'">
+                            onclick="window.location.href='?page=<?php echo $i; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&tenant_id_filter=<?php echo urlencode($tenant_id_filter); ?>&user_id_filter=<?php echo urlencode($user_id_filter); ?>&search=<?php echo urlencode($search); ?>'">
                             <?php echo $i; ?>
                         </button>
                         <?php endfor; ?>
 
                         <?php if ($page < $totalPages): ?>
                         <button class="page-btn"
-                            onclick="window.location.href='?page=<?php echo $page + 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&tenant_id_filter=<?php echo urlencode($tenant_id_filter); ?>&user_id_filter=<?php echo urlencode($user_id_filter); ?>&search=<?php echo urlencode($search); ?>'">
+                            onclick="window.location.href='?page=<?php echo $page + 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&tenant_id_filter=<?php echo urlencode($tenant_id_filter); ?>&user_id_filter=<?php echo urlencode($user_id_filter); ?>&search=<?php echo urlencode($search); ?>'">
                             <i class="fas fa-chevron-right"></i>
                         </button>
                         <?php endif; ?>
@@ -707,11 +721,11 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
     </div>
 
     <!-- Include MODAL for View Order -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/order_view_modal.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/order_view_modal.php'); ?>
 
     <!-- Include Footer and Scripts (toast.js loads here) -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php'); ?>
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/footer.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/scripts.php'); ?>
 
     <script>
     /**
@@ -731,12 +745,13 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
     // Simplified role variables from PHP
     const currentUserRole = <?php echo $current_user_role; ?>;
     const currentUserId = <?php echo $current_user_id; ?>;
-    const isAdmin = <?php echo $rbac->isMainAdmin() ? 'true' : 'false'; ?>;
+    const isAdmin = <?php echo $rbac->isSuperAdmin() ? 'true' : 'false'; ?>;
 
     // Clear all filter inputs - SIMPLIFIED
     function clearFilters() {
         document.getElementById('order_id_filter').value = '';
         document.getElementById('customer_name_filter').value = '';
+        document.getElementById('phone_filter').value = '';
         document.getElementById('date_from').value = '';
         document.getElementById('date_to').value = '';
         document.getElementById('pay_status_filter').value = '';
@@ -886,7 +901,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
             return;
         }
 
-        const slipUrl = '/OMS/dist/uploads/' + encodeURIComponent(currentPaymentSlip);
+        const slipUrl = '/orderhub_nextwave/dist/uploads/' + encodeURIComponent(currentPaymentSlip);
         window.open(slipUrl, '_blank');
     }
 

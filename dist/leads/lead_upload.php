@@ -9,19 +9,19 @@ session_start();
 // Check if user is logged in, if not redirect to login page
 if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     ob_end_clean();
-    header("Location: /OMS/dist/pages/login.php");
+    header("Location: /orderhub_nextwave/dist/pages/login.php");
     exit();
 }
 
 // Include the database connection file early
-include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
 
 // Store role (role_id 3, non-main-admin) is limited to Products & Order Management
 if ((int)($_SESSION['role_id'] ?? 0) === 3 && (int)($_SESSION['is_main_admin'] ?? 0) !== 1) {
     if (ob_get_level()) {
         ob_end_clean();
     }
-    header("Location: /OMS/dist/pages/access_denied.php");
+    header("Location: /orderhub_nextwave/dist/pages/access_denied.php");
     exit();
 }
 
@@ -242,6 +242,46 @@ if ($_POST && isset($_FILES['csv_file']) && isset($_POST['users'])) {
         
         // Initialize round-robin counter
         $userIndex = 0;
+
+// Function to calculate customer success rate
+function cs_condition($conn, $customer_id, $tenant_id) {
+    if (!$customer_id) return 0;
+
+    // Total orders
+    $stmt = $conn->prepare(
+        "SELECT COUNT(*) AS total FROM order_header WHERE customer_id = ? AND tenant_id = ?"
+    );
+    $stmt->bind_param("ii", $customer_id, $tenant_id);
+    $stmt->execute();
+    $totalOrders = $stmt->get_result()->fetch_assoc()['total'] ?? 0;
+    $stmt->close();
+    error_log("DEBUG: cs_condition - customer_id: $customer_id, tenant_id: $tenant_id, totalOrders: $totalOrders");
+
+    if ($totalOrders == 0) return 4; // New
+
+    // Failed orders (return + cancel)
+    $stmt = $conn->prepare(
+        "SELECT COUNT(*) AS failed
+         FROM order_header
+         WHERE customer_id = ?
+         AND tenant_id = ?
+         AND status IN ('cancel', 'return', 'return complete', 'return_handover', 'return pending', 'return transfer','removed')"
+    );
+    $stmt->bind_param("ii", $customer_id, $tenant_id);
+    $stmt->execute();
+    $failedOrders = $stmt->get_result()->fetch_assoc()['failed'] ?? 0;
+    $stmt->close();
+
+    // If no failed orders to Excellent
+    if ($failedOrders == 0) return 0;
+
+    $rate = ($failedOrders / $totalOrders) * 100;
+    
+    if (($rate >= 0) && ($rate <= 25)) return 0; // Excellent
+    if (($rate > 25) && ($rate <= 50)) return 1;  // Good
+    if (($rate > 50) && ($rate <= 75)) return 2;  // Average
+    if (($rate > 75)) return 3;                  // Bad
+}
 
         // Fetch product data once for all rows (filtered by tenant)
         $productSql = "SELECT id, product_code, description FROM products WHERE id = ? AND status = 'active' AND tenant_id = ?";
@@ -482,10 +522,10 @@ if ($_POST && isset($_FILES['csv_file']) && isset($_POST['users'])) {
                     notes, currency, status, pay_status, pay_date, created_by,
                     product_code, full_name, mobile, mobile_2,
                     address_line1, address_line2, city_id, zone_id, district_id,
-                    interface, call_log, upload_error
+                    interface, call_log, upload_error, `condition`
                 ) VALUES (?, ?, ?, CURDATE(), DATE_ADD(CURDATE(), INTERVAL 7 DAY), 
                         ?, 0.00, ?, ?, ?, 'lkr', 'pending', 'unpaid', NULL, ?, 
-                        ?, ?, ?, ?, ?, ?, ?, ?, ?, 'leads', 0, ?)";
+                        ?, ?, ?, ?, ?, ?, ?, ?, ?, 'leads', 0, ?, ?)";
                 
                 $orderStmt = $conn->prepare($orderSql);
                 if (!$orderStmt) {
@@ -498,8 +538,11 @@ if ($_POST && isset($_FILES['csv_file']) && isset($_POST['users'])) {
                 $zone_id_value = !empty($zone_id) ? $zone_id : null;
                 $district_id_value = !empty($district_id) ? $district_id : null;
                 
+                // Calculate customer success rate
+                $rate = cs_condition($conn, $customerId, $tenant_id);
+                
                 $orderStmt->bind_param(
-                    "iiidddsiisssssiiis",
+                    "iiidddsiisssssiiisi",
                     $tenant_id,
                     $customerId,
                     $assignedUserId,
@@ -517,7 +560,8 @@ if ($_POST && isset($_FILES['csv_file']) && isset($_POST['users'])) {
                     $cityId,
                     $zone_id_value,
                     $district_id_value,
-                    $upload_error
+                    $upload_error,
+                    $rate
                 );
                 
                 if (!$orderStmt->execute()) {
@@ -779,7 +823,7 @@ if ($selectedTenantId) {
 <head>
     <title>Lead Upload | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
     
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/head.php'); ?>
     
     <link rel="stylesheet" href="../assets/css/leads.css" />
 </head>
@@ -1099,9 +1143,9 @@ if ($selectedTenantId) {
 
 <body>
     <?php 
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/loader.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/navbar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/sidebar.php');
     ?>
 
     <div class="pc-container">
@@ -1267,7 +1311,7 @@ if ($selectedTenantId) {
                                     <div style="display: flex; gap: 10px; width: 100%; justify-content: space-between; align-items: center;">
                                         <input type="file" id="csv_file" name="csv_file" accept=".csv" style="display: none;">
                                         <button type="button" class="choose-file-btn" onclick="document.getElementById('csv_file').click()">Choose File</button>
-                                        <a href="/OMS/dist/templates/generate_template.php" class="choose-file-btn" style="text-decoration: none;">Generate Template</a>
+                                        <a href="/orderhub_nextwave/dist/templates/generate_template.php" class="choose-file-btn" style="text-decoration: none;">Generate Template</a>
                                     </div>
                                 </div>
                             </div>
@@ -1333,7 +1377,7 @@ if ($selectedTenantId) {
         </div>
     </div>
     <?php
-    include_once($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/info_modal.php');
+    include_once($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/info_modal.php');
     renderInfoModal(
         'How Lead Upload Works',
         'fas fa-upload',
@@ -1389,8 +1433,8 @@ if ($selectedTenantId) {
     ?>
 
     <?php
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/footer.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/scripts.php');
     ?>
 
 
@@ -1474,7 +1518,7 @@ if ($selectedTenantId) {
         if (sellingPriceHidden) sellingPriceHidden.value = '';
         if (sellingPriceHint) sellingPriceHint.textContent = '';
 
-        fetch('/OMS/dist/orders/get_product_batches.php?product_id=' + encodeURIComponent(productId) +
+        fetch('/orderhub_nextwave/dist/orders/get_product_batches.php?product_id=' + encodeURIComponent(productId) +
               (tenantIdForPrices ? '&tenant_id=' + encodeURIComponent(tenantIdForPrices) : ''))
             .then(response => response.json())
             .then(data => {

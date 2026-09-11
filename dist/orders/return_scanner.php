@@ -15,18 +15,19 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     if (ob_get_level()) {
         ob_end_clean();
     }
-    header("Location: /OMS/dist/pages/login.php");
+    header("Location: /orderhub_nextwave/dist/pages/login.php");
     exit();
 }
 
 // Include database connection
-include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
-include_once($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/stock_ledger.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
+include_once($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/stock_ledger.php');
 
 // Session role context (main admin vs tenant-restricted users)
 $is_main_admin = isset($_SESSION['is_main_admin']) ? (int)$_SESSION['is_main_admin'] : 0;
 $role_id = isset($_SESSION['role_id']) ? (int)$_SESSION['role_id'] : 0;
 $session_tenant_id = isset($_SESSION['tenant_id']) ? (int)$_SESSION['tenant_id'] : 0;
+$is_super_admin = ($is_main_admin === 1 && $role_id === 1);
 
 /**
  * FETCH COURIERS AJAX REQUEST (for the courier dropdown)
@@ -34,6 +35,9 @@ $session_tenant_id = isset($_SESSION['tenant_id']) ? (int)$_SESSION['tenant_id']
 if (isset($_GET['action']) && $_GET['action'] === 'get_couriers' && isset($_GET['tenant_id'])) {
     header('Content-Type: application/json');
     $tenantId = intval($_GET['tenant_id']);
+    if (!$is_super_admin || $tenantId <= 0) {
+        $tenantId = $session_tenant_id;
+    }
     $sql = "SELECT co_id, courier_id, courier_name 
             FROM couriers 
             WHERE tenant_id = ? AND status = 'active' 
@@ -56,7 +60,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_couriers' && isset($_GET[
                 'co_id' => $row['co_id'],
                 'courier_id' => $row['courier_id'],
                 'courier_name' => $row['courier_name'],
-                'display_name' => $row['courier_name'] . ' (ID: ' . $row['courier_id'] . ')'
+                'display_name' => $row['courier_name'] . ' (ID: ' . $row['co_id'] . ')'
             ];
         }
     }
@@ -100,12 +104,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             // Live mode - update database
             
             // First, check if tracking number exists in orders (scoped to courier + tenant)
-            if ($is_main_admin === 1) {
-                $checkSql = "SELECT order_id, status, tracking_number FROM order_header WHERE tracking_number = ? AND co_id = ? LIMIT 1";
+            if ($is_super_admin) {
+                $checkSql = "SELECT order_id, tenant_id, status, tracking_number FROM order_header WHERE tracking_number = ? AND co_id = ? LIMIT 1";
                 $checkStmt = $conn->prepare($checkSql);
                 $checkStmt->bind_param("si", $tracking_number, $co_id);
             } else {
-                $checkSql = "SELECT order_id, status, tracking_number FROM order_header WHERE tracking_number = ? AND co_id = ? AND tenant_id = ? LIMIT 1";
+                $checkSql = "SELECT order_id, tenant_id, status, tracking_number FROM order_header WHERE tracking_number = ? AND co_id = ? AND tenant_id = ? LIMIT 1";
                 $checkStmt = $conn->prepare($checkSql);
                 $checkStmt->bind_param("sii", $tracking_number, $co_id, $session_tenant_id);
             }
@@ -174,9 +178,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                     $isBatchAware = $checkAutoBatchesStmt->get_result()->num_rows > 0;
                     $checkAutoBatchesStmt->close();
 
+                    $order_tenant_id = (int)($order['tenant_id'] ?? $session_tenant_id);
                     $updateBatch = null;
                     if ($isBatchAware) {
-                        if ($is_main_admin) {
+                        if ($is_super_admin) {
                             $updateBatch = $conn->prepare("UPDATE batches SET remaining_qty = remaining_qty + ? WHERE batch_id = ?");
                         } else {
                             $updateBatch = $conn->prepare("UPDATE batches SET remaining_qty = remaining_qty + ? WHERE batch_id = ? AND tenant_id = ?");
@@ -196,16 +201,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                             $oibResult = $oibStmt->get_result();
                             $restoredBatchQty = 0;
                             while ($oib = $oibResult->fetch_assoc()) {
-                                if ($is_main_admin) {
+                                if ($is_super_admin) {
                                     $updateBatch->bind_param("ii", $oib['quantity'], $oib['batch_id']);
                                 } else {
-                                    $updateBatch->bind_param("iii", $oib['quantity'], $oib['batch_id'], $session_tenant_id);
+                                    $updateBatch->bind_param("iii", $oib['quantity'], $oib['batch_id'], $order_tenant_id);
                                 }
                                 if (!$updateBatch->execute()) {
                                     throw new Exception("Failed to restore batch stock.");
                                 }
                                 $restoredBatchQty += (int)$oib['quantity'];
-                                log_stock_movement($conn, (int)$tenant_id, (int)$productId, (int)$oib['batch_id'], 'return_in', (int)$oib['quantity'], 'order', (int)$order['order_id'], isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : null, 'Return handover scan - batch restore');
+                                log_stock_movement($conn, $order_tenant_id, (int)$productId, (int)$oib['batch_id'], 'return_in', (int)$oib['quantity'], 'order', (int)$order['order_id'], isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : null, 'Return handover scan - batch restore');
                             }
                             $oibStmt->close();
                         }
@@ -213,7 +218,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                         // Update stock - Increment stock for returned items (with tenant isolation)
                         $updateStockSql = "UPDATE products SET stock_quantity = stock_quantity + ? WHERE id = ? AND tenant_id = ?";
                         $stockStmt = $conn->prepare($updateStockSql);
-                        $stockStmt->bind_param("iii", $quantity, $productId, $tenant_id);
+                        $stockStmt->bind_param("iii", $quantity, $productId, $order_tenant_id);
                         
                         if (!$stockStmt->execute()) {
                              throw new Exception("Failed to update stock for product ID: " . $productId);
@@ -223,7 +228,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                         // Ledger: product rollup (non-batch part, if any)
                         $nonBatchQty = (int)$quantity - (int)($restoredBatchQty ?? 0);
                         if ($nonBatchQty > 0) {
-                            log_stock_movement($conn, (int)$tenant_id, (int)$productId, null, 'return_in', $nonBatchQty, 'order', (int)$order['order_id'], isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : null, 'Return handover scan - non-batch restore');
+                            log_stock_movement($conn, $order_tenant_id, (int)$productId, null, 'return_in', $nonBatchQty, 'order', (int)$order['order_id'], isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : null, 'Return handover scan - non-batch restore');
                         }
                     }
                     if ($updateBatch) $updateBatch->close();
@@ -244,8 +249,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                     'items_updated' => $itemsUpdated,
                     'inventory_updated_count' => $inventoryUpdatedCount,
                     'scan_method' => 'bulk_scanner',
-                    'ip_address' => $_SERVER['REMOTE_ADDR'] ?? 'unknown',
-                    'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? 'unknown'
                 ]);
                 
                 $logSql = "INSERT INTO user_logs (user_id, action_type, inquiry_id, details, created_at) VALUES (?, ?, ?, ?, NOW())";
@@ -331,7 +334,7 @@ $restricted_tenant_id = (count($tenants) === 1 && !($is_main_admin === 1 && $_SE
 <head>
     <title>Return Scanner | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
     
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/head.php'); ?>
     
     <!-- Stylesheets -->
     <link rel="stylesheet" href="../assets/css/orders.css" />
@@ -560,9 +563,9 @@ $restricted_tenant_id = (count($tenants) === 1 && !($is_main_admin === 1 && $_SE
 <body>
     <!-- Page Loader -->
     <?php 
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/loader.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/navbar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/sidebar.php');
     ?>
 
     <div class="pc-container">
@@ -656,10 +659,10 @@ $restricted_tenant_id = (count($tenants) === 1 && !($is_main_admin === 1 && $_SE
     </div>
 
     <!-- Footer -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/footer.php'); ?>
 
     <!-- Include JavaScript files -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/scripts.php'); ?>
     
     <script>
         // JavaScript functions for scanner functionality

@@ -6,18 +6,16 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     echo json_encode(['success' => false, 'message' => 'Unauthorized access.']);
     exit();
 }
+if ((int)($_SESSION['is_main_admin'] ?? 0) !== 1 || !in_array((int)($_SESSION['role_id'] ?? 0), [1, 3], true)) {
+    echo json_encode(['success' => false, 'message' => 'Access denied.']);
+    exit();
+}
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     echo json_encode(['success' => false, 'message' => 'Invalid request method.']);
     exit();
 }
 
-include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
-
-// Store role (role_id 3, non-main-admin) is limited to Products & Order Management
-if (($_SESSION['role_id'] ?? 0) == 3 && (($_SESSION['is_main_admin'] ?? 0) !== 1)) {
-    echo json_encode(['success' => false, 'message' => 'Unauthorized access.']);
-    exit();
-}
+include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
 
 if (!isset($_POST['csrf_token']) || !isset($_SESSION['csrf_token']) || $_POST['csrf_token'] !== $_SESSION['csrf_token']) {
     echo json_encode(['success' => false, 'message' => 'Security token mismatch.']);
@@ -42,6 +40,14 @@ try {
     $email = sanitizeInput($_POST['email'] ?? '');
     $address = sanitizeInput($_POST['address'] ?? '');
     $status = sanitizeInput($_POST['status'] ?? 'active');
+    $statusStmt = $conn->prepare("SELECT status FROM suppliers WHERE id = ?");
+    $statusStmt->bind_param("i", $supplier_id);
+    $statusStmt->execute();
+    $existingSupplier = $statusStmt->get_result()->fetch_assoc();
+    $statusStmt->close();
+    if ($existingSupplier) {
+        $status = sanitizeInput($existingSupplier['status']);
+    }
 
     if (empty($name)) {
         $response['errors']['name'] = 'Supplier name is required';

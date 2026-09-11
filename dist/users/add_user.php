@@ -3,7 +3,7 @@
 session_start();
 
 // Include the database connection file FIRST
-include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
 
 // Check if user is logged in, if not redirect to login page
 if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
@@ -11,7 +11,7 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     if (ob_get_level()) {
         ob_end_clean();
     }
-    header("Location: /OMS/dist/pages/login.php");
+    header("Location: /orderhub_nextwave/dist/pages/login.php");
     exit();
 }
 
@@ -29,7 +29,7 @@ $role_result = $role_stmt->get_result();
 if ($role_result->num_rows === 0) {
     // User not found or inactive
     session_destroy();
-    header("Location: /OMS/dist/pages/login.php");
+    header("Location: /orderhub_nextwave/dist/pages/login.php");
     exit();
 }
 
@@ -38,12 +38,12 @@ $user_role = $role_result->fetch_assoc();
 // Check if user is admin (role_id = 1)
 if ($user_role['role_id'] != 1) {
     // User is not admin, redirect to dashboard
-    header("Location: /OMS/dist/dashboard/index.php");
+    header("Location: /orderhub_nextwave/dist/dashboard/index.php");
     exit();
 }
 
 // Fetch roles from database
-$roleQuery = "SELECT * FROM roles ORDER BY name";
+$roleQuery = "SELECT * FROM roles ORDER BY id";
 $roleResult = mysqli_query($conn, $roleQuery);
 
 // Fetch tenants if user is main admin 
@@ -71,7 +71,7 @@ if ($is_main_admin && $_SESSION['role_id'] == 1) {
     <title>Add New User | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
 
     <?php
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/head.php');
     ?>
     
     <!-- [Template CSS Files] -->
@@ -221,9 +221,9 @@ input[type="password"] {
 <body>
     <!-- LOADER -->
     <?php
-        include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php');
-        include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
-        include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
+        include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/loader.php');
+        include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/navbar.php');
+        include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/sidebar.php');
     ?>
     <!-- END LOADER -->
 
@@ -315,7 +315,6 @@ input[type="password"] {
                                     <input type="text" class="form-control" id="nic" name="nic"
                                         placeholder="Enter NIC Number" required>
                                     <div class="error-feedback" id="nic-error"></div>
-                                    <div class="nic-hint"></div>
                                 </div>
 
                                 <div class="customer-form-group">
@@ -352,7 +351,7 @@ input[type="password"] {
                                 <?php if ($is_main_admin && $_SESSION['role_id'] == 1): ?>
                                 <div class="customer-form-group">
                                     <label for="tenant_id" class="form-label">
-                                        <i class="fas fa-building"></i> Tenant Company<span class="required">*</span>
+                                        <i class="fas fa-building"></i> Tenant<span class="required">*</span>
                                     </label>
                                     <select class="form-select" id="tenant_id" name="tenant_id" required>
                                         <option value="">Select Tenant...</option>
@@ -402,13 +401,13 @@ input[type="password"] {
 
     <!-- FOOTER -->
     <?php
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/footer.php');
     ?>
     <!-- END FOOTER -->
 
     <!-- SCRIPTS -->
     <?php
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/scripts.php');
     ?>
     <!-- END SCRIPTS -->
 
@@ -795,7 +794,7 @@ input[type="password"] {
             const newNICRegex = /^\d{12}$/;
             
             if (!oldNICRegex.test(cleanNIC) && !newNICRegex.test(cleanNIC)) {
-                return { valid: false, message: 'Please enter a valid Sri Lankan NIC (e.g., 123456789V or 123456789012)' };
+                return { valid: false, message: 'Invalid NIC format. Use old format (9 digits + V/X) or new format (12 digits)' };
             }
             return { valid: true, message: '' };
         }

@@ -8,12 +8,12 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     if (ob_get_level()) {
         ob_end_clean();
     }
-    header("Location: /OMS/dist/pages/login.php");
+    header("Location: /orderhub_nextwave/dist/pages/login.php");
     exit();
 }
 
 // Include the database connection file
-include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
 
 
 // Handle search and filter parameters
@@ -39,7 +39,7 @@ $tenant_id = isset($_SESSION['tenant_id']) ? intval($_SESSION['tenant_id']) : 0;
 // Page-level access: Allow Main Admin and Company Admin (role_id=1) only
 if ($role_id !== 1) {
     if (ob_get_level()) ob_end_clean();
-    header("Location: /OMS/dist/dashboard/index.php");
+    header("Location: /orderhub_nextwave/dist/dashboard/index.php");
     exit();
 }
 
@@ -147,15 +147,15 @@ if ($courierNamesResult && $courierNamesResult->num_rows > 0) {
 function getStatusInfo($is_default) {
     switch($is_default) {
         case 0:
-            return ['label' => 'None', 'class' => 'status-none', 'icon' => 'fas fa-circle'];
+            return ['label' => 'None', 'class' => 'status-none'];
         case 1:
-            return ['label' => 'Default Courier', 'class' => 'status-default-courier', 'icon' => 'fas fa-star'];
+            return ['label' => 'Default Courier', 'class' => 'status-default-courier'];
         case 2:
-            return ['label' => 'API Parcel Courier', 'class' => 'status-api', 'icon' => 'fas fa-code'];
+            return ['label' => 'API Parcel Courier', 'class' => 'status-api'];
         case 3:
-            return ['label' => 'Existing API Parcel', 'class' => 'status-existing-api', 'icon' => 'fas fa-boxes'];
+            return ['label' => 'Existing API Parcel', 'class' => 'status-existing-api'];
         default:
-            return ['label' => 'Unknown', 'class' => 'status-unknown', 'icon' => 'fas fa-question'];
+            return ['label' => 'Unknown', 'class' => 'status-unknown'];
     }
 }
 ?>
@@ -166,7 +166,7 @@ function getStatusInfo($is_default) {
 <head>
     <title>Courier Management | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
     
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/head.php'); ?>
     
     <!-- Stylesheets -->
     <link rel="stylesheet" href="../assets/css/orders.css" />
@@ -207,9 +207,9 @@ function getStatusInfo($is_default) {
 <body>
     <!-- Page Loader -->
     <?php 
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/loader.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/navbar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/sidebar.php');
     ?>
 
     <div class="pc-container">
@@ -318,8 +318,12 @@ function getStatusInfo($is_default) {
                                         
                                         <?php if ($is_main_admin === 1 && $_SESSION['role_id'] == 1): ?>
                                         <!-- Tenant Column (Only for Main Admin) -->
-                                        <td class="tenant-info">
-                                            <?php echo isset($row['tenant_name']) ? htmlspecialchars($row['tenant_name']) : 'N/A'; ?>
+                                        <td class="customer-name">
+                                            <div class="customer-info">
+                                                <h6 style="margin: 0; font-size: 14px;">
+                                                    <?php echo isset($row['tenant_name']) && $row['tenant_name'] !== '' ? htmlspecialchars($row['tenant_name']) : 'N/A'; ?>
+                                                </h6>
+                                            </div>
                                         </td>
                                         <?php endif; ?>
                                         
@@ -359,7 +363,6 @@ function getStatusInfo($is_default) {
                                         <!-- Status -->
                                         <td>
                                             <span class="status-badge <?php echo $statusInfo['class']; ?>">
-                                                <i class="<?php echo $statusInfo['icon']; ?>"></i>
                                                 <?php echo $statusInfo['label']; ?>
                                             </span>
                                         </td>
@@ -489,10 +492,10 @@ function getStatusInfo($is_default) {
 
 
     <!-- Footer -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/footer.php'); ?>
 
     <!-- Scripts -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/scripts.php'); ?>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
     <script>
         // Clear filters function

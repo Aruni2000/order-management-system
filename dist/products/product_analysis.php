@@ -35,11 +35,11 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     if (ob_get_level()) {
         ob_end_clean();
     }
-    header("Location: /OMS/dist/pages/login.php");
+    header("Location: /orderhub_nextwave/dist/pages/login.php");
     exit();
 }
 
-include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
 
 $current_user_id = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
 $current_user_role = isset($_SESSION['role_id']) ? (int)$_SESSION['role_id'] : 0;
@@ -67,7 +67,7 @@ if ($current_user_id == 0 || $current_user_role == 0) {
 }
 
 if ($current_user_id == 0) {
-    header("Location: /OMS/dist/pages/login.php");
+    header("Location: /orderhub_nextwave/dist/pages/login.php");
     exit();
 }
 
@@ -78,9 +78,10 @@ if ($current_user_id == 0) {
 $is_main_admin = (int)($_SESSION['is_main_admin'] ?? 0) === 1;
 $is_admin = $current_user_role == 1;
 $is_user = $current_user_role == 2;
+$is_super_admin = ($is_main_admin && $is_admin);
 $session_tenant_id = (int)($_SESSION['tenant_id'] ?? 0);
 if (!$is_admin && !$is_user) {
-    header("Location: /OMS/dist/pages/access_denied.php");
+    header("Location: /orderhub_nextwave/dist/pages/access_denied.php");
     exit();
 }
 
@@ -88,16 +89,16 @@ $date_from = isset($_GET['date_from']) && !empty($_GET['date_from']) ? $_GET['da
 $date_to = isset($_GET['date_to']) && !empty($_GET['date_to']) ? $_GET['date_to'] : date('Y-m-d');
 $product_search = isset($_GET['product_search']) ? trim($_GET['product_search']) : '';
 $category_filter = isset($_GET['category_filter']) ? intval($_GET['category_filter']) : 0;
-// Tenant filter: only meaningful for the main admin (who sees all tenants)
-$tenant_filter = $is_main_admin ? (isset($_GET['tenant_filter']) ? intval($_GET['tenant_filter']) : 0) : 0;
+// Tenant filter: only meaningful for the Super Admin (who sees all tenants)
+$tenant_filter = $is_super_admin ? (isset($_GET['tenant_filter']) ? intval($_GET['tenant_filter']) : 0) : 0;
 
 $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 20;
 $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
 $offset = ($page - 1) * $limit;
 
-// Tenant list for the tenant dropdown (main admin only)
+// Tenant list for the tenant dropdown (Super Admin only)
 $tenants = [];
-if ($is_main_admin) {
+if ($is_super_admin) {
     $tRes = $conn->query("SELECT tenant_id, company_name FROM tenants WHERE status = 'active' ORDER BY company_name ASC");
     if ($tRes) {
         while ($trow = $tRes->fetch_assoc()) {
@@ -106,11 +107,11 @@ if ($is_main_admin) {
     }
 }
 
-// Category filter options scoped to the selected tenant (main admin with a
-// tenant picked), the accessing user's own tenant, or all tenants for a main
-// admin with no tenant selected
+// Category filter options scoped to the selected tenant (Super Admin with a
+// tenant picked), the accessing user's own tenant, or all tenants for a Super
+// Admin with no tenant selected
 $categories = [];
-if ($is_main_admin) {
+if ($is_super_admin) {
     $catSql = "SELECT id, name, tenant_id FROM categories WHERE status = 'active'";
     if ($tenant_filter > 0) {
         $catSql .= " AND tenant_id = $tenant_filter";
@@ -127,15 +128,14 @@ if ($catRes) {
 
 $roleCondition = "";
 if ($is_admin) {
-    // Admins: main admin sees all tenants, or one tenant when picked in the
+    // Admins: Super Admin sees all tenants, or one tenant when picked in the
     // tenant filter; sub-company admin sees own company
-    $roleCondition = $is_main_admin
+    $roleCondition = $is_super_admin
         ? ($tenant_filter > 0 ? " AND oh.tenant_id = $tenant_filter" : "")
         : " AND oh.tenant_id = $session_tenant_id";
 } else {
-    // Users (role 2): see only orders they placed
-    $roleCondition = " AND oh.user_id = $current_user_id"
-                   . ($is_main_admin ? "" : " AND oh.tenant_id = $session_tenant_id");
+    // Users (role 2): see only orders they placed in their tenant
+    $roleCondition = " AND oh.user_id = $current_user_id AND oh.tenant_id = $session_tenant_id";
 }
 
 $safe_from = $conn->real_escape_string($date_from);
@@ -241,16 +241,26 @@ $summary['avg_success_rate'] = $summaryDecided > 0 ? $summaryCompleted * 100 / $
 
 <head>
     <title>Product Analysis | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/head.php'); ?>
     <link rel="stylesheet" href="../assets/css/tailwind-utilities.css" />
     <link rel="stylesheet" href="../assets/css/orders.css" />
     <link rel="stylesheet" href="../assets/css/customers.css" />
+
+    <style>
+        .product-category {
+            font-family: monospace;
+            font-size: 13px;
+            color: #495057;
+            background: #f8f9fa;
+            display: inline-block;
+        }
+    </style>
 </head>
 
 <body>
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php'); 
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/loader.php'); 
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/navbar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/sidebar.php');?>
 
     <div class="pc-container">
         <div class="pc-content">
@@ -265,9 +275,9 @@ $summary['avg_success_rate'] = $summaryDecided > 0 ? $summaryCompleted * 100 / $
             <div class="main-content-wrapper">
                 <div class="tracking-container">
                     <form class="tracking-form" method="GET" action="">
-                        <?php if ($is_main_admin && !empty($tenants)): ?>
+                        <?php if ($is_super_admin && !empty($tenants)): ?>
                         <div class="form-group">
-                            <label for="tenant_filter">Tenant Company</label>
+                            <label for="tenant_filter">Tenant</label>
                             <select id="tenant_filter" name="tenant_filter">
                                 <option value="">All Tenants</option>
                                 <?php foreach ($tenants as $t): ?>
@@ -360,20 +370,20 @@ $summary['avg_success_rate'] = $summaryDecided > 0 ? $summaryCompleted * 100 / $
                             <tr>
                                 <th>ID</th>
                                 <th>Product Name</th>
-                                <th>Category</th>
                                 <th>Code</th>
+                                <th>Category</th>
                                 <th>Qty Sold</th>
-                                <?php if ($is_admin): ?>
-                                <th>Revenue</th>
-                                <th>Est. Cost</th>
-                                <th>Profit</th>
-                                <?php endif; ?>
                                 <th>Orders</th>
                                 <th>Success %</th>
                                 <th>Pending</th>
                                 <th>Dispatched</th>
                                 <th>Completed</th>
                                 <th>Cancelled</th>
+                                <?php if ($is_admin): ?>
+                                <th>Revenue</th>
+                                <th>Est. Cost</th>
+                                <th>Profit</th>
+                                <?php endif; ?>
                             </tr>
                         </thead>
                         <tbody>
@@ -392,29 +402,18 @@ $summary['avg_success_rate'] = $summaryDecided > 0 ? $summaryCompleted * 100 / $
                                             </div>
                                         </td>
                                         <td>
-                                            <span class="product-category">
-                                                <?php echo htmlspecialchars($row['category_name'] ?? 'Uncategorized'); ?>
-                                            </span>
-                                        </td>
-                                        <td>
                                             <div class="product-code" style="font-family: monospace; font-size: 13px; color: #495057; background: #f8f9fa; padding: 4px 8px; border-radius: 4px; display: inline-block;">
                                                 <?php echo htmlspecialchars($row['product_code'] ?? 'N/A'); ?>
                                             </div>
                                         </td>
+                                        <td>
+                                            <span class="product-category">
+                                                <?php echo htmlspecialchars($row['category_name'] ?? 'Uncategorized'); ?>
+                                            </span>
+                                        </td>
                                         <td style="font-weight: 600;">
                                             <?php echo number_format($row['total_quantity'] ?? 0); ?>
                                         </td>
-                                        <?php if ($is_admin): ?>
-                                        <td style="font-weight: 600; color: #28a745;">
-                                            LKR <?php echo number_format($row['total_earn'] ?? 0, 2); ?>
-                                        </td>
-                                        <td style="font-weight: 500; color: #64748b;">
-                                            LKR <?php echo number_format($row['total_cost'] ?? 0, 2); ?>
-                                        </td>
-                                        <td style="font-weight: 600; color: #059669;">
-                                            LKR <?php echo number_format($row['total_profit'] ?? 0, 2); ?>
-                                        </td>
-                                        <?php endif; ?>
                                         <td>
                                             <?php echo number_format($row['order_count'] ?? 0); ?>
                                         </td>
@@ -444,6 +443,17 @@ $summary['avg_success_rate'] = $summaryDecided > 0 ? $summaryCompleted * 100 / $
                                                 <?php echo number_format($row['cancelled_count'] ?? 0); ?>
                                             </span>
                                         </td>
+                                        <?php if ($is_admin): ?>
+                                        <td style="font-weight: 600; color: #28a745;">
+                                            LKR <?php echo number_format($row['total_earn'] ?? 0, 2); ?>
+                                        </td>
+                                        <td style="font-weight: 500; color: #64748b;">
+                                            LKR <?php echo number_format($row['total_cost'] ?? 0, 2); ?>
+                                        </td>
+                                        <td style="font-weight: 600; color: #059669;">
+                                            LKR <?php echo number_format($row['total_profit'] ?? 0, 2); ?>
+                                        </td>
+                                        <?php endif; ?>
                                     </tr>
                                 <?php endwhile; ?>
                             <?php else: ?>
@@ -497,7 +507,7 @@ $summary['avg_success_rate'] = $summaryDecided > 0 ? $summaryCompleted * 100 / $
     </div>
 
     <?php
-    include_once($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/info_modal.php');
+    include_once($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/info_modal.php');
     renderInfoModal(
         'How Product Analysis Works',
         'fas fa-chart-bar',
@@ -551,8 +561,8 @@ $summary['avg_success_rate'] = $summaryDecided > 0 ? $summaryCompleted * 100 / $
     );
     ?>
 
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php'); ?>
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/footer.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/scripts.php'); ?>
 
     <script>
         function clearFilters() {

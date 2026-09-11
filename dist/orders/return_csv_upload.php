@@ -8,13 +8,13 @@ session_start();
 // Check if user is logged in, if not redirect to login page
 if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     ob_end_clean();
-    header("Location: /OMS/dist/pages/login.php");
+    header("Location: /orderhub_nextwave/dist/pages/login.php");
     exit();
 }
 
 // Include the database connection file early
-include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
-include_once($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/stock_ledger.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
+include_once($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/stock_ledger.php');
 
 // Handle AJAX request for fetching couriers
 if (isset($_GET['action']) && $_GET['action'] === 'get_couriers' && isset($_GET['tenant_id'])) {
@@ -42,7 +42,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_couriers' && isset($_GET[
                 'co_id' => $row['co_id'],
                 'courier_id' => $row['courier_id'],
                 'courier_name' => $row['courier_name'],
-                'display_name' => $row['courier_name'] . ' (ID: ' . $row['courier_id'] . ')'
+                'display_name' => $row['courier_name'] . ' (ID: ' . $row['co_id'] . ')'
             ];
         }
     }
@@ -150,7 +150,7 @@ function validateTrackingNumberInDB($trackingNumber, $conn, $co_id) {
     $cleanTracking = $formatValidation['clean_tracking'];
     
     // Check if tracking number exists in database with return complete status
-    if ($GLOBALS['is_main_admin'] === 1) {
+    if ($GLOBALS['is_main_admin'] === 1 && $GLOBALS['role_id'] === 1) {
         $findTrackingSql = "SELECT order_id, status FROM order_header WHERE tracking_number = ? AND co_id = ? LIMIT 1";
         $findTrackingStmt = $conn->prepare($findTrackingSql);
         if (!$findTrackingStmt) return ['valid' => false, 'message' => 'Database error'];
@@ -357,7 +357,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
             }
             
             // Prepare SQL statement to update order status
-            if ($is_main_admin === 1) {
+            if ($is_main_admin === 1 && $role_id === 1) {
                 $updateOrderSql = "UPDATE order_header SET status = 'return_handover', updated_at = NOW() WHERE order_id = ? AND status = 'return complete'";
                 $updateOrderStmt = $conn->prepare($updateOrderSql);
             } else {
@@ -379,7 +379,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                 $_SESSION['import_error'] = 'User session not found. Please login again.';
                 fclose($handle);
                 ob_end_clean();
-                header("Location: /OMS/dist/pages/login.php");
+                header("Location: /orderhub_nextwave/dist/pages/login.php");
                 exit();
             }
             
@@ -427,7 +427,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                 
                 // Update order status
                 try {
-                    if ($is_main_admin === 1) {
+                    if ($is_main_admin === 1 && $role_id === 1) {
                         $updateOrderStmt->bind_param("i", $trackingData['order_id']);
                     } else {
                         $updateOrderStmt->bind_param("ii", $trackingData['order_id'], $tenant_id);
@@ -458,7 +458,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
 
                                 $updateBatch = null;
                                 if ($isBatchAware) {
-                                    if ($is_main_admin === 1) {
+                                    if ($is_main_admin === 1 && $role_id === 1) {
                                         $updateBatch = $conn->prepare("UPDATE batches SET remaining_qty = remaining_qty + ? WHERE batch_id = ?");
                                     } else {
                                         $updateBatch = $conn->prepare("UPDATE batches SET remaining_qty = remaining_qty + ? WHERE batch_id = ? AND tenant_id = ?");
@@ -478,7 +478,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                                         $oibResult = $oibStmt->get_result();
                                     $restoredBatchQty = 0;
                                     while ($oib = $oibResult->fetch_assoc()) {
-                                        if ($is_main_admin === 1) {
+                                        if ($is_main_admin === 1 && $role_id === 1) {
                                             $updateBatch->bind_param("ii", $oib['quantity'], $oib['batch_id']);
                                         } else {
                                             $updateBatch->bind_param("iii", $oib['quantity'], $oib['batch_id'], $tenant_id);
@@ -592,7 +592,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
 <head>
     <title>Return CSV Upload | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
 
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/head.php'); ?>
 
     <!-- Stylesheets -->
     <link rel="stylesheet" href="../assets/css/leads.css" />
@@ -601,9 +601,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
 <body>
     <!-- Page Loader -->
     <?php 
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/loader.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/navbar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/sidebar.php');
     ?>
 
     <div class="pc-container">
@@ -694,10 +694,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                 <div class="lead-upload-container">
                     <form method="POST" enctype="multipart/form-data" id="uploadForm">
                         <div class="template-download-section">
-                            <a href="/OMS/dist/templates/return_csv.php" class="template-download-btn">
+                            <a href="/orderhub_nextwave/dist/templates/return_csv.php" class="template-download-btn">
                                 Download CSV Template
                             </a>
-                            <a href="/OMS/dist/orders/return_scanner.php" class="template-download-btn" style="margin-left: 10px;">
+                            <a href="/orderhub_nextwave/dist/orders/return_scanner.php" class="template-download-btn" style="margin-left: 10px;">
                                 <i class="fas fa-barcode"></i> Return Scanner
                             </a>
                         </div>
@@ -752,7 +752,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
         </div>
     </div>
     <?php
-    include_once($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/info_modal.php');
+    include_once($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/info_modal.php');
     renderInfoModal(
         'How Return Handover CSV Upload Works',
         'fas fa-upload',
@@ -794,10 +794,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
     );
     ?>
     <!-- Footer -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/footer.php'); ?>
 
     <!-- Scripts -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/scripts.php'); ?>
 
 
 

@@ -19,7 +19,7 @@ try {
     }
 
     // Include database connection
-    $db_path = $_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php';
+    $db_path = $_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php';
     if (!file_exists($db_path)) {
         throw new Exception('Database connection file not found');
     }
@@ -45,8 +45,9 @@ try {
     // First check if order exists and get its current status (with tenant isolation)
     $session_tenant_id = isset($_SESSION['tenant_id']) ? (int)$_SESSION['tenant_id'] : 0;
     $is_main_admin = isset($_SESSION['is_main_admin']) ? (int)$_SESSION['is_main_admin'] : 0;
+    $role_id = isset($_SESSION['role_id']) ? (int)$_SESSION['role_id'] : 0;
     
-    if ($is_main_admin) {
+    if ($is_main_admin === 1 && $role_id === 1) {
         $checkOrderSql = "SELECT order_id, pay_status, status FROM order_header WHERE order_id = ?";
         $checkOrderStmt = $conn->prepare($checkOrderSql);
         $checkOrderStmt->bind_param("s", $orderId);
@@ -111,7 +112,7 @@ try {
         }
 
         // Create upload directory if it doesn't exist
-        $uploadDir = $_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/uploads/';
+        $uploadDir = $_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/uploads/';
         if (!is_dir($uploadDir)) {
             if (!mkdir($uploadDir, 0755, true)) {
                 throw new Exception('Failed to create upload directory');
@@ -123,7 +124,7 @@ try {
             throw new Exception('Upload directory is not writable');
         }
 
-        // Get company name for filename prefix
+        // Get Tenant Name for filename prefix
         $companyName = '';
         $brandQuery = "SELECT company_name FROM tenants WHERE status = 'active' LIMIT 1";
         $brandResult = $conn->query($brandQuery);

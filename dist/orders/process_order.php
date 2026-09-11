@@ -12,31 +12,16 @@ error_reporting(0);
 ini_set('display_errors', 0);
 
 // Include the database connection file
-include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
-include_once($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/stock_ledger.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
+include_once($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/stock_ledger.php');
 
-// NEW: Session recovery logic
+// Session validation - fail if user_id is missing
 $user_id = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
 
 if ($user_id == 0) {
-    // Try to recover user_id from session identifier if it's missing but we have a username/email
-    $session_identifier = isset($_SESSION['username']) ? $_SESSION['username'] : 
-                         (isset($_SESSION['email']) ? $_SESSION['email'] : '');
-    
-    if ($session_identifier) {
-        $userQuery = "SELECT id FROM users WHERE email = ? OR name = ? LIMIT 1";
-        $stmt = $conn->prepare($userQuery);
-        $stmt->bind_param("ss", $session_identifier, $session_identifier);
-        $stmt->execute();
-        $userResult = $stmt->get_result();
-        
-        if ($userResult && $userResult->num_rows > 0) {
-            $userData = $userResult->fetch_assoc();
-            $user_id = (int)$userData['id'];
-            $_SESSION['user_id'] = $user_id;
-        }
-        $stmt->close();
-    }
+    header('Content-Type: application/json');
+    echo json_encode(['success' => false, 'message' => 'Session expired. Please log in again.']);
+    exit();
 }
 
 // Function to log user actions
@@ -44,6 +29,46 @@ function logUserAction($conn, $user_id, $action_type, $inquiry_id, $details = nu
     $stmt = $conn->prepare("INSERT INTO user_logs (user_id, action_type, inquiry_id, details, created_at) VALUES (?, ?, ?, ?, NOW())");
     $stmt->bind_param("isis", $user_id, $action_type, $inquiry_id, $details);
     return $stmt->execute();
+}
+
+// Function to calculate customer success rate
+function cs_condition($conn, $customer_id, $tenant_id) {
+    if (!$customer_id) return 0;
+
+    // Total orders
+    $stmt = $conn->prepare(
+        "SELECT COUNT(*) AS total FROM order_header WHERE customer_id = ? AND tenant_id = ?"
+    );
+    $stmt->bind_param("ii", $customer_id, $tenant_id);
+    $stmt->execute();
+    $totalOrders = $stmt->get_result()->fetch_assoc()['total'] ?? 0;
+    $stmt->close();
+    error_log("DEBUG: cs_condition - customer_id: $customer_id, tenant_id: $tenant_id, totalOrders: $totalOrders");
+
+    if ($totalOrders == 0) return 4; // New
+
+    // Failed orders (return + cancel)
+    $stmt = $conn->prepare(
+        "SELECT COUNT(*) AS failed
+         FROM order_header
+         WHERE customer_id = ?
+         AND tenant_id = ?
+         AND status IN ('cancel', 'return', 'return complete', 'return_handover', 'return pending', 'return transfer','removed')"
+    );
+    $stmt->bind_param("ii", $customer_id, $tenant_id);
+    $stmt->execute();
+    $failedOrders = $stmt->get_result()->fetch_assoc()['failed'] ?? 0;
+    $stmt->close();
+
+    // If no failed orders to Excellent
+    if ($failedOrders == 0) return 0;
+
+    $rate = ($failedOrders / $totalOrders) * 100;
+    
+    if (($rate >= 0) && ($rate <= 25)) return 0; // Excellent
+    if (($rate > 25) && ($rate <= 50)) return 1;  // Good
+    if (($rate > 50) && ($rate <= 75)) return 2;  // Average
+    if (($rate > 75)) return 3;                  // Bad
 }
 
 /**
@@ -106,7 +131,7 @@ function setMessageAndRedirect($type, $message, $redirect_url = null) {
     
     // Default redirect to create order page
     if (!$redirect_url) {
-        $redirect_url = "/OMS/dist/orders/create_order.php";
+        $redirect_url = "/orderhub_nextwave/dist/orders/create_order.php";
     }
     
     // Clean output buffer
@@ -179,7 +204,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $tenant_id = isset($_POST['tenant_id']) ? intval($_POST['tenant_id']) : ($_SESSION['tenant_id'] ?? 1);
 
         // Validate that tenant_id is accessible by this user
-        if (!($is_main_admin === 1)) {
+        $is_main_admin = isset($_SESSION['is_main_admin']) ? (int)$_SESSION['is_main_admin'] : 0;
+        $role_id = isset($_SESSION['role_id']) ? (int)$_SESSION['role_id'] : 0;
+        if (!($is_main_admin === 1 && $role_id === 1)) {
             if ($tenant_id !== intval($_SESSION['tenant_id'])) {
                 throw new Exception("Invalid tenant access.");
             }
@@ -544,6 +571,9 @@ error_log("DEBUG - Order subtotal (after discount): Rs. $order_subtotal");
 error_log("DEBUG - Delivery fee applied: Rs. $delivery_fee");
 error_log("DEBUG - Total amount: Rs. $total_amount");
 
+// Calculate customer success rate
+$rate = cs_condition($conn, $customer_id, $tenant_id);
+
             // ==========================================
             // FIXED: INSERT ORDER_HEADER WITH TENANT_ID
             // ==========================================
@@ -552,8 +582,8 @@ error_log("DEBUG - Total amount: Rs. $total_amount");
                 subtotal, discount, total_amount, delivery_fee,
                 notes, currency, status, pay_status, pay_date, created_by,
                 product_code, full_name, email, mobile, mobile_2,
-                address_line1, address_line2, city_id, zone_id, district_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                address_line1, address_line2, city_id, zone_id, district_id, `condition`
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
             $stmt = $conn->prepare($insertOrderSql);
 
@@ -561,7 +591,7 @@ error_log("DEBUG - Total amount: Rs. $total_amount");
                 throw new Exception("Failed to prepare order header insert query: " . $conn->error);
             }
 $stmt->bind_param(
-    "iiiissddddsssssisssssssiii", 
+    "iiiissddddsssssisssssssiiii", 
     $tenant_id,                     // 1.  tenant_id
     $customer_id,                   // 2.  customer_id
     $user_id,                       // 3.  user_id
@@ -587,7 +617,8 @@ $stmt->bind_param(
     $final_address_line2,           // 23. address_line2
     $final_city_id,                 // 24. city_id
     $final_zone_id,                 // 25. zone_id
-    $final_district_id              // 26. district_id
+    $final_district_id,             // 26. district_id
+    $rate                           // 27. condition
 );
 
     if (!$stmt->execute()) {
@@ -845,7 +876,7 @@ foreach ($order_items as $item) {
                     // FDE NEW PARCEL API INTEGRATION
                     
                     // Include the FDE API function
-                    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/api/fde_new_parcel_api.php');
+                    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/api/fde_new_parcel_api.php');
                     
                     // CITY HANDLING
                     $city_name = '';
@@ -1014,7 +1045,7 @@ foreach ($order_items as $item) {
                     // FDE EXISTING PARCEL API INTEGRATION
                     
                     // Include the FDE Existing Parcel API function
-                    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/api/fde_existing_parcel_api.php');
+                    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/api/fde_existing_parcel_api.php');
                     
                     // CITY HANDLING
                     $city_name = '';
@@ -1264,7 +1295,7 @@ $updateOrderStmt->bind_param("iisi", $co_id, $default_courier_id, $tracking_numb
                             $courier_warning = '';
                             
                             // Validate API file and function
-                            $api_file_path = $_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/api/koombiyo_delivery_api.php';
+                            $api_file_path = $_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/api/koombiyo_delivery_api.php';
                             
                             if (!file_exists($api_file_path)) {
                                 $courier_warning = "Koombiyo API configuration error. Please contact support.";
@@ -1552,7 +1583,7 @@ $updateOrderStmt->bind_param("iisi", $co_id, $default_courier_id, $tracking_numb
                     
 // FIXED TransExpress New Parcel API Integration (Type 2)
 } elseif ($courier_type == 2) {
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/api/transexpress_new_parcel_api.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/api/transexpress_new_parcel_api.php');
     
     $proceed_with_api = false;
     $district_id = null;
@@ -1640,7 +1671,7 @@ $updateOrderStmt->bind_param("iisi", $co_id, $default_courier_id, $tracking_numb
 
 // FIXED TransExpress Existing Parcel API Integration (Type 3)
 } elseif ($courier_type == 3) {
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/api/transexpress_existing_parcel_api.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/api/transexpress_existing_parcel_api.php');
     
     $proceed_with_api = false;
     $city_name = '';
@@ -1818,7 +1849,7 @@ $updateOrderStmt->bind_param("iisi", $co_id, $default_courier_id, $tracking_numb
 
                 } elseif ($courier_type == 3) {
 
-                    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/api/royal_express_existing_parcel_api.php');
+                    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/api/royal_express_existing_parcel_api.php');
 
                     // STEP 1: Validate city and state
                     $proceed_with_api = false;

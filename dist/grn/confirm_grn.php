@@ -6,7 +6,7 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     echo json_encode(['success' => false, 'message' => 'Unauthorized access.']);
     exit();
 }
-if (!isset($_SESSION['is_main_admin']) || $_SESSION['is_main_admin'] != 1) {
+if (!isset($_SESSION['is_main_admin']) || $_SESSION['is_main_admin'] != 1 || !in_array((int)($_SESSION['role_id'] ?? 0), [1, 3], true)) {
     echo json_encode(['success' => false, 'message' => 'Unauthorized: Only main admin can confirm GRNs.']);
     exit();
 }
@@ -15,8 +15,8 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit();
 }
 
-include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
-include_once($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/stock_ledger.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
+include_once($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/stock_ledger.php');
 
 $input = json_decode(file_get_contents('php://input'), true);
 $grn_id = intval($input['grn_id'] ?? 0);

@@ -3,7 +3,7 @@
 session_start();
 
 // Include the database connection file FIRST
-include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
 
 // Check if user is logged in, if not redirect to login page
 if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
@@ -11,7 +11,7 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     if (ob_get_level()) {
         ob_end_clean();
     }
-    header("Location: /OMS/dist/pages/login.php");
+    header("Location: /orderhub_nextwave/dist/pages/login.php");
     exit();
 }
 
@@ -29,7 +29,7 @@ $role_result = $role_stmt->get_result();
 if ($role_result->num_rows === 0) {
     // User not found or inactive
     session_destroy();
-    header("Location: /OMS/dist/pages/login.php");
+    header("Location: /orderhub_nextwave/dist/pages/login.php");
     exit();
 }
 
@@ -38,12 +38,16 @@ $user_role = $role_result->fetch_assoc();
 // Check if user is admin (role_id = 1)
 if ($user_role['role_id'] != 1) {
     // User is not admin, redirect to dashboard
-    header("Location: /OMS/dist/dashboard/index.php");
+    header("Location: /orderhub_nextwave/dist/dashboard/index.php");
     exit();
 }
 
-// Determine if current user is a main admin
+
 $current_is_main_admin = isset($_SESSION['is_main_admin']) && $_SESSION['is_main_admin'] == 1;
+if (!$current_is_main_admin) {
+    header("Location: /orderhub_nextwave/dist/admin/branding.php");
+    exit();
+}
 
 // Function to generate CSRF token
 function generateCSRFToken() {
@@ -65,7 +69,7 @@ if (isset($_GET['id']) && !empty($_GET['id'])) {
     
     // Company admin can ONLY edit their own tenant
     if (!$current_is_main_admin && $tenantId !== (int)$session_tenant_id) {
-        header("Location: /OMS/dist/dashboard/index.php");
+        header("Location: /orderhub_nextwave/dist/dashboard/index.php");
         exit();
     }
 } elseif (!$current_is_main_admin && $session_tenant_id) {
@@ -77,7 +81,7 @@ if (isset($_GET['id']) && !empty($_GET['id'])) {
     exit();
 } else {
     // Fallback: not main admin and no session tenant
-    header("Location: /OMS/dist/dashboard/index.php");
+    header("Location: /orderhub_nextwave/dist/dashboard/index.php");
     exit();
 }
 
@@ -110,7 +114,7 @@ if ($stmt) {
     <title>Edit Tenant | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
 
     <?php
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/head.php');
     ?>
     
     <!-- [Template CSS Files] -->
@@ -205,24 +209,6 @@ if ($stmt) {
     cursor: pointer;
 }
 
-/* Form check styles for remove logo/favicon checkboxes */
-.form-check {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    margin-top: 0.5rem;
-}
-.form-check-input {
-    width: auto;
-    height: auto;
-    margin: 0;
-    cursor: pointer;
-}
-.form-check-label {
-    margin: 0;
-    cursor: pointer;
-}
-
 /* Mobile responsive fixes */
 @media screen and (max-width: 767.98px) {
     .form-row {
@@ -249,9 +235,9 @@ if ($stmt) {
 <body>
     <!-- LOADER -->
     <?php 
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/loader.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/navbar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/sidebar.php');
     ?>
     <!-- END LOADER -->
 
@@ -282,13 +268,13 @@ if ($stmt) {
                                 <!-- Tenant ID -->
                                 <input type="hidden" name="tenant_id" value="<?php echo $tenant_data['tenant_id']; ?>">
 
-                                <!-- Company Name -->
+                                <!-- Tenant Name -->
                                 <div class="form-row">
                                     <div class="form-column">
                                         <div class="form-group">
-                                            <label for="company_name" class="form-label">Company Name *</label>
+                                            <label for="company_name" class="form-label">Tenant Name *</label>
                                             <input type="text" class="form-control" id="company_name" name="company_name" 
-                                                   placeholder="Enter company name" value="<?php echo htmlspecialchars($tenant_data['company_name'] ?? ''); ?>" required>
+                                                   placeholder="Enter Tenant Name" value="<?php echo htmlspecialchars($tenant_data['company_name'] ?? ''); ?>" required>
                                             <div class="error-feedback" id="company_name-error"></div>
                                         </div>
                                     </div>
@@ -346,10 +332,20 @@ if ($stmt) {
                                     <div class="form-column">
                                         <div class="form-group">
                                             <label for="is_main_admin" class="form-label">Main Admin *</label>
+                                            <?php $isOwnTenant = $current_is_main_admin && (int)$tenantId === (int)$session_tenant_id; ?>
+                                            <?php if ($isOwnTenant): ?>
+                                            <input type="hidden" name="is_main_admin" value="<?php echo (int)($tenant_data['is_main_admin'] ?? 0); ?>">
+                                            <select class="form-select form-control" id="is_main_admin" disabled>
+                                                <option value="0" <?php echo (($tenant_data['is_main_admin'] ?? 0) == 0) ? 'selected' : ''; ?>>No</option>
+                                                <option value="1" <?php echo (($tenant_data['is_main_admin'] ?? 0) == 1) ? 'selected' : ''; ?>>Yes</option>
+                                            </select>
+                                            <small class="form-text text-warning">You cannot change the Main Tenant status of your own company. Another Main Tenant admin must do this.</small>
+                                            <?php else: ?>
                                             <select class="form-select form-control" id="is_main_admin" name="is_main_admin" required>
                                                 <option value="0" <?php echo (($tenant_data['is_main_admin'] ?? 0) == 0) ? 'selected' : ''; ?>>No</option>
                                                 <option value="1" <?php echo (($tenant_data['is_main_admin'] ?? 0) == 1) ? 'selected' : ''; ?>>Yes</option>
                                             </select>
+                                            <?php endif; ?>
                                             <div class="error-feedback" id="is_main_admin-error"></div>
                                         </div>
                                     </div>
@@ -423,13 +419,13 @@ if ($stmt) {
 
     <!-- FOOTER -->
     <?php
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/footer.php');
     ?>
     <!-- END FOOTER -->
 
     <!-- SCRIPTS -->
     <?php
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/scripts.php');
     ?>
     <!-- END SCRIPTS -->
 
@@ -573,10 +569,10 @@ if ($stmt) {
                 changed = changed || $('#fav_icon').get(0).files.length > 0;
             }
             if ($('input[name="remove_logo"]').length) {
-                changed = changed || $('input[name="remove_logo"]').is(':checked');
+                changed = changed || $('#remove_logo').is(':checked');
             }
             if ($('input[name="remove_favicon"]').length) {
-                changed = changed || $('input[name="remove_favicon"]').is(':checked');
+                changed = changed || $('#remove_favicon').is(':checked');
             }
             return changed;
         }
@@ -720,10 +716,10 @@ if ($stmt) {
         // Validation functions
         function validateCompanyName(name) {
             if (name.trim() === '') {
-                return { valid: false, message: 'Company name is required' };
+                return { valid: false, message: 'Tenant Name is required' };
             }
             if (name.trim().length < 2) {
-                return { valid: false, message: 'Company name must be at least 2 characters long' };
+                return { valid: false, message: 'Tenant Name must be at least 2 characters long' };
             }
 
             return { valid: true, message: '' };

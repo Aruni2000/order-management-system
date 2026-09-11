@@ -12,7 +12,7 @@ error_reporting(0);
 ini_set('display_errors', 0);
 
 // Include the database connection file
-include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
 
 // Get user permissions and tenant info
 $is_main_admin = isset($_SESSION['is_main_admin']) ? (int)$_SESSION['is_main_admin'] : 0;
@@ -38,7 +38,7 @@ function parse_numeric($value, $default = 0.00) {
 function setMessageAndRedirect($type, $message, $redirect_url = null) {
     $_SESSION["order_{$type}"] = $message;
     if (!$redirect_url) {
-        $redirect_url = "/OMS/dist/orders/pending_order_list.php";
+        $redirect_url = "/orderhub_nextwave/dist/orders/pending_order_list.php";
     }
     if (ob_get_level()) {
         ob_end_clean();
@@ -108,13 +108,17 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         }
 
         // Validate tenant access - non-main admins can only edit orders from their own tenant
-        if (!($is_main_admin === 1)) {
+        $role_id = isset($_SESSION['role_id']) ? (int)$_SESSION['role_id'] : 0;
+        if (!($is_main_admin === 1 && $role_id === 1)) {
             if ($order_tenant_id !== $session_tenant_id) {
                 throw new Exception("You do not have permission to edit this order.");
             }
         }
 
-        $user_id = $_SESSION['user_id'] ?? 1;
+        $user_id = $_SESSION['user_id'] ?? 0;
+        if ($user_id == 0) {
+            throw new Exception('Session expired. Please log in again.');
+        }
         $customer_id = !empty($_POST['customer_id']) ? intval($_POST['customer_id']) : null;
         $customer_name = trim($_POST['customer_name']);
         $customer_email = trim($_POST['customer_email'] ?? '');

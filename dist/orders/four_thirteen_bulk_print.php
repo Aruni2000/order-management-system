@@ -15,13 +15,13 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     if (ob_get_level()) {
         ob_end_clean();
     }
-    header("Location: /OMS/dist/pages/login.php");
+    header("Location: /orderhub_nextwave/dist/pages/login.php");
     exit();
 }
 $logged_user_id = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
 
 // Include database connection
-include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
 
 /**
  * GET FILTER PARAMETERS FROM URL
@@ -104,7 +104,7 @@ $is_main_admin = isset($_SESSION['is_main_admin']) ? (int)$_SESSION['is_main_adm
 $role_id = isset($_SESSION['role_id']) ? (int)$_SESSION['role_id'] : 0;
 $session_tenant_id = isset($_SESSION['tenant_id']) ? (int)$_SESSION['tenant_id'] : 0;
 
-if ($is_main_admin === 1) {
+if ($is_main_admin === 1 && $role_id === 1) {
     if (!empty($tenant_filter)) {
         $searchConditions[] = "o.tenant_id = " . (int)$tenant_filter;
     }
@@ -185,7 +185,7 @@ function getTenantData($tId, $tenants_list) {
     // Tenant not found (inactive/missing): return neutral placeholder
     // instead of falling back to the first active tenant's branding
     return [
-        'company_name' => 'Company Name', 'tenant_address' => 'Address not set', 'tenant_email' => '', 'phone' => '', 'logo_url' => ''
+        'company_name' => 'Tenant Name', 'tenant_address' => 'Address not set', 'tenant_email' => '', 'phone' => '', 'logo_url' => ''
     ];
 }
 
@@ -242,6 +242,26 @@ foreach ($orders as $order) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Simple Bulk Print Labels (<?php echo count($orders); ?> orders) - A4 Landscape 6 Labels | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
+    <?php
+    $favicon_url = '';
+    if (isset($conn) && $conn) {
+        try {
+            $user_tenant_id = $_SESSION['tenant_id'] ?? null;
+            if ($user_tenant_id) {
+                $fav_query = "SELECT fav_icon_url FROM tenants WHERE tenant_id = " . (int)$user_tenant_id . " AND status = 'active' AND fav_icon_url IS NOT NULL AND fav_icon_url != '' LIMIT 1";
+            } else {
+                $fav_query = "SELECT fav_icon_url FROM tenants WHERE status = 'active' AND fav_icon_url IS NOT NULL AND fav_icon_url != '' LIMIT 1";
+            }
+            $fav_result = $conn->query($fav_query);
+            if ($fav_result && $fav_result->num_rows > 0) {
+                $fav_data = $fav_result->fetch_assoc();
+                $favicon_url = $fav_data['fav_icon_url'];
+            }
+        } catch (Throwable $e) {}
+    }
+    if ($favicon_url) echo '<link rel="icon" href="' . htmlspecialchars($favicon_url) . '" type="image/x-icon" />';
+    else echo '<link rel="icon" href="../assets/images/enterprise.png" type="image/x-icon" />';
+    ?>
     
  
     <style>
@@ -572,7 +592,7 @@ foreach ($orders as $order) {
                 $tId = isset($order['tenant_id']) ? $order['tenant_id'] : 0;
                 $bData = getTenantData($tId, $tenants);
                 $company = [
-                    'name'     => $bData['company_name'] ?? 'Company Name',
+                    'name'     => $bData['company_name'] ?? 'Tenant Name',
                     'address'  => $bData['tenant_address'] ?? 'Address not set',
                     'email'    => $bData['tenant_email'] ?? '',
                     'phone'    => $bData['phone'] ?? '',

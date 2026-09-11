@@ -8,12 +8,12 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     if (ob_get_level()) {
         ob_end_clean();
     }
-    header("Location: /OMS/dist/pages/login.php");
+    header("Location: /orderhub_nextwave/dist/pages/login.php");
     exit();
 }
 
 // Include the database connection file
-include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
 
 // Function to generate CSRF token
 function generateCSRFToken() {
@@ -81,7 +81,7 @@ $result = $conn->query($sql);
 <head>
     <title>Category Management | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
     
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/head.php'); ?>
     
     <!-- Stylesheets -->
     <link rel="stylesheet" href="../assets/css/orders.css" />
@@ -289,9 +289,9 @@ $result = $conn->query($sql);
 <body>
     <!-- Page Loader -->
     <?php 
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/loader.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/navbar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/sidebar.php');
     ?>
 
     <div class="pc-container">
@@ -300,13 +300,8 @@ $result = $conn->query($sql);
             <!-- Page Header -->
             <div class="page-header">
                 <div class="page-block">
-                    <div class="page-header-title" style="display: flex; justify-content: space-between; align-items: center;">
+                    <div class="page-header-title">
                         <h5 class="mb-0 font-medium">Category Management</h5>
-                        <?php if (!$is_user): ?>
-                        <button type="button" class="btn btn-primary" onclick="openAddCategoryModal()">
-                            <i class="fas fa-plus"></i> Add New Category
-                        </button>
-                        <?php endif; ?>
                     </div>
                 </div>
             </div>
@@ -327,7 +322,7 @@ $result = $conn->query($sql);
 
                         <?php if ($canManageAllTenants): ?>
                         <div class="form-group">
-                            <label for="tenant_filter">Tenant Company</label>
+                            <label for="tenant_filter">Tenant</label>
                             <select id="tenant_filter" name="tenant_filter">
                                 <option value="">All Companies</option>
                                 <?php foreach ($tenants as $t): ?>
@@ -349,6 +344,11 @@ $result = $conn->query($sql);
                                     <i class="fas fa-times"></i>
                                     Clear
                                 </button>
+                                <?php if (!$is_user): ?>
+                                <button type="button" class="search-btn" onclick="openAddCategoryModal()" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%);">
+                                    <i class="fas fa-plus"></i> Add New Category
+                                </button>
+                                <?php endif; ?>
                             </div>
                         </div>
                     </form>
@@ -367,12 +367,12 @@ $result = $conn->query($sql);
                         <thead>
                             <tr>
                                 <th>ID</th>
-                                <th>Name</th>
+                                <th>Category Name</th>
+                                <th>Status</th>
                                 <?php if ($canManageAllTenants): ?>
-                                <th>Tenant Company</th>
+                                <th>Tenant</th>
                                 <?php endif; ?>
                                 <th>Created</th>
-                                <th>Status</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
@@ -382,8 +382,21 @@ $result = $conn->query($sql);
                                     <tr>
                                         <td class="order-id"><?php echo htmlspecialchars($row['id']); ?></td>
                                         <td class="category-name"><?php echo htmlspecialchars($row['name']); ?></td>
+                                        <td>
+                                            <?php if ($row['status'] === 'active'): ?>
+                                                <span class="status-badge pay-status-paid">Active</span>
+                                            <?php else: ?>
+                                                <span class="status-badge pay-status-unpaid">Inactive</span>
+                                            <?php endif; ?>
+                                        </td>
                                         <?php if ($canManageAllTenants): ?>
-                                        <td><?php echo htmlspecialchars($row['company_name'] ?? '-'); ?></td>
+                                        <td class="customer-name">
+                                            <div class="customer-info">
+                                                <h6 style="margin: 0; font-size: 14px;">
+                                                    <?php echo htmlspecialchars($row['company_name'] ?? 'N/A'); ?>
+                                                </h6>
+                                            </div>
+                                        </td>
                                         <?php endif; ?>
                                         <td>
                                             <div style="font-size: 13px;">
@@ -391,13 +404,6 @@ $result = $conn->query($sql);
                                                 <br>
                                                 <small style="color: #6c757d;"><?php echo date('h:i:s A', strtotime($row['created_at'])); ?></small>
                                             </div>
-                                        </td>
-                                        <td>
-                                            <?php if ($row['status'] === 'active'): ?>
-                                                <span class="status-badge pay-status-paid">Active</span>
-                                            <?php else: ?>
-                                                <span class="status-badge pay-status-unpaid">Inactive</span>
-                                            <?php endif; ?>
                                         </td>
                                         <td class="actions">
                                             <div class="action-buttons-group">
@@ -445,10 +451,10 @@ $result = $conn->query($sql);
     </div>
 
     <!-- Footer -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/footer.php'); ?>
 
     <!-- Scripts -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/scripts.php'); ?>
 
     <!-- jQuery (required for Select2) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
@@ -483,19 +489,22 @@ $result = $conn->query($sql);
 
         function formatDateTime(dateString) {
             if (!dateString) return '-';
-            const date = new Date(dateString);
-            if (isNaN(date.getTime())) return dateString;
-            const yyyy = date.getFullYear();
-            const mm = String(date.getMonth() + 1).padStart(2, '0');
-            const dd = String(date.getDate()).padStart(2, '0');
-            let hours = date.getHours();
-            const minutes = String(date.getMinutes()).padStart(2, '0');
-            const seconds = String(date.getSeconds()).padStart(2, '0');
-            const ampm = hours >= 12 ? 'PM' : 'AM';
-            hours = hours % 12;
-            hours = hours ? hours : 12;
-            const hh = String(hours).padStart(2, '0');
-            return `${yyyy}-${mm}-${dd} ${hh}:${minutes}:${seconds} ${ampm}`;
+            try {
+                const date = new Date(dateString);
+                if (isNaN(date.getTime())) return dateString;
+                const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                const yyyy = date.getFullYear();
+                const mmm = months[date.getMonth()];
+                const dd = String(date.getDate()).padStart(2, '0');
+                let hours = date.getHours();
+                const minutes = String(date.getMinutes()).padStart(2, '0');
+                const ampm = hours >= 12 ? 'PM' : 'AM';
+                hours = hours % 12;
+                hours = hours ? hours : 12;
+                return `${mmm} ${dd}, ${yyyy} ${hours}:${minutes} ${ampm}`;
+            } catch (e) {
+                return dateString;
+            }
         }
 
         function closeCategoryModal() {

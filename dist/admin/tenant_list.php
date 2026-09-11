@@ -8,16 +8,16 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     if (ob_get_level()) {
         ob_end_clean();
     }
-    header("Location: /OMS/dist/pages/login.php");
+    header("Location: /orderhub_nextwave/dist/pages/login.php");
     exit();
 }
 
 // Include the database connection file
-include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
 
 // Check if user has admin role (role_id = 1)
 if (!isset($_SESSION['user_id'])) {
-    header("Location: /OMS/dist/pages/login.php");
+    header("Location: /orderhub_nextwave/dist/pages/login.php");
     exit();
 }
 
@@ -35,7 +35,7 @@ $role_result = $role_stmt->get_result();
 if ($role_result->num_rows === 0) {
     // User not found or inactive
     session_destroy();
-    header("Location: /OMS/dist/pages/login.php");
+    header("Location: /orderhub_nextwave/dist/pages/login.php");
     exit();
 }
 
@@ -44,11 +44,16 @@ $user_role = $role_result->fetch_assoc();
 // Check if user is admin (role_id = 1)
 if ($user_role['role_id'] != 1) {
     // User is not admin, redirect to dashboard
-    header("Location: /OMS/dist/dashboard/index.php");
+    header("Location: /orderhub_nextwave/dist/dashboard/index.php");
     exit();
 }
 
 
+$current_is_main_admin = isset($_SESSION['is_main_admin']) && $_SESSION['is_main_admin'] == 1;
+if (!$current_is_main_admin) {
+    header("Location: /orderhub_nextwave/dist/admin/branding.php");
+    exit();
+}
 
 // Handle search and filter parameters
 $search = isset($_GET['search']) ? trim($_GET['search']) : '';
@@ -89,7 +94,7 @@ if (!empty($search)) {
                         phone LIKE '%$searchTerm%')";
 }
 
-// Specific Company Name filter
+// Specific Tenant Name filter
 if (!empty($company_name_filter)) {
     $companyTerm = $conn->real_escape_string($company_name_filter);
     $searchConditions[] = "company_name LIKE '%$companyTerm%'";
@@ -173,7 +178,7 @@ if (!$result) {
 <head>
     <title>Tenant Management | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
     
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/head.php'); ?>
     
     <!-- Stylesheets -->
     <link rel="stylesheet" href="../assets/css/orders.css" />
@@ -189,9 +194,9 @@ if (!$result) {
 <body>
     <!-- Page Loader -->
     <?php 
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/loader.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/navbar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/sidebar.php');
     ?>
 
     <div class="pc-container">
@@ -212,9 +217,9 @@ if (!$result) {
                 <div class="tracking-container">
                     <form class="tracking-form" method="GET" action="">
                         <div class="form-group">
-                            <label for="company_name_filter">Company Name</label>
+                            <label for="company_name_filter">Tenant Name</label>
                             <input type="text" id="company_name_filter" name="company_name_filter" 
-                                   placeholder="Enter company name" 
+                                   placeholder="Enter Tenant Name" 
                                    value="<?php echo htmlspecialchars($company_name_filter); ?>">
                         </div>
                         
@@ -292,7 +297,7 @@ if (!$result) {
                         <thead>
                             <tr>
                                 <th>ID</th>
-                                <th>Company Name</th>
+                                <th>Tenant Name</th>
                                 <th>Contact Details</th>
                                 <th>Address</th>
                                 <th>Status & Type</th>
@@ -346,7 +351,7 @@ if (!$result) {
                                                 
                                                 <?php if ($row['is_main_admin'] == 1): ?>
                                                     <span class="status-badge" style="background: #ffc107; color: #000; margin-top: 4px; display: inline-block;">
-                                                        <i class="fas fa-crown"></i> Main Admin
+                                                        <i class="fas fa-crown"></i> Main Tenant
                                                     </span>
                                                 <?php endif; ?>
                                             </div>
@@ -457,7 +462,7 @@ if (!$result) {
                     <span class="detail-value" id="modal-tenant-id"></span>
                 </div>
                 <div class="customer-detail-row">
-                    <span class="detail-label">Company Name:</span>
+                    <span class="detail-label">Tenant Name:</span>
                     <span class="detail-value" id="modal-company-name"></span>
                 </div>
                 <div class="customer-detail-row">
@@ -501,10 +506,10 @@ if (!$result) {
 
 
     <!-- Footer -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/footer.php'); ?>
 
     <!-- Scripts -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/scripts.php'); ?>
 
    <script>
 // ===============================
@@ -606,17 +611,16 @@ function formatDateTime(dateString) {
     try {
         const date = new Date(dateString);
         if (isNaN(date.getTime())) return dateString;
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
         const yyyy = date.getFullYear();
-        const mm = String(date.getMonth() + 1).padStart(2, '0');
+        const mmm = months[date.getMonth()];
         const dd = String(date.getDate()).padStart(2, '0');
         let hours = date.getHours();
         const minutes = String(date.getMinutes()).padStart(2, '0');
-        const seconds = String(date.getSeconds()).padStart(2, '0');
         const ampm = hours >= 12 ? 'PM' : 'AM';
         hours = hours % 12;
         hours = hours ? hours : 12;
-        const hh = String(hours).padStart(2, '0');
-        return `${yyyy}-${mm}-${dd} ${hh}:${minutes}:${seconds} ${ampm}`;
+        return `${mmm} ${dd}, ${yyyy} ${hours}:${minutes} ${ampm}`;
     } catch (e) {
         return dateString;
     }

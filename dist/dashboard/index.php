@@ -8,13 +8,13 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     if (ob_get_level()) {
         ob_end_clean();
     }
-    header("Location: /OMS/dist/pages/login.php");
+    header("Location: /orderhub_nextwave/dist/pages/login.php");
     exit();
 }
 
 // Include database connection
-include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
-include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/fe_it_db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/fe_it_db_connection.php');
 
 // Check if user is main admin
 $is_main_admin = $_SESSION['is_main_admin'];
@@ -95,7 +95,7 @@ if ($current_user_id == 0 || $current_user_role == 0) {
 
 // If still no user data, redirect to login
 if ($current_user_id == 0) {
-    header("Location: /OMS/dist/pages/login.php");
+    header("Location: /orderhub_nextwave/dist/pages/login.php");
     exit();
 }
 
@@ -143,34 +143,36 @@ $date_condition = " AND (issue_date BETWEEN '$date_from 00:00:00' AND '$date_to 
 // Get role-based condition for orders
 $role_based_condition = $rbac->getRoleBasedCondition();
 
+// Check if current user is Super Admin (main admin tenant AND role_id = 1)
+$is_super_admin = ($is_main_admin == 1 && $current_user_role == 1);
+
 // Fetch statistics with role-based access control
 
 // Total Users - Only admin can see this
 if ($rbac->isAdmin()) {
-    if ($is_main_admin == 1) {
-    $stats['total_users'] = safeQuery($conn, "SELECT COUNT(*) as count FROM users");
+    if ($is_super_admin) {
+        $stats['total_users'] = safeQuery($conn, "SELECT COUNT(*) as count FROM users");
     } else {
-    $stats['total_users'] = safeQuery($conn, "SELECT COUNT(*) as count FROM users WHERE tenant_id = $tenant_id");
+        $stats['total_users'] = safeQuery($conn, "SELECT COUNT(*) as count FROM users WHERE tenant_id = $tenant_id");
     }
 }
 
 // Total Customers - Only admin can see all customers, regular users see only their customers
 if ($rbac->isAdmin()) {
     // Check if customers table exists
-    if ($is_main_admin == 1) {
-    $tableExists = $conn->query("SHOW TABLES LIKE 'customers'");
-    if ($tableExists && $tableExists->num_rows > 0) {
-        $stats['total_customers'] = safeQuery($conn, "SELECT COUNT(*) as count FROM customers");
-    }
+    if ($is_super_admin) {
+        $tableExists = $conn->query("SHOW TABLES LIKE 'customers'");
+        if ($tableExists && $tableExists->num_rows > 0) {
+            $stats['total_customers'] = safeQuery($conn, "SELECT COUNT(*) as count FROM customers");
+        }
     } else {
-    $tableExists = $conn->query("SHOW TABLES LIKE 'customers'");
-    if ($tableExists && $tableExists->num_rows > 0) {
-        $stats['total_customers'] = safeQuery($conn, "SELECT COUNT(*) as count FROM customers WHERE tenant_id = $tenant_id");
-    }
+        $tableExists = $conn->query("SHOW TABLES LIKE 'customers'");
+        if ($tableExists && $tableExists->num_rows > 0) {
+            $stats['total_customers'] = safeQuery($conn, "SELECT COUNT(*) as count FROM customers WHERE tenant_id = $tenant_id");
+        }
     }
 } else {
     // For regular users, count customers from their orders only
-    if ($is_main_admin == 1) {
     $tableExists = $conn->query("SHOW TABLES LIKE 'customers'");
     if ($tableExists && $tableExists->num_rows > 0) {
         $stats['total_customers'] = safeQuery($conn, 
@@ -179,32 +181,22 @@ if ($rbac->isAdmin()) {
              WHERE c.tenant_id = $tenant_id"
         );
     }
-    } else {
-    $tableExists = $conn->query("SHOW TABLES LIKE 'customers'");
-    if ($tableExists && $tableExists->num_rows > 0) {
-        $stats['total_customers'] = safeQuery($conn, 
-            "SELECT COUNT(DISTINCT c.customer_id) as count 
-             FROM customers c
-             WHERE c.tenant_id = $tenant_id"
-        );
-    }
-}
 }
 
 $tableExists = $conn->query("SHOW TABLES LIKE 'products'");
-     if ($tableExists && $tableExists->num_rows > 0) {
-         if ($is_main_admin == 1) {
-             $stats['total_products'] = safeQuery($conn, "SELECT COUNT(*) as count FROM products");
-         } else {
-             $stats['total_products'] = safeQuery($conn, "SELECT COUNT(*) as count FROM products WHERE tenant_id = $tenant_id");
-         }
-     }
+if ($tableExists && $tableExists->num_rows > 0) {
+    if ($is_super_admin) {
+        $stats['total_products'] = safeQuery($conn, "SELECT COUNT(*) as count FROM products");
+    } else {
+        $stats['total_products'] = safeQuery($conn, "SELECT COUNT(*) as count FROM products WHERE tenant_id = $tenant_id");
+    }
+}
 
 // Check for low stock products count
 $low_stock_count = 0;
 $allow_inventory = isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1;
 if ($allow_inventory) {
-    if ($is_main_admin == 1) {
+    if ($is_super_admin) {
         $low_stock_query = "SELECT COUNT(*) as count FROM products WHERE status = 'active' AND stock_quantity <= low_stock_threshold";
     } else {
         $low_stock_query = "SELECT COUNT(*) as count FROM products WHERE status = 'active' AND stock_quantity <= low_stock_threshold AND tenant_id = $tenant_id";
@@ -220,106 +212,100 @@ if ($allow_inventory) {
 $tableExists = $conn->query("SHOW TABLES LIKE 'order_header'");
 if ($tableExists && $tableExists->num_rows > 0) {
 
-
-    if ($is_main_admin == 1) {
-    // Base query for total orders with role-based filtering
-    $total_orders_query = "SELECT COUNT(*) as count FROM order_header WHERE 1=1";
-    
-    // Apply role-based condition and date filter
-    $total_orders_query .= $role_based_condition . $date_condition;
-    
-    $stats['total_orders'] = safeQuery($conn, $total_orders_query);
+    if ($is_super_admin) {
+        // Base query for total orders with role-based filtering
+        $total_orders_query = "SELECT COUNT(*) as count FROM order_header WHERE 1=1";
+        
+        // Apply role-based condition and date filter
+        $total_orders_query .= $role_based_condition . $date_condition;
+        
+        $stats['total_orders'] = safeQuery($conn, $total_orders_query);
     } else {
-    // Base query for total orders with role-based filtering
-    $total_orders_query = "SELECT COUNT(*) as count FROM order_header WHERE tenant_id = $tenant_id";
-    
-    // Apply role-based condition and date filter  
-    $total_orders_query .= $role_based_condition . $date_condition;
-    $stats['total_orders'] = safeQuery($conn, $total_orders_query);
+        // Base query for total orders with role-based filtering
+        $total_orders_query = "SELECT COUNT(*) as count FROM order_header WHERE tenant_id = $tenant_id";
+        
+        // Apply role-based condition and date filter  
+        $total_orders_query .= $role_based_condition . $date_condition;
+        $stats['total_orders'] = safeQuery($conn, $total_orders_query);
     }
 
-
-    if ($is_main_admin == 1) {
-    // Count for complete orders
-    $complete_orders_query = "SELECT COUNT(*) as count FROM order_header WHERE status = 'done'";
-    $complete_orders_query .= $role_based_condition . $date_condition;
-    $stats['complete_orders'] = safeQuery($conn, $complete_orders_query);
+    if ($is_super_admin) {
+        // Count for complete orders
+        $complete_orders_query = "SELECT COUNT(*) as count FROM order_header WHERE status = 'done'";
+        $complete_orders_query .= $role_based_condition . $date_condition;
+        $stats['complete_orders'] = safeQuery($conn, $complete_orders_query);
     } else {
         // Count for complete orders
-    $complete_orders_query = "SELECT COUNT(*) as count FROM order_header WHERE status = 'done' AND tenant_id = $tenant_id";
-    $complete_orders_query .= $role_based_condition . $date_condition;
-    $stats['complete_orders'] = safeQuery($conn, $complete_orders_query);
+        $complete_orders_query = "SELECT COUNT(*) as count FROM order_header WHERE status = 'done' AND tenant_id = $tenant_id";
+        $complete_orders_query .= $role_based_condition . $date_condition;
+        $stats['complete_orders'] = safeQuery($conn, $complete_orders_query);
     }
     
-
-    if ($is_main_admin == 1) {
-    // Count for pending orders
-    $pending_orders_query = "SELECT COUNT(*) as count FROM order_header WHERE status = 'pending'";
-    $pending_orders_query .= $role_based_condition . $date_condition;
-    $stats['pending_orders'] = safeQuery($conn, $pending_orders_query);
+    if ($is_super_admin) {
+        // Count for pending orders
+        $pending_orders_query = "SELECT COUNT(*) as count FROM order_header WHERE status = 'pending'";
+        $pending_orders_query .= $role_based_condition . $date_condition;
+        $stats['pending_orders'] = safeQuery($conn, $pending_orders_query);
     } else {
         // Count for pending orders
-    $pending_orders_query = "SELECT COUNT(*) as count FROM order_header WHERE status = 'pending' AND tenant_id = $tenant_id";
-    $pending_orders_query .= $role_based_condition . $date_condition;
-    $stats['pending_orders'] = safeQuery($conn, $pending_orders_query);
+        $pending_orders_query = "SELECT COUNT(*) as count FROM order_header WHERE status = 'pending' AND tenant_id = $tenant_id";
+        $pending_orders_query .= $role_based_condition . $date_condition;
+        $stats['pending_orders'] = safeQuery($conn, $pending_orders_query);
     }
     
-    if ($is_main_admin == 1) {
-    // Count for cancel orders
-    $cancel_orders_query = "SELECT COUNT(*) as count FROM order_header WHERE status = 'cancel'";
-    $cancel_orders_query .= $role_based_condition . $date_condition;
-    $stats['cancel_orders'] = safeQuery($conn, $cancel_orders_query);
+    if ($is_super_admin) {
+        // Count for cancel orders
+        $cancel_orders_query = "SELECT COUNT(*) as count FROM order_header WHERE status = 'cancel'";
+        $cancel_orders_query .= $role_based_condition . $date_condition;
+        $stats['cancel_orders'] = safeQuery($conn, $cancel_orders_query);
     } else {
         // Count for cancel orders
-    $cancel_orders_query = "SELECT COUNT(*) as count FROM order_header WHERE status = 'cancel' AND tenant_id = $tenant_id";
-    $cancel_orders_query .= $role_based_condition . $date_condition;
-    $stats['cancel_orders'] = safeQuery($conn, $cancel_orders_query);
+        $cancel_orders_query = "SELECT COUNT(*) as count FROM order_header WHERE status = 'cancel' AND tenant_id = $tenant_id";
+        $cancel_orders_query .= $role_based_condition . $date_condition;
+        $stats['cancel_orders'] = safeQuery($conn, $cancel_orders_query);
     }
-
     
-    if ($is_main_admin == 1) {
-    // Count for dispatch orders - ALWAYS show TODAY'S dispatch orders only (by updated_at)
-    $today_date = date('Y-m-d');
-    $dispatch_orders_query = "SELECT COUNT(*) as count FROM order_header 
-                              WHERE status = 'dispatch' 
-                              AND DATE(updated_at) = '$today_date'";
-    $dispatch_orders_query .= $role_based_condition; // Apply role-based filtering but NO date filter
-    $stats['dispatch_orders'] = safeQuery($conn, $dispatch_orders_query);
+    if ($is_super_admin) {
+        // Count for dispatch orders - ALWAYS show TODAY'S dispatch orders only (by updated_at)
+        $today_date = date('Y-m-d');
+        $dispatch_orders_query = "SELECT COUNT(*) as count FROM order_header 
+                                  WHERE status = 'dispatch' 
+                                  AND DATE(updated_at) = '$today_date'";
+        $dispatch_orders_query .= $role_based_condition; // Apply role-based filtering but NO date filter
+        $stats['dispatch_orders'] = safeQuery($conn, $dispatch_orders_query);
     } else {
         // Count for dispatch orders - ALWAYS show TODAY'S dispatch orders only (by updated_at)
-    $today_date = date('Y-m-d');
-    $dispatch_orders_query = "SELECT COUNT(*) as count FROM order_header 
-                              WHERE status = 'dispatch' 
-                              AND DATE(updated_at) = '$today_date'
-                              AND tenant_id = $tenant_id";
-    $dispatch_orders_query .= $role_based_condition; // Apply role-based filtering but NO date filter
-    $stats['dispatch_orders'] = safeQuery($conn, $dispatch_orders_query);
+        $today_date = date('Y-m-d');
+        $dispatch_orders_query = "SELECT COUNT(*) as count FROM order_header 
+                                  WHERE status = 'dispatch' 
+                                  AND DATE(updated_at) = '$today_date'
+                                  AND tenant_id = $tenant_id";
+        $dispatch_orders_query .= $role_based_condition; // Apply role-based filtering but NO date filter
+        $stats['dispatch_orders'] = safeQuery($conn, $dispatch_orders_query);
     }
 
-
-    if ($is_main_admin == 1) {
-    // Count for return complete orders
-    $return_complete_orders_query = "SELECT COUNT(*) as count FROM order_header WHERE status = 'return_complete'";
-    $return_complete_orders_query .= $role_based_condition . $date_condition;
-    $stats['return_complete_orders'] = safeQuery($conn, $return_complete_orders_query);
+    if ($is_super_admin) {
+        // Count for return complete orders
+        $return_complete_orders_query = "SELECT COUNT(*) as count FROM order_header WHERE status = 'return_complete'";
+        $return_complete_orders_query .= $role_based_condition . $date_condition;
+        $stats['return_complete_orders'] = safeQuery($conn, $return_complete_orders_query);
     } else {
         // Count for return complete orders
-    $return_complete_orders_query = "SELECT COUNT(*) as count FROM order_header WHERE status = 'return_complete' AND tenant_id = $tenant_id";
-    $return_complete_orders_query .= $role_based_condition . $date_condition;
-    $stats['return_complete_orders'] = safeQuery($conn, $return_complete_orders_query);
+        $return_complete_orders_query = "SELECT COUNT(*) as count FROM order_header WHERE status = 'return_complete' AND tenant_id = $tenant_id";
+        $return_complete_orders_query .= $role_based_condition . $date_condition;
+        $stats['return_complete_orders'] = safeQuery($conn, $return_complete_orders_query);
     }
 
-
-    if ($is_main_admin == 1) {
-    // Count for return handover orders
-    $return_handover_orders_query = "SELECT COUNT(*) as count FROM order_header WHERE status = 'return_handover'";
-    $return_handover_orders_query .= $role_based_condition . $date_condition;
-    $stats['return_handover_orders'] = safeQuery($conn, $return_handover_orders_query);
+    if ($is_super_admin) {
+        // Count for return handover orders
+        $return_handover_orders_query = "SELECT COUNT(*) as count FROM order_header WHERE status = 'return_handover'";
+        $return_handover_orders_query .= $role_based_condition . $date_condition;
+        $stats['return_handover_orders'] = safeQuery($conn, $return_handover_orders_query);
     } else {
         // Count for return handover orders
-    $return_handover_orders_query = "SELECT COUNT(*) as count FROM order_header WHERE status = 'return_handover' AND tenant_id = $tenant_id";
-    $return_handover_orders_query .= $role_based_condition . $date_condition;
-    $stats['return_handover_orders'] = safeQuery($conn, $return_handover_orders_query);
+        $return_handover_orders_query = "SELECT COUNT(*) as count FROM order_header WHERE status = 'return_handover' AND tenant_id = $tenant_id";
+        $return_handover_orders_query .= $role_based_condition . $date_condition;
+        $stats['return_handover_orders'] = safeQuery($conn, $return_handover_orders_query);
     }
 }
 
@@ -362,7 +348,7 @@ if (isset($_SESSION['customer_id'])) {
     <!-- TITLE -->
     <title>Dashboard | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
     <?php
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/head.php');
     ?>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
     <link rel="stylesheet" href="../assets/css/style.css" id="main-style-link" />
@@ -570,9 +556,9 @@ if (isset($_SESSION['customer_id'])) {
 <body>
     <!-- LOADER -->
     <?php
-        include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php');
-        include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
-        include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
+        include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/loader.php');
+        include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/navbar.php');
+        include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/sidebar.php');
     ?>
     <!-- END LOADER -->
 
@@ -829,14 +815,23 @@ if (isset($_SESSION['customer_id'])) {
                     </a>
                 </div>
 
-                <!-- Inventory & User Management Section - Admin Only -->
+                <?php
+                $section_title = 'Inventory & User Management';
+                if ($is_store_limited) {
+                    $section_title = 'Inventory & Products';
+                } elseif (!$rbac->isAdmin()) {
+                    $section_title = 'Customers & Products';
+                }
+                ?>
+                <!-- Inventory & User Management Section -->
                 <div class="col-span-12 mt-6">
-                    <h2 class="section-title">Inventory & User Management</h2>
+                    <h2 class="section-title"><?= htmlspecialchars($section_title) ?></h2>
                 </div>
 
+                <?php if ($rbac->isAdmin()): ?>
                 <!-- Total Users - Admin Only -->
-                <div class="col-span-12 xl:col-span-4 md:col-span-6 admin-only">
-                    <a href="/OMS/dist/users/users.php" class="card-link">
+                <div class="col-span-12 xl:col-span-4 md:col-span-6">
+                    <a href="/orderhub_nextwave/dist/users/users.php" class="card-link">
                         <div class="card">
                             <div class="card-header !pb-0 !border-b-0">
                                 <h5>Total Users</h5>
@@ -858,11 +853,12 @@ if (isset($_SESSION['customer_id'])) {
                         </div>
                     </a>
                 </div>
+                <?php endif; ?>
 
                 <?php if (!$is_store_limited): ?>
                 <!-- Total Customers -->
                 <div class="col-span-12 xl:col-span-4 md:col-span-6">
-                    <a href="/OMS/dist/customers/customer_list.php" class="card-link">
+                    <a href="/orderhub_nextwave/dist/customers/customer_list.php" class="card-link">
                         <div class="card">
                             <div class="card-header !pb-0 !border-b-0">
                                 <h5>Total Customers
@@ -892,7 +888,7 @@ if (isset($_SESSION['customer_id'])) {
 
                 <!-- Total Products - All users can view products -->
                 <div class="col-span-12 xl:col-span-4 md:col-span-6">
-                    <a href="/OMS/dist/products/product_list.php" class="card-link">
+                    <a href="/orderhub_nextwave/dist/products/product_list.php" class="card-link">
                         <div class="card">
                             <div class="card-header !pb-0 !border-b-0">
                                 <h5>Total Products</h5>
@@ -923,13 +919,13 @@ if (isset($_SESSION['customer_id'])) {
 
     <!-- FOOTER -->
     <?php
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/footer.php');
     ?>
     <!-- END FOOTER -->
 
     <!-- SCRIPTS -->
     <?php
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/scripts.php');
     ?>
     <!-- END SCRIPTS -->
 

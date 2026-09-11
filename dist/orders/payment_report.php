@@ -2,16 +2,17 @@
 session_start();
 if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     if (ob_get_level()) ob_end_clean();
-    header("Location: /OMS/dist/pages/login.php");
+    header("Location: /orderhub_nextwave/dist/pages/login.php");
     exit();
 }
-include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
 
-// Check if user is main admin (role_id=1 AND is_main_admin=1)
-$is_main_admin = $_SESSION['is_main_admin'] ?? 0;
-$role_id = $_SESSION['role_id'] ?? 0;
+// Check if user is Super Admin (role_id=1 AND is_main_admin=1)
+$is_main_admin = (int)($_SESSION['is_main_admin'] ?? 0);
+$role_id = (int)($_SESSION['role_id'] ?? 0);
 if ($is_main_admin !== 1 || $role_id !== 1) {
-    header("Location: /OMS/dist/dashboard/index.php");
+    if (ob_get_level()) ob_end_clean();
+    header("Location: /orderhub_nextwave/dist/pages/access_denied.php");
     exit();
 }
 
@@ -91,7 +92,7 @@ $sql = "SELECT i.order_id, i.customer_id, c.name AS customer_name, i.tracking_nu
                END AS after_amount
         FROM order_header i
         LEFT JOIN customers c ON i.customer_id = c.customer_id
-        LEFT JOIN couriers co ON i.courier_id = co.courier_id
+        LEFT JOIN couriers co ON i.courier_id = co.courier_id AND co.tenant_id = i.tenant_id
         LEFT JOIN tenants t ON i.tenant_id = t.tenant_id
         WHERE 1 $roleCondition";
 
@@ -112,13 +113,13 @@ if (!empty($search)) {
     $searchConditions[] = "(i.order_id LIKE '%$escapedSearch%' OR i.full_name LIKE '%$escapedSearch%' OR i.tracking_number LIKE '%$escapedSearch%')";
 }
 if (!empty($order_id_filter)) {
-    $searchConditions[] = "i.order_id LIKE '%" . $conn->real_escape_string($order_id_filter) . "%'";
+    $searchConditions[] = "i.order_id = '" . $conn->real_escape_string($order_id_filter) . "'";
 }
 if (!empty($customer_name_filter)) {
     $searchConditions[] = "i.full_name LIKE '%" . $conn->real_escape_string($customer_name_filter) . "%'";
 }
 if (!empty($tracking_id)) {
-    $searchConditions[] = "i.tracking_number LIKE '%" . $conn->real_escape_string($tracking_id) . "%'";
+    $searchConditions[] = "i.tracking_number = '" . $conn->real_escape_string($tracking_id) . "'";
 }
 if (!empty($courier_id_filter)) {
     $searchConditions[] = "i.courier_id = '" . $conn->real_escape_string($courier_id_filter) . "'";
@@ -141,7 +142,7 @@ $result = $conn->query($sql);
 
 $countSql = "SELECT COUNT(*) as total FROM order_header i 
              LEFT JOIN customers c ON i.customer_id = c.customer_id
-             LEFT JOIN couriers co ON i.courier_id = co.courier_id
+             LEFT JOIN couriers co ON i.courier_id = co.courier_id AND co.tenant_id = i.tenant_id
              WHERE 1 $roleCondition";
 if ($searchConditions) {
     $countSql .= " AND " . implode(' AND ', $searchConditions);
@@ -188,7 +189,7 @@ $courierDisabled = ($is_main_admin == 1) && empty($tenant_id_filter);
 
 <head>
     <title>Payment Report | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/head.php'); ?>
     <link rel="stylesheet" href="../assets/css/orders.css" />
     <style>
     .total-row {
@@ -370,7 +371,7 @@ $courierDisabled = ($is_main_admin == 1) && empty($tenant_id_filter);
         courierSelect.innerHTML = '<option value="">Loading...</option>';
         courierSelect.disabled = true;
 
-        fetch('/OMS/dist/tracking/get_couriers_by_tenant.php?tenant_id=' + encodeURIComponent(tenantId))
+        fetch('/orderhub_nextwave/dist/tracking/get_couriers_by_tenant.php?tenant_id=' + encodeURIComponent(tenantId))
             .then(response => response.json())
             .then(data => {
                 courierSelect.innerHTML = '<option value="">Select Courier</option>';
@@ -380,7 +381,7 @@ $courierDisabled = ($is_main_admin == 1) && empty($tenant_id_filter);
                     data.couriers.forEach(function(courier) {
                         const opt = document.createElement('option');
                         opt.value = courier.courier_id;
-                        opt.textContent = courier.display_name || (courier.courier_name + ' (ID: ' + courier.courier_id + ')');
+                        opt.textContent = courier.display_name || (courier.courier_name + ' (ID: ' + courier.co_id + ')');
                         courierSelect.appendChild(opt);
                     });
                 }
@@ -405,9 +406,9 @@ $courierDisabled = ($is_main_admin == 1) && empty($tenant_id_filter);
 <body>
     <!-- Page Loader -->
     <?php 
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/loader.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/navbar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/sidebar.php');
     ?>
     <div class="pc-container">
         <div class="pc-content">
@@ -426,10 +427,10 @@ $courierDisabled = ($is_main_admin == 1) && empty($tenant_id_filter);
                     </div>
                 <?php endif; ?>
                 <form class="tracking-form" method="GET">
-                    <!-- Step 1: Select Tenant Company (only for main admin) -->
+                    <!-- Step 1: Select Tenant (only for main admin) -->
                     <?php if ($is_main_admin == 1): ?>
                     <div class="form-group">
-                        <label for="tenant_id_filter"><strong>Tenant Company</strong> <span style="color: #dc3545;">*</span></label>
+                        <label for="tenant_id_filter"><strong>Tenant</strong> <span style="color: #dc3545;">*</span></label>
                         <select id="tenant_id_filter" name="tenant_id_filter" required>
                             <option value="">Select Company</option>
                             <?php foreach ($tenants as $tenant): ?>
@@ -535,7 +536,7 @@ $courierDisabled = ($is_main_admin == 1) && empty($tenant_id_filter);
                        COUNT(CASE WHEN i.status = 'done' THEN 1 END) as done_orders
                 FROM order_header i
                 LEFT JOIN customers c ON i.customer_id = c.customer_id
-                LEFT JOIN couriers co ON i.courier_id = co.courier_id
+                LEFT JOIN couriers co ON i.courier_id = co.courier_id AND co.tenant_id = i.tenant_id
                 WHERE 1 $roleCondition";
         
         if ($searchConditions) $summarySql .= " AND " . implode(' AND ', $searchConditions);
@@ -551,7 +552,7 @@ $courierDisabled = ($is_main_admin == 1) && empty($tenant_id_filter);
                             <th>Order ID</th>
                             <th>Customer</th>
                             <?php if ($is_main_admin == 1) { ?>
-                            <th>Tenant Company</th>
+                            <th>Tenant</th>
                             <?php } ?>
                             <th>Status</th>
                             <th>Total Amount</th>
@@ -634,7 +635,7 @@ $courierDisabled = ($is_main_admin == 1) && empty($tenant_id_filter);
                         </tr>
                         <?php else: ?>
                         <tr>
-                            <td colspan="7" style="text-align:center; padding: 40px;">
+                            <td colspan="8" style="text-align:center; padding: 40px;">
                         <?php if (!$hasActiveFilters): ?>
                         <div style="color: #6c757d; font-style: italic;">
                             <i class="fas fa-filter"
@@ -654,10 +655,10 @@ $courierDisabled = ($is_main_admin == 1) && empty($tenant_id_filter);
         </div>
     </div>
 
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/scripts.php'); ?>
 
     <!--Footer-->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/footer.php'); ?>
 </body>
 
 </html>

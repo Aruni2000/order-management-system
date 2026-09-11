@@ -7,19 +7,19 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     if (ob_get_level()) {
         ob_end_clean();
     }
-    header("Location: /OMS/dist/pages/login.php");
+    header("Location: /orderhub_nextwave/dist/pages/login.php");
     exit();
 }
 
 // Include the database connection file
-include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
 
 // Store role (role_id 3, non-main-admin) is limited to Products & Order Management
 if ((int)($_SESSION['role_id'] ?? 0) === 3 && (int)($_SESSION['is_main_admin'] ?? 0) !== 1) {
     if (ob_get_level()) {
         ob_end_clean();
     }
-    header("Location: /OMS/dist/pages/access_denied.php");
+    header("Location: /orderhub_nextwave/dist/pages/access_denied.php");
     exit();
 }
 
@@ -179,7 +179,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
 <head>
     <title>Customer Management | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
 
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/head.php'); ?>
 
     <!-- Stylesheets -->
     <link rel="stylesheet" href="../assets/css/orders.css" />
@@ -189,9 +189,9 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
 <body>
     <!-- Page Loader -->
     <?php 
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/loader.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/navbar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/sidebar.php');
     ?>
 
     <div class="pc-container">
@@ -263,7 +263,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
 
                         <?php if ($is_main_admin == 1 && $is_admin == 1) { ?>
                         <div class="form-group">
-                            <label for="tenant_id_filter">Tenant Company</label>
+                            <label for="tenant_id_filter">Tenant</label>
                             <select id="tenant_id_filter" name="tenant_id_filter">
                                 <option value="">All Companies</option>
                                 <?php foreach ($tenants as $tenant): ?>
@@ -310,7 +310,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                 <th>Phone & Email</th>
                                 <th>Address</th>
                                 <?php if ($is_main_admin == 1 && $is_admin == 1) { ?>
-                                <th>Tenant Company</th>
+                                <th>Tenant</th>
                                 <?php } else { ?>
                                 <?php } ?>
                                 <th>Status</th>
@@ -327,27 +327,24 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                 <!-- Customer Name -->
                                 <td class="customer-name">
                                     <div class="customer-info">
-                                        <h6 style="margin: 0; font-size: 14px;">
+                                        <h6 style="margin: 0; font-size: 14px; font-weight: 600;">
                                             <?php echo htmlspecialchars($row['name']); ?></h6>
                                     </div>
                                 </td>
 
                                 <!-- Phone & Email (Combined Column) - UPDATED to show phone_2 -->
                                 <td>
-                                    <div style="line-height: 1.6;">
+                                    <div style="line-height: 1.4;">
                                         <div style="font-weight: 500; margin-bottom: 2px;">
-                                            <i class="fas fa-phone" style="font-size: 11px; margin-right: 4px;"></i>
-                                            <?php echo htmlspecialchars($row['phone']); ?>
+                                            <?php echo htmlspecialchars($row['phone'] ?: 'N/A'); ?>
                                         </div>
                                         <?php if (!empty($row['phone_2'])): ?>
                                         <div style="font-size: 12px; color: #6c757d; margin-bottom: 2px;">
-                                            <i class="fas fa-phone" style="font-size: 10px; margin-right: 4px;"></i>
                                             <?php echo htmlspecialchars($row['phone_2']); ?>
                                         </div>
                                         <?php endif; ?>
                                         <?php if (!empty($row['email'])): ?>
-                                        <div style="font-size: 12px; color: #007bff;">
-                                            <i class="fas fa-envelope" style="font-size: 10px; margin-right: 4px;"></i>
+                                        <div style="font-size: 12px; color: #6c757d; margin-bottom: 2px;">
                                             <?php echo htmlspecialchars($row['email']); ?>
                                         </div>
                                         <?php endif; ?>
@@ -359,10 +356,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                     <div class="address-truncate"
                                         title="<?php echo htmlspecialchars($row['address_line1'] . ($row['address_line2'] ? ', ' . $row['address_line2'] : '') . ($row['city_name'] ? ', ' . $row['city_name'] : '')); ?>">
                                         <?php echo htmlspecialchars($row['address_line1']); ?>
-                                        <?php if (!empty($row['address_line2'])): ?>
-                                        <br><small
-                                            style="color: #6c757d;"><?php echo htmlspecialchars($row['address_line2']); ?></small>
-                                        <?php endif; ?>
+                                        <?php if (!empty($row['address_line2'])): ?>, <?php echo htmlspecialchars($row['address_line2']); ?><?php endif; ?>
                                         <?php if (!empty($row['city_name'])): ?>
                                         <br><small
                                             style="color: #007bff; font-weight: 500;"><?php echo htmlspecialchars($row['city_name']); ?></small>
@@ -370,7 +364,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                     </div>
                                 </td>
 
-                                <!-- Tenant Company Name -->
+                                <!-- Tenant Name -->
                                 <?php if ($is_main_admin == 1 && $is_admin == 1) { ?>
                                 <td class="customer-name">
                                     <div class="customer-info">
@@ -431,7 +425,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                             <?php endwhile; ?>
                             <?php else: ?>
                             <tr>
-                                <td colspan="6" class="text-center"
+                                <td colspan="7" class="text-center"
                                     style="padding: 40px; text-align: center; color: #666;">
                                     <i class="fas fa-users"
                                         style="font-size: 2rem; margin-bottom: 10px; display: block;"></i>
@@ -535,10 +529,10 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
 
 
     <!-- Footer -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/footer.php'); ?>
 
     <!-- Scripts -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/scripts.php'); ?>
 
     <script>
     function clearFilters() {
@@ -579,12 +573,11 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
             phone2Row.style.display = 'none';
         }
 
-        // Build address display
-        let addressDisplay = customerAddress1;
-        if (customerAddress2 && customerAddress2.trim() !== '') {
-            addressDisplay += `<span class="address-line">${customerAddress2}</span>`;
-        }
-        document.getElementById('modal-customer-address').innerHTML = addressDisplay;
+        // Build address display - address 1 + 2 on same line
+        const addressParts = [];
+        if (customerAddress1) addressParts.push(customerAddress1);
+        if (customerAddress2 && customerAddress2.trim() !== '') addressParts.push(customerAddress2);
+        document.getElementById('modal-customer-address').textContent = addressParts.join(', ') || 'N/A';
 
         document.getElementById('modal-customer-city').textContent = customerCityName || customerCity || 'N/A';
 
@@ -610,17 +603,16 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
         try {
             const date = new Date(dateString);
             if (isNaN(date.getTime())) return dateString;
+            const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
             const yyyy = date.getFullYear();
-            const mm = String(date.getMonth() + 1).padStart(2, '0');
+            const mmm = months[date.getMonth()];
             const dd = String(date.getDate()).padStart(2, '0');
             let hours = date.getHours();
             const minutes = String(date.getMinutes()).padStart(2, '0');
-            const seconds = String(date.getSeconds()).padStart(2, '0');
             const ampm = hours >= 12 ? 'PM' : 'AM';
             hours = hours % 12;
             hours = hours ? hours : 12;
-            const hh = String(hours).padStart(2, '0');
-            return `${yyyy}-${mm}-${dd} ${hh}:${minutes}:${seconds} ${ampm}`;
+            return `${mmm} ${dd}, ${yyyy} ${hours}:${minutes} ${ampm}`;
         } catch (e) {
             return dateString;
         }

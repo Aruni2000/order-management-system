@@ -8,12 +8,12 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     if (ob_get_level()) {
         ob_end_clean();
     }
-    header("Location: /OMS/dist/pages/login.php");
+    header("Location: /orderhub_nextwave/dist/pages/login.php");
     exit();
 }
 
 // Include the database connection file
-include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
 
 
 // Multi-tenant permissions
@@ -69,7 +69,7 @@ $offset = ($page - 1) * $limit;
 // Base SQL for counting total records
 $countSql = "SELECT COUNT(*) as total FROM products p LEFT JOIN categories c ON p.category_id = c.id LEFT JOIN tenants t ON p.tenant_id = t.tenant_id";
 
-// Main query - Updated to include product_code, category name, and tenant company name
+// Main query - Updated to include product_code, category name, and tenant Tenant Name
 $sql = "SELECT p.*, c.name as category_name, t.company_name
         FROM products p 
         LEFT JOIN categories c ON p.category_id = c.id
@@ -87,7 +87,7 @@ if ($is_main_admin && $_SESSION['role_id'] == 1) {
     $searchConditions[] = "p.tenant_id = $session_tenant_id";
 }
 
-// General search condition - Updated to include product_code, id, and tenant company name
+// General search condition - Updated to include product_code, id, and tenant Tenant Name
 if (!empty($search)) {
     $searchTerm = $conn->real_escape_string($search);
     $searchConditions[] = "(
@@ -171,7 +171,7 @@ $result = $conn->query($sql);
 <head>
     <title>Product Management | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
     
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/head.php'); ?>
     
     <!-- Stylesheets -->
     <link rel="stylesheet" href="../assets/css/orders.css" />
@@ -191,9 +191,9 @@ $result = $conn->query($sql);
 <body>
     <!-- Page Loader -->
     <?php 
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/loader.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/navbar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/sidebar.php');
     ?>
 
     <div class="pc-container">
@@ -277,7 +277,7 @@ $result = $conn->query($sql);
                         </div>
                         <?php if ($is_main_admin && $_SESSION['role_id'] == 1): ?>
                         <div class="form-group">
-                            <label for="tenant_filter">Tenant Company</label>
+                            <label for="tenant_filter">Tenant</label>
                             <select id="tenant_filter" name="tenant_filter">
                                 <option value="">All Companies</option>
                                 <?php foreach ($tenants as $t): ?>
@@ -339,17 +339,17 @@ $result = $conn->query($sql);
                         <thead>
                             <tr>
                                 <th>ID</th>
-                                <?php if ($is_main_admin && $_SESSION['role_id'] == 1): ?>
-                                <th>Tenant Company</th>
-                                <?php endif; ?>
                                 <th>Product Name</th>
-                                <th>Category</th>
                                 <th>Product Code</th>
+                                <th>Category</th>
                                 <?php if (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1): ?>
                                 <th>Stock</th>
                                 <?php endif; ?>
-                                <th>Created</th>
                                 <th>Status</th>
+                                <?php if ($is_main_admin && $_SESSION['role_id'] == 1): ?>
+                                <th>Tenant</th>
+                                <?php endif; ?>
+                                <th>Created</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
@@ -360,15 +360,6 @@ $result = $conn->query($sql);
                                         <!-- Product ID -->
                                         <td class="order-id"><?php echo htmlspecialchars($row['id']); ?></td>
 
-                                        <?php if ($is_main_admin && $_SESSION['role_id'] == 1): ?>
-                                        <!-- Tenant Company -->
-                                        <td>
-                                            <div style="font-weight: 500; color: #495057; font-size: 13px;">
-                                                <?php echo htmlspecialchars($row['company_name'] ?? 'N/A'); ?>
-                                            </div>
-                                        </td>
-                                        <?php endif; ?>
-                                        
                                         <!-- Product Name -->
                                         <td class="product-name">
                                             <div class="product-info">
@@ -376,18 +367,18 @@ $result = $conn->query($sql);
                                             </div>
                                         </td>
                                         
-                                        <!-- Category -->
-                                        <td>
-                                            <span class="product-category">
-                                                <?php echo htmlspecialchars($row['category_name'] ?? 'Uncategorized'); ?>
-                                            </span>
-                                        </td>
-                                        
                                         <!-- Product Code -->
                                         <td>
                                             <div class="product-code" style="font-family: monospace; font-size: 13px; color: #495057; background: #f8f9fa; padding: 4px 8px; border-radius: 4px; display: inline-block;">
                                                 <?php echo htmlspecialchars($row['product_code'] ?? 'N/A'); ?>
                                             </div>
+                                        </td>
+
+                                        <!-- Category -->
+                                        <td>
+                                            <span class="product-category">
+                                                <?php echo htmlspecialchars($row['category_name'] ?? 'Uncategorized'); ?>
+                                            </span>
                                         </td>
                                         
                                         <!-- Stock -->
@@ -409,15 +400,6 @@ $result = $conn->query($sql);
                                         </td>
                                         <?php endif; ?>
                                         
-                                        <!-- Created Date -->
-                                        <td>
-                                            <div style="font-size: 13px;">
-                                                <?php echo date('Y-m-d', strtotime($row['created_at'])); ?>
-                                                <br>
-                                                <small style="color: #6c757d;"><?php echo date('h:i:s A', strtotime($row['created_at'])); ?></small>
-                                            </div>
-                                        </td>
-                                        
                                         <!-- Status Badge -->
                                         <td>
                                             <?php if ($row['status'] === 'active'): ?>
@@ -425,6 +407,26 @@ $result = $conn->query($sql);
                                             <?php else: ?>
                                                 <span class="status-badge pay-status-unpaid">Inactive</span>
                                             <?php endif; ?>
+                                        </td>
+
+                                        <?php if ($is_main_admin && $_SESSION['role_id'] == 1): ?>
+                                        <!-- Tenant -->
+                                        <td class="customer-name">
+                                            <div class="customer-info">
+                                                <h6 style="margin: 0; font-size: 14px;">
+                                                    <?php echo htmlspecialchars($row['company_name'] ?? 'N/A'); ?>
+                                                </h6>
+                                            </div>
+                                        </td>
+                                        <?php endif; ?>
+
+                                        <!-- Created Date -->
+                                        <td>
+                                            <div style="font-size: 13px;">
+                                                <?php echo date('Y-m-d', strtotime($row['created_at'])); ?>
+                                                <br>
+                                                <small style="color: #6c757d;"><?php echo date('h:i:s A', strtotime($row['created_at'])); ?></small>
+                                            </div>
                                         </td>
                                         
                                         <!-- Action Buttons -->
@@ -446,10 +448,10 @@ $result = $conn->query($sql);
                                                     <i class="fas fa-eye"></i>
                                                 </button>
                                                 
-                                                <?php if ($_SESSION['role_id'] == 1 && isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1): ?>
+                                                <?php if (in_array((int)$_SESSION['role_id'], [1, 3]) && isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1): ?>
                                                 <button type="button" class="action-btn stock-update-btn" 
                                                         style="background: #17a2b8; color: white;"
-                                                        title="Update Stock (Admin Only)"
+                                                        title="Update Stock (Admin & Store)"
                                                         data-product-id="<?= $row['id'] ?>"
                                                         data-product-name="<?= htmlspecialchars($row['name']) ?>"
                                                         data-product-stock="<?= htmlspecialchars($row['stock_quantity']) ?>"
@@ -458,10 +460,10 @@ $result = $conn->query($sql);
                                                 </button>
                                                 <?php endif; ?>
                                                 
-                                                <?php if ($_SESSION['role_id'] == 1): ?>
+                                                <?php if (in_array((int)$_SESSION['role_id'], [1, 3])): ?>
                                                 <button type="button" class="action-btn" 
                                                         style="background: #6f42c1; color: white;"
-                                                        title="Update Selling Price (Admin Only)"
+                                                        title="Update Selling Price (Admin & Store)"
                                                         data-product-id="<?= $row['id'] ?>"
                                                         data-product-name="<?= htmlspecialchars($row['name']) ?>"
                                                         onclick="openPriceUpdateModal(this)">
@@ -491,7 +493,7 @@ $result = $conn->query($sql);
                                 <?php endwhile; ?>
                             <?php else: ?>
                                 <tr>
-                                    <td colspan="<?= (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1) ? 7 : 6 ?>" class="text-center" style="padding: 40px; text-align: center; color: #666;">
+                                    <td colspan="<?= (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1 ? 8 : 7) + ($is_main_admin && $_SESSION['role_id'] == 1 ? 1 : 0) ?>" class="text-center" style="padding: 40px; text-align: center; color: #666;">
                                         <i class="fas fa-box" style="font-size: 2rem; margin-bottom: 10px; display: block;"></i>
                                         No products found
                                     </td>
@@ -608,10 +610,10 @@ $result = $conn->query($sql);
 
 
     <!-- Footer -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/footer.php'); ?>
 
     <!-- Scripts -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/scripts.php'); ?>
 
     <script>
         function clearFilters() {
@@ -660,7 +662,7 @@ $result = $conn->query($sql);
             batchesContainer.innerHTML = '<div style="text-align: center; padding: 15px; color: #64748b; font-size: 13px;"><i class="fas fa-spinner fa-spin"></i> Loading batch details...</div>';
             batchCountEl.textContent = 'Loading...';
 
-            fetch('/OMS/dist/products/get_stock_batches.php?product_id=' + encodeURIComponent(productId))
+            fetch('/orderhub_nextwave/dist/products/get_stock_batches.php?product_id=' + encodeURIComponent(productId))
                 .then(res => res.json())
                 .then(data => {
                     if (data.success && data.batches && data.batches.length > 0) {
@@ -727,17 +729,16 @@ $result = $conn->query($sql);
             try {
                 const date = new Date(dateString);
                 if (isNaN(date.getTime())) return dateString;
+                const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
                 const yyyy = date.getFullYear();
-                const mm = String(date.getMonth() + 1).padStart(2, '0');
+                const mmm = months[date.getMonth()];
                 const dd = String(date.getDate()).padStart(2, '0');
                 let hours = date.getHours();
                 const minutes = String(date.getMinutes()).padStart(2, '0');
-                const seconds = String(date.getSeconds()).padStart(2, '0');
                 const ampm = hours >= 12 ? 'PM' : 'AM';
                 hours = hours % 12;
                 hours = hours ? hours : 12;
-                const hh = String(hours).padStart(2, '0');
-                return `${yyyy}-${mm}-${dd} ${hh}:${minutes}:${seconds} ${ampm}`;
+                return `${mmm} ${dd}, ${yyyy} ${hours}:${minutes} ${ampm}`;
             } catch (e) {
                 return dateString;
             }
@@ -909,7 +910,7 @@ $result = $conn->query($sql);
 
                 <div class="form-group" style="margin-bottom: 20px;">
                     <label for="stock_reason" style="display: block; margin-bottom: 8px; font-weight: 500;">Reason <span style="color: #e74c3c;">*</span></label>
-                    <textarea id="stock_reason" class="form-control" rows="2" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;" placeholder="Enter reason for the stock adjustment"></textarea>
+                    <textarea id="stock_reason" class="form-control" rows="2" maxlength="100" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;" placeholder="Enter reason for the stock adjustment (max 100 characters)"></textarea>
                     <div id="stock-reason-error" style="color: #e74c3c; font-size: 13px; margin-top: 4px; display: none;"></div>
                 </div>
 
@@ -1005,7 +1006,7 @@ $result = $conn->query($sql);
             const batchSelect = document.getElementById('stock_batch_id');
             batchSelect.innerHTML = '<option value="">Loading batches...</option>';
 
-            fetch('/OMS/dist/products/get_stock_batches.php?product_id=' + encodeURIComponent(productId))
+            fetch('/orderhub_nextwave/dist/products/get_stock_batches.php?product_id=' + encodeURIComponent(productId))
                 .then(response => response.json())
                 .then(data => {
                     if (!data.success) {
@@ -1139,7 +1140,7 @@ $result = $conn->query($sql);
             btn.textContent = 'Updating...';
             btn.disabled = true;
 
-            fetch('/OMS/dist/products/update_stock_action.php', {
+            fetch('/orderhub_nextwave/dist/products/update_stock_action.php', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -1209,7 +1210,7 @@ $result = $conn->query($sql);
             batchSelect.innerHTML = '<option value="">Loading batches...</option>';
             pricesContainer.innerHTML = '<div style="text-align: center; color: #64748b; font-size: 13px;"><i class="fas fa-spinner fa-spin"></i> Loading...</div>';
 
-            fetch('/OMS/dist/products/get_stock_batches.php?product_id=' + encodeURIComponent(productId))
+            fetch('/orderhub_nextwave/dist/products/get_stock_batches.php?product_id=' + encodeURIComponent(productId))
                 .then(response => response.json())
                 .then(data => {
                     if (!data.success || !data.batches || data.batches.length === 0) {
@@ -1277,7 +1278,7 @@ $result = $conn->query($sql);
             btn.textContent = 'Updating...';
             btn.disabled = true;
 
-            fetch('/OMS/dist/products/update_selling_price.php', {
+            fetch('/orderhub_nextwave/dist/products/update_selling_price.php', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

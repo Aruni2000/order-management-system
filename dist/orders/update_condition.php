@@ -21,7 +21,7 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
 }
 
 // Include database connection
-include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
 
 // Check if request method is POST
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -93,7 +93,10 @@ try {
         $oldConditionName = $conditionMap[$oldCondition] ?? 'Unknown';
         
         // Get current user ID
-        $currentUserId = $_SESSION['user_id'] ?? 1;
+        $currentUserId = $_SESSION['user_id'] ?? 0;
+        if ($currentUserId == 0) {
+            throw new Exception('Session expired. Please log in again.');
+        }
         
         // Create log message
         $log_message = "Manually updated customer condition for order({$order_id}) from {$oldConditionName} to {$conditionName}";

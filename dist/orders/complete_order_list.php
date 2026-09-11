@@ -14,12 +14,12 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     if (ob_get_level()) {
         ob_end_clean();
     }
-    header("Location: /OMS/dist/pages/login.php");
+    header("Location: /orderhub_nextwave/dist/pages/login.php");
     exit();
 }
 
 // Include database connection
-include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
 
 // Check if user is main admin
 $is_main_admin = $_SESSION['is_main_admin'] ?? 0;
@@ -56,7 +56,7 @@ if ($current_user_id == 0 || $current_user_role == 0) {
 
 // If still no user data, redirect to login
 if ($current_user_id == 0) {
-    header("Location: /OMS/dist/pages/login.php");
+    header("Location: /orderhub_nextwave/dist/pages/login.php");
     exit();
 }
 
@@ -66,6 +66,7 @@ if ($current_user_id == 0) {
 $search = isset($_GET['search']) ? trim($_GET['search']) : '';
 $order_id_filter = isset($_GET['order_id_filter']) ? trim($_GET['order_id_filter']) : '';
 $customer_name_filter = isset($_GET['customer_name_filter']) ? trim($_GET['customer_name_filter']) : '';
+$phone_filter = isset($_GET['phone_filter']) ? trim($_GET['phone_filter']) : '';
 $tracking_id = isset($_GET['tracking_id']) ? trim($_GET['tracking_id']) : '';
 $date_from = isset($_GET['date_from']) ? trim($_GET['date_from']) : '';
 $date_to = isset($_GET['date_to']) ? trim($_GET['date_to']) : '';
@@ -102,8 +103,8 @@ $sql = "SELECT i.*, c.name as customer_name,
         LEFT JOIN tenants t ON i.tenant_id = t.tenant_id
         WHERE i.interface IN ('individual', 'leads') AND i.status = 'done'";
 
-// Add tenant filter for non-main admin users
-if ($is_main_admin != 1) {
+// Add tenant filter: Only main admin with role 1 can see all tenants
+if (!($is_main_admin == 1 && $current_user_role == 1)) {
     $countSql .= " AND i.tenant_id = $tenant_id";
     $sql .= " AND i.tenant_id = $tenant_id";
 }
@@ -127,7 +128,7 @@ if (!empty($search)) {
 // Specific Order ID filter
 if (!empty($order_id_filter)) {
     $orderIdTerm = $conn->real_escape_string($order_id_filter);
-    $searchConditions[] = "i.order_id LIKE '%$orderIdTerm%'";
+    $searchConditions[] = "i.order_id = '$orderIdTerm'";
 }
 
 // Specific Customer Name filter
@@ -136,10 +137,16 @@ if (!empty($customer_name_filter)) {
     $searchConditions[] = "i.full_name LIKE '%$customerNameTerm%'";
 }
 
+// Customer Phone filter
+if (!empty($phone_filter)) {
+    $phoneTerm = $conn->real_escape_string($phone_filter);
+    $searchConditions[] = "i.mobile = '$phoneTerm'";
+}
+
 // Tracking ID filter
 if (!empty($tracking_id)) {
     $trackingTerm = $conn->real_escape_string($tracking_id);
-    $searchConditions[] = "i.tracking_number LIKE '%$trackingTerm%'";
+    $searchConditions[] = "i.tracking_number = '$trackingTerm'";
 }
 
 // Date range filter
@@ -217,7 +224,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
 <head>
     <title>Complete Orders | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
     
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/head.php'); ?>
     
     <!-- Stylesheets -->
     <link rel="stylesheet" href="../assets/css/orders.css" />
@@ -259,9 +266,9 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
 <body>
     <!-- Page Loader -->
     <?php 
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/loader.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/navbar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/sidebar.php');
     ?>
 
     <div class="pc-container">
@@ -296,9 +303,16 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                         </div>
                         
                         <div class="form-group">
-                            <label for="tracking_id">Tracking ID</label>
+                            <label for="phone_filter">Customer Phone</label>
+                            <input type="text" id="phone_filter" name="phone_filter"
+                                placeholder="Enter phone number"
+                                value="<?php echo htmlspecialchars($phone_filter); ?>">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="tracking_id">Tracking Number</label>
                             <input type="text" id="tracking_id" name="tracking_id" 
-                                   placeholder="Enter tracking ID" 
+                                   placeholder="Enter tracking number" 
                                    value="<?php echo htmlspecialchars($tracking_id); ?>">
                         </div>
                         
@@ -379,7 +393,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                 <th>Customer Name</th>
                                 <th>Total Amount</th>
                                 <?php if ($is_main_admin == 1 && $_SESSION['role_id'] == 1): ?>
-                                <th>Tenant Company</th>
+                                <th>Tenant</th>
                                 <?php endif; ?>
                                 <th>Processed By</th>
                                 <th>Actions</th>
@@ -391,7 +405,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                     <tr>
                                         <!-- Order ID -->
                                         <td class="order-id">
-                                            <?php echo isset($row['order_id']) ? htmlspecialchars($row['order_id']) : ''; ?>                                                <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/leads_badge.php'); ?>
+                                            <?php echo isset($row['order_id']) ? htmlspecialchars($row['order_id']) : ''; ?>                                                <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/leads_badge.php'); ?>
                                         </td>
 
                                         <!-- NEW: Issue Date Column -->
@@ -446,11 +460,13 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                         </td>
 
                                         <?php if ($is_main_admin == 1 && $_SESSION['role_id'] == 1): ?>
-                                        <!-- Company Name -->
-                                        <td>
-                                            <?php
-                                            echo isset($row['company_name']) ? htmlspecialchars($row['company_name']) : 'N/A';
-                                            ?>
+                                        <!-- Tenant Name -->
+                                        <td class="customer-name">
+                                            <div class="customer-info">
+                                                <h6 style="margin: 0; font-size: 14px;">
+                                                    <?php echo isset($row['company_name']) && $row['company_name'] !== '' ? htmlspecialchars($row['company_name']) : 'N/A'; ?>
+                                                </h6>
+                                            </div>
                                         </td>
                                         <?php endif; ?>
                                         
@@ -504,20 +520,20 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                     </div>
                     <div class="pagination-controls">
                         <?php if ($page > 1): ?>
-                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page - 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&tracking_id=<?php echo urlencode($tracking_id); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&tenant_id_filter=<?php echo urlencode($tenant_id_filter); ?>&user_id_filter=<?php echo urlencode($user_id_filter); ?>&search=<?php echo urlencode($search); ?>'">
+                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page - 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&tracking_id=<?php echo urlencode($tracking_id); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&tenant_id_filter=<?php echo urlencode($tenant_id_filter); ?>&user_id_filter=<?php echo urlencode($user_id_filter); ?>&search=<?php echo urlencode($search); ?>'">
                                 <i class="fas fa-chevron-left"></i>
                             </button>
                         <?php endif; ?>
                         
                         <?php for ($i = max(1, $page - 2); $i <= min($totalPages, $page + 2); $i++): ?>
                             <button class="page-btn <?php echo ($i == $page) ? 'active' : ''; ?>" 
-                                    onclick="window.location.href='?page=<?php echo $i; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&tracking_id=<?php echo urlencode($tracking_id); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&tenant_id_filter=<?php echo urlencode($tenant_id_filter); ?>&user_id_filter=<?php echo urlencode($user_id_filter); ?>&search=<?php echo urlencode($search); ?>'">
+                                    onclick="window.location.href='?page=<?php echo $i; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&tracking_id=<?php echo urlencode($tracking_id); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&tenant_id_filter=<?php echo urlencode($tenant_id_filter); ?>&user_id_filter=<?php echo urlencode($user_id_filter); ?>&search=<?php echo urlencode($search); ?>'">
                                 <?php echo $i; ?>
                             </button>
                         <?php endfor; ?>
                         
                         <?php if ($page < $totalPages): ?>
-                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page + 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&tracking_id=<?php echo urlencode($tracking_id); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&tenant_id_filter=<?php echo urlencode($tenant_id_filter); ?>&user_id_filter=<?php echo urlencode($user_id_filter); ?>&search=<?php echo urlencode($search); ?>'">
+                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page + 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&tracking_id=<?php echo urlencode($tracking_id); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&tenant_id_filter=<?php echo urlencode($tenant_id_filter); ?>&user_id_filter=<?php echo urlencode($user_id_filter); ?>&search=<?php echo urlencode($search); ?>'">
                                 <i class="fas fa-chevron-right"></i>
                             </button>
                         <?php endif; ?>
@@ -579,6 +595,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
         function clearFilters() {
             document.getElementById('order_id_filter').value = '';
             document.getElementById('customer_name_filter').value = '';
+            document.getElementById('phone_filter').value = '';
             document.getElementById('tracking_id').value = '';
             document.getElementById('date_from').value = '';
             document.getElementById('date_to').value = '';
@@ -742,7 +759,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
             }
 
             // Construct the payment slip URL
-            const slipUrl = '/OMS/dist/uploads/' + encodeURIComponent(currentPaymentSlip);
+            const slipUrl = '/orderhub_nextwave/dist/uploads/' + encodeURIComponent(currentPaymentSlip);
 
             // Open payment slip in new tab
             window.open(slipUrl, '_blank');
@@ -1016,8 +1033,8 @@ document.addEventListener('DOMContentLoaded', function() {
     </script>
 
     <!-- Include Footer and Scripts -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php'); ?>
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/footer.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/scripts.php'); ?>
 
 </body>
 </html>

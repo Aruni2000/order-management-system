@@ -14,7 +14,7 @@ ob_start();
 session_start();
 
 // Include the database connection file
-include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
 
 // Function to return JSON response and exit
 function jsonResponse($success, $message, $errors = null, $data = null) {
@@ -105,7 +105,11 @@ try {
     if (empty($password)) $fieldErrors['password'] = "Password is required.";
     if (!empty($password) && strlen($password) < 6) $fieldErrors['password'] = "Password must be at least 6 characters long.";
     if (empty($mobile)) $fieldErrors['mobile'] = "Mobile number is required.";
-    if (empty($nic)) $fieldErrors['nic'] = "NIC number is required.";
+    if (empty($nic)) {
+        $fieldErrors['nic'] = "NIC number is required.";
+    } elseif (!preg_match('/^\d{9}[VX]$/i', $nic) && !preg_match('/^\d{12}$/', $nic)) {
+        $fieldErrors['nic'] = "Invalid NIC format. Use old format (9 digits + V/X) or new format (12 digits).";
+    }
     if (empty($address)) $fieldErrors['address'] = "Address is required.";
     
     // Validate role against the roles table
@@ -155,6 +159,21 @@ try {
         }
     }
     
+    // Check for duplicate mobile
+    if (!empty($mobile)) {
+        $stmt = $conn->prepare("SELECT id FROM users WHERE mobile = ?");
+        if ($stmt) {
+            $stmt->bind_param("s", $mobile);
+            $stmt->execute();
+            $result = $stmt->get_result();
+            
+            if ($result->num_rows > 0) {
+                $fieldErrors['mobile'] = "Mobile number is already registered.";
+            }
+            $stmt->close();
+        }
+    }
+
     // Check for duplicate NIC
     if (!empty($nic)) {
         $stmt = $conn->prepare("SELECT id FROM users WHERE nic = ?");
@@ -250,6 +269,8 @@ try {
                 jsonResponse(false, 'Email address is already in use.', ['email' => 'This email address is already registered.']);
             } elseif (strpos($error, 'nic') !== false) {
                 jsonResponse(false, 'NIC number is already in use.', ['nic' => 'This NIC number is already registered.']);
+            } elseif (strpos($error, 'mobile') !== false) {
+                jsonResponse(false, 'Mobile number is already in use.', ['mobile' => 'This mobile number is already registered.']);
             }
         }
         

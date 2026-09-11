@@ -3,14 +3,14 @@
 session_start();
 
 // Include the database connection file FIRST
-include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
 
 // Check if user is logged in, if not redirect to login page
 if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     if (ob_get_level()) {
         ob_end_clean();
     }
-    header("Location: /OMS/dist/pages/login.php");
+    header("Location: /orderhub_nextwave/dist/pages/login.php");
     exit();
 }
 
@@ -27,7 +27,7 @@ $role_result = $role_stmt->get_result();
 
 if ($role_result->num_rows === 0) {
     session_destroy();
-    header("Location: /OMS/dist/pages/login.php");
+    header("Location: /orderhub_nextwave/dist/pages/login.php");
     exit();
 }
 
@@ -35,13 +35,13 @@ $user_role = $role_result->fetch_assoc();
 
 // Check if user is admin (role_id = 1)
 if ($user_role['role_id'] != 1) {
-    header("Location: /OMS/dist/dashboard/index.php");
+    header("Location: /orderhub_nextwave/dist/dashboard/index.php");
     exit();
 }
 
 // Check if user is Main Admin
 if (!isset($_SESSION['is_main_admin']) || $_SESSION['is_main_admin'] != 1) {
-    header("Location: /OMS/dist/dashboard/index.php");
+    header("Location: /orderhub_nextwave/dist/dashboard/index.php");
     exit();
 }
 
@@ -72,7 +72,7 @@ if (!$courierResult) {
 <head>
     <title>Add Courier Account | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
 
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/head.php'); ?>
     
     <link rel="stylesheet" href="../assets/css/customers.css" />
     
@@ -211,9 +211,9 @@ if (!$courierResult) {
 
 <body>
     <?php 
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/loader.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/navbar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/sidebar.php');
     ?>
 
     <!-- Loading Overlay -->
@@ -361,8 +361,8 @@ if (!$courierResult) {
     </div>
 
     <?php
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/footer.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/scripts.php');
     ?>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
@@ -433,9 +433,7 @@ if (!$courierResult) {
                     
                     if (response.success) {
                         toastManager.success(response.message || 'Courier account added successfully!');
-                        setTimeout(() => {
-                            window.location.href = 'couriers.php';
-                        }, 2000);
+                        resetForm();
                     } else {
                         if (response.errors) {
                             showFieldErrors(response.errors);

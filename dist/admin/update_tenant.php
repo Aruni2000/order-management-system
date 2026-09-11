@@ -11,7 +11,7 @@ header('Content-Type: application/json');
 ob_start();
 session_start();
 
-include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
 
 /* ================================
    Helper: JSON Response
@@ -106,8 +106,8 @@ $email          = strtolower(trim($_POST['email'] ?? ''));
 $phone          = trim($_POST['phone'] ?? '');
 $address        = trim($_POST['address'] ?? '');
 $deliveryFee    = trim($_POST['delivery_fee'] ?? '0.00');
-$removeLogo     = isset($_POST['remove_logo']) ? 1 : 0;
-$removeFavicon  = isset($_POST['remove_favicon']) ? 1 : 0;
+$removeLogo     = ($_POST['remove_logo'] ?? '0') === '1' ? 1 : 0;
+$removeFavicon  = ($_POST['remove_favicon'] ?? '0') === '1' ? 1 : 0;
 $isMainAdmin    = (int)($_POST['is_main_admin'] ?? 0);
 
 /* ================================
@@ -146,13 +146,18 @@ if (!$currentIsMainAdmin) {
     $isMainAdmin = (int)$existingTenant['is_main_admin'];
 }
 
+$sessionTenantId = (int)($_SESSION['tenant_id'] ?? 0);
+if ($currentIsMainAdmin && $tenantId === $sessionTenantId && $isMainAdmin !== (int)$existingTenant['is_main_admin']) {
+    jsonResponse(false, 'You cannot change the Main Tenant status of your own company. Another Main Tenant admin must do this.');
+}
+
 /* ================================
    Validation
 ================================ */
 $errors = [];
 
 if ($tenantId <= 0) $errors['tenant_id'] = 'Invalid tenant ID.';
-    if (strlen($companyName) < 2) $errors['company_name'] = 'Company name is required.';
+    if (strlen($companyName) < 2) $errors['company_name'] = 'Tenant Name is required.';
 if (strlen($contactPerson) < 2) $errors['contact_person'] = 'Contact person is required.';
 
 if (empty($address)) $errors['address'] = 'Company address is required.';
@@ -170,19 +175,25 @@ if (!in_array($isMainAdmin, [0, 1])) {
     $errors['is_main_admin'] = 'Invalid value.';
 }
 
-// Validate logo file type
+// Validate logo file type and size
 if (isset($_FILES['logo']) && $_FILES['logo']['error'] == 0) {
     $ext = strtolower(pathinfo($_FILES['logo']['name'], PATHINFO_EXTENSION));
     if (!in_array($ext, ['jpg', 'jpeg', 'png', 'gif'])) {
         $errors['logo'] = 'Invalid logo file type. Allowed: JPG, PNG, GIF';
     }
+    if ($_FILES['logo']['size'] > 5 * 1024 * 1024) {
+        $errors['logo'] = 'Logo file too large. Maximum size: 5MB';
+    }
 }
 
-// Validate favicon file type
+// Validate favicon file type and size
 if (isset($_FILES['fav_icon']) && $_FILES['fav_icon']['error'] == 0) {
     $ext = strtolower(pathinfo($_FILES['fav_icon']['name'], PATHINFO_EXTENSION));
     if (!in_array($ext, ['jpg', 'jpeg', 'png', 'ico'])) {
         $errors['fav_icon'] = 'Invalid favicon file type. Allowed: ICO, PNG, JPG';
+    }
+    if ($_FILES['fav_icon']['size'] > 5 * 1024 * 1024) {
+        $errors['fav_icon'] = 'Favicon file too large. Maximum size: 5MB';
     }
 }
 
@@ -196,7 +207,7 @@ if (!empty($errors)) {
 $tenantChanged = false;
 $changes = [];
 $fieldLabels = [
-    'company_name'   => 'Company Name',
+    'company_name'   => 'Tenant Name',
     'contact_person' => 'Contact Person',
     'email'          => 'Email',
     'phone'          => 'Phone',
@@ -247,7 +258,7 @@ foreach ($tenantFields as $field => $newValue) {
 $logoUrl = $existingTenant['logo_url'] ?? '';
 $faviconUrl = $existingTenant['fav_icon_url'] ?? '';
 
-// Helper: sanitize company name for use in filenames
+// Helper: sanitize Tenant Name for use in filenames
 $nameSlug = strtolower(trim($companyName));
 $nameSlug = preg_replace('/[^a-z0-9]+/', '_', $nameSlug);
 $nameSlug = trim($nameSlug, '_');
@@ -267,13 +278,13 @@ if (isset($_FILES['logo']) && $_FILES['logo']['error'] == 0) {
     $allowed = ['jpg', 'jpeg', 'png', 'gif'];
     $ext = strtolower(pathinfo($_FILES['logo']['name'], PATHINFO_EXTENSION));
     if (in_array($ext, $allowed)) {
-        $uploadDir = $_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/uploads/';
+        $uploadDir = $_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/uploads/';
         if (!is_dir($uploadDir)) mkdir($uploadDir, 0755, true);
         $newName = $nameSlug . '_logo_' . time() . '.' . $ext;
         if (move_uploaded_file($_FILES['logo']['tmp_name'], $uploadDir . $newName)) {
             // New file saved — now safe to delete the old one
             $deleteOldFile($existingTenant['logo_url'] ?? '');
-            $logoUrl = '/OMS/dist/uploads/' . $newName;
+            $logoUrl = '/orderhub_nextwave/dist/uploads/' . $newName;
         }
     }
 } elseif ($removeLogo) {
@@ -286,13 +297,13 @@ if (isset($_FILES['fav_icon']) && $_FILES['fav_icon']['error'] == 0) {
     $allowed = ['jpg', 'jpeg', 'png', 'ico'];
     $ext = strtolower(pathinfo($_FILES['fav_icon']['name'], PATHINFO_EXTENSION));
     if (in_array($ext, $allowed)) {
-        $uploadDir = $_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/uploads/';
+        $uploadDir = $_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/uploads/';
         if (!is_dir($uploadDir)) mkdir($uploadDir, 0755, true);
         $newName = $nameSlug . '_favicon_' . time() . '.' . $ext;
         if (move_uploaded_file($_FILES['fav_icon']['tmp_name'], $uploadDir . $newName)) {
             // New file saved — now safe to delete the old one
             $deleteOldFile($existingTenant['fav_icon_url'] ?? '');
-            $faviconUrl = '/OMS/dist/uploads/' . $newName;
+            $faviconUrl = '/orderhub_nextwave/dist/uploads/' . $newName;
         }
     }
 } elseif ($removeFavicon) {

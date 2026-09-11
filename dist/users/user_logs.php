@@ -8,13 +8,37 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     if (ob_get_level()) {
         ob_end_clean();
     }
-    header("Location: /OMS/dist/pages/login.php");
+    header("Location: /orderhub_nextwave/dist/pages/login.php");
     exit();
 }
 
 // Include the database connection file
-include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
 
+// Check if user has admin role (role_id = 1)
+if (!isset($_SESSION['user_id'])) {
+    header("Location: /orderhub_nextwave/dist/pages/login.php");
+    exit();
+}
+
+$user_id = $_SESSION['user_id'];
+$role_check_sql = "SELECT role_id FROM users WHERE id = ? AND status = 'active'";
+$role_stmt = $conn->prepare($role_check_sql);
+$role_stmt->bind_param("i", $user_id);
+$role_stmt->execute();
+$role_result = $role_stmt->get_result();
+
+if ($role_result->num_rows === 0) {
+    session_destroy();
+    header("Location: /orderhub_nextwave/dist/pages/login.php");
+    exit();
+}
+
+$user_role = $role_result->fetch_assoc();
+if ($user_role['role_id'] != 1) {
+    header("Location: /orderhub_nextwave/dist/dashboard/index.php");
+    exit();
+}
 
 // Handle search and filter parameters
 $search = isset($_GET['search']) ? trim($_GET['search']) : '';
@@ -28,7 +52,7 @@ $tenant_filter = isset($_GET['tenant_filter']) ? trim($_GET['tenant_filter']) : 
 $is_main_admin = isset($_SESSION['is_main_admin']) && $_SESSION['is_main_admin'] == 1;
 
 // Pagination settings
-$limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 10;
+$limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 15;
 $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
 $offset = ($page - 1) * $limit;
 
@@ -167,58 +191,6 @@ function formatActionType($actionType) {
     return $formatted;
 }
 
-// Function to get entity prefix based on action type
-function getInquiryPrefix($actionType) {
-    $action = strtolower($actionType);
-    
-    // Order-related actions
-    if (preg_match('/^(order_|payment_|bulk_|condition_|update_call_status|complete_mark|return_csv|create_order|updated order)/', $action)) {
-        return 'ORD';
-    }
-    
-    // Product actions
-    if (strpos($action, 'product_') === 0 || $action === 'stock_update') {
-        return 'PRD';
-    }
-    
-    // Category actions
-    if (strpos($action, 'category_') === 0) {
-        return 'CAT';
-    }
-    
-    // User actions
-    if (strpos($action, 'user_') === 0) {
-        return 'USR';
-    }
-    
-    // Customer actions
-    if (strpos($action, 'customer_') === 0) {
-        return 'CUS';
-    }
-    
-    // Courier actions
-    if (strpos($action, 'courier_') === 0 || $action === 'api_update') {
-        return 'COU';
-    }
-    
-    // Branding actions
-    if (strpos($action, 'branding_') === 0) {
-        return 'BRD';
-    }
-    
-    // Lead actions
-    if (strpos($action, 'lead_') === 0) {
-        return 'LED';
-    }
-    
-    // Tenant actions
-    if (strpos($action, 'tenant_') === 0) {
-        return 'TNT';
-    }
-    
-    return 'REF';
-}
-
 // Function to format details JSON
 function formatLogDetails($details) {
     if (empty($details)) {
@@ -230,13 +202,7 @@ function formatLogDetails($details) {
     if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
         $formatted = [];
         
-        // Exclude unwanted fields
-        $excludeFields = ['ip_address', 'user_agent'];
-
         foreach ($decoded as $key => $value) {
-            if (in_array($key, $excludeFields)) {
-                continue;
-            }
 
             $formattedKey = ucwords(str_replace('_', ' ', $key));
 
@@ -274,7 +240,7 @@ function formatLogDetails($details) {
 <head>
     <title>User Activity Logs | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
     
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/head.php'); ?>
     
     <!-- Stylesheets -->
     <link rel="stylesheet" href="../assets/css/orders.css" />
@@ -284,9 +250,9 @@ function formatLogDetails($details) {
 <body>
     <!-- Page Loader -->
     <?php 
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/loader.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/navbar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/sidebar.php');
     ?>
 
     <div class="pc-container">
@@ -321,7 +287,7 @@ function formatLogDetails($details) {
 
                         <?php if ($is_main_admin && $_SESSION['role_id'] == 1): ?>
                         <div class="form-group">
-                            <label for="tenant_filter">Tenant Company</label>
+                            <label for="tenant_filter">Tenant</label>
                             <select id="tenant_filter" name="tenant_filter">
                                 <option value="">All Companies</option>
                                 <?php foreach ($tenants_list as $tenant): ?>
@@ -393,10 +359,13 @@ function formatLogDetails($details) {
                     <table class="orders-table">
                         <thead>
                             <tr>
-                                <th style="width: 100px; min-width: 100px;">Log ID</th>
-                                <th style="width: 220px; min-width: 220px;">User Info</th>
-                                <th style="width: 200px; min-width: 200px;">Action Type</th>
-                                <th style="width: 140px; min-width: 140px;">Ref ID</th>
+                                <th style="width: 70px; min-width: 70px;">Log ID</th>
+                                <th style="width: 200px; min-width: 200px;">User Info</th>
+                                <?php if ($is_main_admin): ?>
+                                <th style="width: 160px; min-width: 160px;">Tenant</th>
+                                <?php endif; ?>
+                                <th style="width: 180px; min-width: 180px;">Action Type</th>
+                                <th style="width: 120px; min-width: 120px;">Ref ID</th>
                                 <th style="width: 450px; min-width: 450px; max-width: 450px;">Details</th>
                                 <th style="width: 170px; min-width: 170px;">Date</th>
                             </tr>
@@ -416,12 +385,6 @@ function formatLogDetails($details) {
                                                 <h6 style="margin: 0 0 5px 0; font-size: 14px; font-weight: 600; color: #333;">
                                                     <?php echo htmlspecialchars($row['username'] ?: 'Unknown User'); ?> (<?php echo htmlspecialchars($row['user_id']); ?>)
                                                 </h6>
-                                                <?php if ($is_main_admin && !empty($row['tenant_name'])): ?>
-                                                    <div style="color: #4b5563; font-size: 12px; font-weight: 500; margin-bottom: 2px;">
-                                                        <i class="fas fa-building" style="font-size: 10px; color: #94a3b8; margin-right: 4px;"></i>
-                                                        <?php echo htmlspecialchars($row['tenant_name']); ?>
-                                                    </div>
-                                                <?php endif; ?>
                                                 <?php if (!empty($row['user_email'])): ?>
                                                     <small style="color: #6c757d; font-size: 11px; display: block;">
                                                         <?php echo htmlspecialchars($row['user_email']); ?>
@@ -429,6 +392,17 @@ function formatLogDetails($details) {
                                                 <?php endif; ?>
                                             </div>
                                         </td>
+
+                                        <?php if ($is_main_admin): ?>
+                                        <!-- Tenant -->
+                                        <td class="customer-name">
+                                            <div class="customer-info">
+                                                <h6 style="margin: 0; font-size: 14px;">
+                                                    <?php echo !empty($row['tenant_name']) ? htmlspecialchars($row['tenant_name']) : 'N/A'; ?>
+                                                </h6>
+                                            </div>
+                                        </td>
+                                        <?php endif; ?>
 
                                         <!-- Action Type -->
                                         <td class="action-type-column">
@@ -449,11 +423,10 @@ function formatLogDetails($details) {
                                             </span>
                                         </td>
                                         
-                                        <!-- Ref ID (with type prefix) -->
+                                        <!-- Ref ID -->
                                         <td>
                                             <?php if (!empty($row['inquiry_id'])): ?>
                                                 <div style="font-weight: 500; color: #495057;">
-                                                    <span class="ref-prefix" style="font-size: 10px; font-weight: 700; color: #6c757d; background: #e9ecef; padding: 1px 5px; border-radius: 3px; margin-right: 3px;"><?php echo getInquiryPrefix($row['action_type']); ?></span>
                                                     <?php echo htmlspecialchars($row['inquiry_id']); ?>
                                                 </div>
                                             <?php else: ?>
@@ -480,16 +453,17 @@ function formatLogDetails($details) {
                                         
                                         <!-- Date & Time -->
                                         <td>
-                                            <div style="font-size: 12px; line-height: 1.4;">
-                                                <div style="font-weight: 500;"><?php echo date('M d, Y', strtotime($row['created_at'])); ?></div>
-                                                <div style="color: #6c757d;"><?php echo date('h:i:s A', strtotime($row['created_at'])); ?></div>
+                                            <div style="font-size: 13px;">
+                                                <?php echo date('Y-m-d', strtotime($row['created_at'])); ?>
+                                                <br>
+                                                <small style="color: #6c757d;"><?php echo date('h:i:s A', strtotime($row['created_at'])); ?></small>
                                             </div>
                                         </td>
                                     </tr>
                                 <?php endwhile; ?>
                             <?php else: ?>
                                 <tr>
-                                        <td colspan="6" class="text-center" style="padding: 40px; text-align: center; color: #666;">
+                                        <td colspan="7" class="text-center" style="padding: 40px; text-align: center; color: #666;">
                                         <i class="fas fa-history" style="font-size: 2rem; margin-bottom: 10px; display: block;"></i>
                                         No activity logs found
                                     </td>
@@ -531,7 +505,7 @@ function formatLogDetails($details) {
 
     <!-- Info Modal -->
     <?php
-    include_once($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/info_modal.php');
+    include_once($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/info_modal.php');
     renderInfoModal(
         'How User Activity Logs Work',
         'fas fa-history',
@@ -558,190 +532,13 @@ function formatLogDetails($details) {
     );
     ?>
 
-    <!-- Log Details Modal -->
-    <div id="logDetailsModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h4>Activity Log Details</h4>
-                <span class="close" onclick="closeLogModal()">&times;</span>
-            </div>
-            <div class="modal-body">
-                <div class="customer-detail-row">
-                    <span class="detail-label">Log ID:</span>
-                    <span class="detail-value" id="modal-log-id"></span>
-                </div>
-                <div class="customer-detail-row">
-                    <span class="detail-label">User:</span>
-                    <span class="detail-value" id="modal-username"></span>
-                </div>
-                <div class="customer-detail-row">
-                    <span class="detail-label">User ID:</span>
-                    <span class="detail-value" id="modal-user-id"></span>
-                </div>
-                <div class="customer-detail-row">
-                    <span class="detail-label">User Email:</span>
-                    <span class="detail-value" id="modal-user-email"></span>
-                </div>
-                <div class="customer-detail-row">
-                    <span class="detail-label">Action Type:</span>
-                    <span class="detail-value">
-                        <span id="modal-action-type" class="status-badge"></span>
-                    </span>
-                </div>
-                <div class="customer-detail-row">
-                    <span class="detail-label">Inquiry ID:</span>
-                    <span class="detail-value" id="modal-inquiry-id"></span>
-                </div>
-                <div class="customer-detail-row">
-                    <span class="detail-label">Details:</span>
-                    <span class="detail-value" id="modal-details"></span>
-                </div>
-                <div class="customer-detail-row">
-                    <span class="detail-label">Date & Time:</span>
-                    <span class="detail-value" id="modal-created-at"></span>
-                </div>
-            </div>
-        </div>
-    </div>
-
     <!-- Footer -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/footer.php'); ?>
 
     <!-- Scripts -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/scripts.php'); ?>
 
     <script>
-// Complete JavaScript code for user logs page
-
-// Log Details Modal Functions
-function openLogModal(button) {
-    const modal = document.getElementById('logDetailsModal');
-    
-    // Extract data from button attributes
-    const logId = button.getAttribute('data-log-id');
-    const userId = button.getAttribute('data-user-id');
-    const username = button.getAttribute('data-username');
-    const userEmail = button.getAttribute('data-user-email');
-    const actionType = button.getAttribute('data-action-type');
-    const inquiryId = button.getAttribute('data-inquiry-id');
-    const details = button.getAttribute('data-details');
-    const createdAt = button.getAttribute('data-created-at');
-
-    // Populate modal fields
-    document.getElementById('modal-log-id').textContent = '#' + logId;
-    document.getElementById('modal-username').textContent = username || 'Unknown User';
-    document.getElementById('modal-user-id').textContent = userId;
-    document.getElementById('modal-user-email').textContent = userEmail || 'N/A';
-    document.getElementById('modal-inquiry-id').textContent = inquiryId ? '#' + inquiryId : 'N/A';
-    
-    // Format details for modal
-    document.getElementById('modal-details').innerHTML = formatDetailsForModal(details);
-    document.getElementById('modal-created-at').textContent = formatDateTime(createdAt);
-    
-    // Set action type badge
-    const actionTypeElement = document.getElementById('modal-action-type');
-    actionTypeElement.textContent = formatActionTypeLabel(actionType);
-    
-    // Set appropriate badge class based on action type
-    const action = actionType.toLowerCase();
-    if (action.includes('create') || action.includes('add')) {
-        actionTypeElement.className = 'status-badge pay-status-paid';
-    } else if (action.includes('delete') || action.includes('remove')) {
-        actionTypeElement.className = 'status-badge pay-status-unpaid';
-    } else if (action.includes('update') || action.includes('edit')) {
-        actionTypeElement.className = 'status-badge status-badge-warning';
-    } else {
-        actionTypeElement.className = 'status-badge status-badge-info';
-    }
-
-    // Show modal
-    modal.style.display = 'block';
-}
-
-function formatActionTypeLabel(actionType) {
-    if (!actionType) return '';
-    return actionType
-        .split('_')
-        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-        .join(' ');
-}
-
-function formatDetailsForModal(details) {
-    if (!details) return 'No details available';
-    
-    const escapeHTML = (str) => {
-        const p = document.createElement('p');
-        p.textContent = str;
-        return p.innerHTML;
-    };
-
-    try {
-        const decoded = JSON.parse(details);
-        if (typeof decoded === 'object' && decoded !== null) {
-            const excludeFields = ['ip_address', 'user_agent'];
-            const formatted = [];
-            
-            for (const [key, value] of Object.entries(decoded)) {
-                if (excludeFields.includes(key)) {
-                    continue;
-                }
-
-                const formattedKey = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-                
-                if (typeof value === 'object' && value !== null && 'from' in value && 'to' in value) {
-                    const from = escapeHTML(value.from || 'N/A');
-                    const to = escapeHTML(value.to || 'N/A');
-                    formatted.push(`<strong>${formattedKey}:</strong> Changed from '${from}' to '${to}'`);
-                } else {
-                    const formattedValue = typeof value === 'object' ? escapeHTML(JSON.stringify(value)) : escapeHTML(value);
-                    formatted.push(`<strong>${formattedKey}:</strong> ${formattedValue}`);
-                }
-            }
-            
-            if (formatted.length === 0) {
-                return 'No relevant details to display.';
-            }
-            return formatted.join('<br>');
-        }
-    } catch (e) {
-        // Not JSON, return as is but escaped
-        return escapeHTML(details);
-    }
-    
-    return escapeHTML(details);
-}
-
-function closeLogModal() {
-    document.getElementById('logDetailsModal').style.display = 'none';
-}
-
-function formatDateTime(dateString) {
-    if (!dateString) return 'N/A';
-    try {
-        const date = new Date(dateString);
-        if (isNaN(date.getTime())) return dateString;
-        const yyyy = date.getFullYear();
-        const mm = String(date.getMonth() + 1).padStart(2, '0');
-        const dd = String(date.getDate()).padStart(2, '0');
-        let hours = date.getHours();
-        const minutes = String(date.getMinutes()).padStart(2, '0');
-        const seconds = String(date.getSeconds()).padStart(2, '0');
-        const ampm = hours >= 12 ? 'PM' : 'AM';
-        hours = hours % 12;
-        hours = hours ? hours : 12;
-        const hh = String(hours).padStart(2, '0');
-        return `${yyyy}-${mm}-${dd} ${hh}:${minutes}:${seconds} ${ampm}`;
-    } catch (e) {
-        return dateString;
-    }
-}
-
-// View Related Inquiry Function
-function viewInquiry(inquiryId) {
-    // Redirect to inquiries page with specific inquiry ID
-    window.location.href = `inquiries.php?inquiry_id=${inquiryId}`;
-}
-
 // Toggle Details Function
 function toggleDetails(element) {
     const container = element.closest('.details-container');
@@ -761,14 +558,6 @@ function toggleDetails(element) {
 
 // Event Listeners
 document.addEventListener('DOMContentLoaded', function() {
-    // View log button event listeners
-    const viewButtons = document.querySelectorAll('.view-log-btn');
-    viewButtons.forEach(button => {
-        button.addEventListener('click', function() {
-            openLogModal(this);
-        });
-    });
-    
     // Toggle details event listeners
     const toggleDetailsButtons = document.querySelectorAll('.toggle-details');
     toggleDetailsButtons.forEach(button => {
@@ -776,22 +565,6 @@ document.addEventListener('DOMContentLoaded', function() {
             e.preventDefault();
             toggleDetails(this);
         });
-    });
-    
-    // Close modal when clicking outside
-    window.onclick = function(event) {
-        const logModal = document.getElementById('logDetailsModal');
-        
-        if (event.target === logModal) {
-            closeLogModal();
-        }
-    };
-    
-    // Escape key to close modal
-    document.addEventListener('keydown', function(event) {
-        if (event.key === 'Escape') {
-            closeLogModal();
-        }
     });
 });
 

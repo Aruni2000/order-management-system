@@ -7,12 +7,12 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     if (ob_get_level()) {
         ob_end_clean();
     }
-    header("Location: /OMS/dist/pages/login.php");
+    header("Location: /orderhub_nextwave/dist/pages/login.php");
     exit();
 }
 
 // Include the database connection file
-include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
 
 
 // Access Control Variables
@@ -85,8 +85,8 @@ $order_query = "
 $params = [$order_id];
 $types = "i";
 
-if ($is_main_admin === 1) {
-    // Main Admin: No extra restrictions
+if ($is_main_admin === 1 && $role_id === 1) {
+    // Super Admin: No extra restrictions
 } else {
     // All other users: Restrict to tenant
     $order_query .= " AND o.tenant_id = ?";
@@ -130,10 +130,10 @@ $company_hotline = $tenant_data['phone'];
 if (!empty($tenant_data['logo_url'])) {
     if (strpos($tenant_data['logo_url'], 'http') === 0) {
         $company_logo = $tenant_data['logo_url'];
-    } else if (strpos($tenant_data['logo_url'], '/OMS/') === 0) {
+    } else if (strpos($tenant_data['logo_url'], '/orderhub_nextwave/') === 0) {
         $company_logo = $tenant_data['logo_url'];
     } else {
-        $company_logo = '/OMS/dist/' . ltrim($tenant_data['logo_url'], '/');
+        $company_logo = '/orderhub_nextwave/dist/' . ltrim($tenant_data['logo_url'], '/');
     }
 } else {
     $company_logo = '';
@@ -204,7 +204,26 @@ if (isset($order['pay_status']) && $order['pay_status'] !== 'paid') {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Order Print - <?php echo $order_id; ?> | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
     <link rel="stylesheet" href="../assets/css/print.css" />
-
+    <?php
+    $favicon_url = '';
+    if (isset($conn) && $conn) {
+        try {
+            $user_tenant_id = $_SESSION['tenant_id'] ?? null;
+            if ($user_tenant_id) {
+                $fav_query = "SELECT fav_icon_url FROM tenants WHERE tenant_id = " . (int)$user_tenant_id . " AND status = 'active' AND fav_icon_url IS NOT NULL AND fav_icon_url != '' LIMIT 1";
+            } else {
+                $fav_query = "SELECT fav_icon_url FROM tenants WHERE status = 'active' AND fav_icon_url IS NOT NULL AND fav_icon_url != '' LIMIT 1";
+            }
+            $fav_result = $conn->query($fav_query);
+            if ($fav_result && $fav_result->num_rows > 0) {
+                $fav_data = $fav_result->fetch_assoc();
+                $favicon_url = $fav_data['fav_icon_url'];
+            }
+        } catch (Throwable $e) {}
+    }
+    if ($favicon_url) echo '<link rel="icon" href="' . htmlspecialchars($favicon_url) . '" type="image/x-icon" />';
+    else echo '<link rel="icon" href="../assets/images/enterprise.png" type="image/x-icon" />';
+    ?>
 </head>
 
 <body>

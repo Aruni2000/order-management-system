@@ -8,7 +8,7 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     if (ob_get_level()) {
         ob_end_clean();
     }
-    header("Location: /OMS/dist/pages/login.php");
+    header("Location: /orderhub_nextwave/dist/pages/login.php");
     exit();
 }
 
@@ -19,7 +19,7 @@ if (isset($_SESSION['role_id']) && (int)$_SESSION['role_id'] == 2) {
 }
 
 // Include the database connection file
-include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
 
 // Function to generate CSRF token
 function generateCSRFToken() {
@@ -77,11 +77,12 @@ $prodCatId = intval($product['category_id']);
 try {
     if ($is_main_admin && $_SESSION['role_id'] == 1) {
         $catQuery = "SELECT id, name, tenant_id FROM categories 
-                     WHERE status = 'active' 
-                     OR id = ? 
+                     WHERE tenant_id = ? 
+                     AND (status = 'active' OR id = ?)
                      ORDER BY name ASC";
         $catStmt = $conn->prepare($catQuery);
-        $catStmt->bind_param("i", $prodCatId);
+        $prodTenantId = (int)$product['tenant_id'];
+        $catStmt->bind_param("ii", $prodTenantId, $prodCatId);
     } else {
         $catQuery = "SELECT id, name, tenant_id FROM categories 
                      WHERE tenant_id = ? 
@@ -103,19 +104,6 @@ try {
     error_log("Error fetching categories: " . $e->getMessage());
 }
 
-$tenants = [];
-if ($is_main_admin && $_SESSION['role_id'] == 1) {
-    try {
-        $tRes = $conn->query("SELECT tenant_id, company_name FROM tenants WHERE status = 'active' ORDER BY is_main_admin DESC, company_name ASC");
-        if ($tRes) {
-            while ($row = $tRes->fetch_assoc()) {
-                $tenants[] = $row;
-            }
-        }
-    } catch (Exception $e) {
-        error_log("Error fetching tenants: " . $e->getMessage());
-    }
-}
 ?>
 
 <!doctype html>
@@ -126,7 +114,7 @@ if ($is_main_admin && $_SESSION['role_id'] == 1) {
     <title>Edit Product | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
 
     <?php
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/head.php');
     ?>
     
     <!-- [Template CSS Files] -->
@@ -293,9 +281,9 @@ if ($is_main_admin && $_SESSION['role_id'] == 1) {
 <body>
     <!-- LOADER -->
     <?php 
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/loader.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/navbar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/sidebar.php');
     ?>
     <!-- END LOADER -->
 
@@ -356,23 +344,9 @@ if ($is_main_admin && $_SESSION['role_id'] == 1) {
                                 </div>
                             </div>
 
-                            <!-- Tenant Selector (Main Admin Only) -->
+                            <!-- Tenant  -->
                             <?php if ($is_main_admin && $_SESSION['role_id'] == 1): ?>
-                            <div class="form-row">
-                                <div class="product-form-group full-width">
-                                    <label for="tenant_id" class="form-label">
-                                        <i class="fas fa-building"></i> Tenant Company<span class="required">*</span>
-                                    </label>
-                                    <select class="form-select" id="tenant_id" name="tenant_id" required>
-                                        <?php foreach ($tenants as $t): ?>
-                                            <option value="<?php echo $t['tenant_id']; ?>" <?php echo ($t['tenant_id'] == $product['tenant_id']) ? 'selected' : ''; ?>>
-                                                <?php echo htmlspecialchars($t['company_name']); ?>
-                                            </option>
-                                        <?php endforeach; ?>
-                                    </select>
-                                    <div class="error-feedback" id="tenant_id-error"></div>
-                                </div>
-                            </div>
+                            <input type="hidden" name="tenant_id" value="<?php echo (int)$product['tenant_id']; ?>">
                             <?php endif; ?>
 
                             <!-- Category and Product Code -->
@@ -467,13 +441,13 @@ if ($is_main_admin && $_SESSION['role_id'] == 1) {
 
     <!-- FOOTER -->
     <?php
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/footer.php');
     ?>
     <!-- END FOOTER -->
 
     <!-- SCRIPTS -->
     <?php
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/scripts.php');
     ?>
     <!-- END SCRIPTS -->
 
@@ -508,26 +482,6 @@ if ($is_main_admin && $_SESSION['role_id'] == 1) {
                     searchField.focus();
                 }
             });
-
-            // Main admin: filter category dropdown live by selected Target Company
-            const allCategories = <?php echo json_encode($categories, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?>;
-            const tenantSelect = $('#tenant_id');
-            if (tenantSelect.length) {
-                tenantSelect.on('change', function() {
-                    const selectedTenant = parseInt($(this).val(), 10) || 0;
-                    const filtered = allCategories.filter(function(c) {
-                        return parseInt(c.tenant_id, 10) === selectedTenant;
-                    });
-                    const $cat = $('#category_id');
-                    $cat.empty().append('<option value=""></option>');
-                    filtered.forEach(function(c) {
-                        $cat.append($('<option>', { value: c.id, text: c.name, selected: c.id == originalValues.category_id }));
-                    });
-                    $cat.val('').trigger('change');
-                    originalValues.category_id = '';
-                    showSuccess('category_id');
-                });
-            }
 
             // Initialize form
             initializeForm();

@@ -6,7 +6,7 @@ session_start();
 header('Content-Type: application/json');
 
 // Include database connection
-include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
 
 // Check if user is logged in and is admin
 if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
@@ -72,11 +72,11 @@ try {
     // Validation
     $errors = [];
 
-    // Validate company name
+    // Validate Tenant Name
     if (empty($company_name)) {
-        $errors['company_name'] = 'Company name is required';
+        $errors['company_name'] = 'Tenant Name is required';
     } elseif (strlen($company_name) < 2) {
-        $errors['company_name'] = 'Company name must be at least 2 characters long';
+        $errors['company_name'] = 'Tenant Name must be at least 2 characters long';
     }
 
     // Validate contact person
@@ -143,19 +143,25 @@ try {
         $errors['delivery_fee'] = 'Please enter a valid delivery fee (non-negative number)';
     }
 
-    // Validate logo file type
+    // Validate logo file type and size
     if (isset($_FILES['logo']) && $_FILES['logo']['error'] == 0) {
         $ext = strtolower(pathinfo($_FILES['logo']['name'], PATHINFO_EXTENSION));
         if (!in_array($ext, ['jpg', 'jpeg', 'png', 'gif'])) {
             $errors['logo'] = 'Invalid logo file type. Allowed: JPG, PNG, GIF';
         }
+        if ($_FILES['logo']['size'] > 5 * 1024 * 1024) {
+            $errors['logo'] = 'Logo file too large. Maximum size: 5MB';
+        }
     }
 
-    // Validate favicon file type
+    // Validate favicon file type and size
     if (isset($_FILES['fav_icon']) && $_FILES['fav_icon']['error'] == 0) {
         $ext = strtolower(pathinfo($_FILES['fav_icon']['name'], PATHINFO_EXTENSION));
         if (!in_array($ext, ['jpg', 'jpeg', 'png', 'ico'])) {
             $errors['fav_icon'] = 'Invalid favicon file type. Allowed: ICO, PNG, JPG';
+        }
+        if ($_FILES['fav_icon']['size'] > 5 * 1024 * 1024) {
+            $errors['fav_icon'] = 'Favicon file too large. Maximum size: 5MB';
         }
     }
 
@@ -204,7 +210,7 @@ try {
         }
     }
 
-    // Helper: sanitize company name for use in filenames
+    // Helper: sanitize Tenant Name for use in filenames
     $name_slug = strtolower(trim($company_name));
     $name_slug = preg_replace('/[^a-z0-9]+/', '_', $name_slug);
     $name_slug = trim($name_slug, '_');
@@ -216,11 +222,11 @@ try {
         $allowed = ['jpg', 'jpeg', 'png', 'gif'];
         $ext = strtolower(pathinfo($_FILES['logo']['name'], PATHINFO_EXTENSION));
         if (in_array($ext, $allowed)) {
-            $upload_dir = $_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/uploads/';
+            $upload_dir = $_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/uploads/';
             if (!is_dir($upload_dir)) mkdir($upload_dir, 0755, true);
             $new_name = $name_slug . '_logo_' . time() . '.' . $ext;
             if (move_uploaded_file($_FILES['logo']['tmp_name'], $upload_dir . $new_name)) {
-                $logo_url = '/OMS/dist/uploads/' . $new_name;
+                $logo_url = '/orderhub_nextwave/dist/uploads/' . $new_name;
             }
         }
     }
@@ -231,11 +237,11 @@ try {
         $allowed = ['jpg', 'jpeg', 'png', 'ico'];
         $ext = strtolower(pathinfo($_FILES['fav_icon']['name'], PATHINFO_EXTENSION));
         if (in_array($ext, $allowed)) {
-            $upload_dir = $_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/uploads/';
+            $upload_dir = $_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/uploads/';
             if (!is_dir($upload_dir)) mkdir($upload_dir, 0755, true);
             $new_name = $name_slug . '_favicon_' . time() . '.' . $ext;
             if (move_uploaded_file($_FILES['fav_icon']['tmp_name'], $upload_dir . $new_name)) {
-                $fav_icon_url = '/OMS/dist/uploads/' . $new_name;
+                $fav_icon_url = '/orderhub_nextwave/dist/uploads/' . $new_name;
             }
         }
     }

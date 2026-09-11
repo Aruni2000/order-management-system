@@ -14,8 +14,8 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
 }
 
 // Include database connection
-include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
-include_once($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/stock_ledger.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
+include_once($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/stock_ledger.php');
 
 try {
     // Check if POST request
@@ -192,7 +192,7 @@ try {
         $items_stmt->close();
         
         // Get user ID for logging
-        $user_id = $_SESSION['user_id'] ?? $_SESSION['id'] ?? 0;
+        $user_id = $_SESSION['user_id'] ?? 0;
         
         // Create simple log description
         $log_description = $previous_status . " order(" . $order_id . ") cancelled | reason: " . substr($cancellation_reason, 0, 30);

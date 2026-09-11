@@ -2,27 +2,17 @@
 session_start();
 if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     if (ob_get_level()) ob_end_clean();
-    header("Location: /OMS/dist/pages/login.php");
+    header("Location: /orderhub_nextwave/dist/pages/login.php");
     exit();
 }
-// Admin or main-admin Store role can edit suppliers
-$is_supplier_editor = ($_SESSION['role_id'] ?? 0) == 1
-    || ((($_SESSION['role_id'] ?? 0) == 3) && (($_SESSION['is_main_admin'] ?? 0) == 1));
-if (!$is_supplier_editor) {
-    header("Location: /OMS/dist/dashboard/index.php");
+// Purchasing Management (Suppliers) is accessible only to Main Admin Tenant (Admin & Store roles)
+if ((int)($_SESSION['is_main_admin'] ?? 0) !== 1 || !in_array((int)($_SESSION['role_id'] ?? 0), [1, 3], true)) {
+    if (ob_get_level()) ob_end_clean();
+    header("Location: /orderhub_nextwave/dist/pages/access_denied.php");
     exit();
 }
 
-include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
-
-// Store role (role_id 3, non-main-admin) is limited to Products & Order Management
-if ((int)($_SESSION['role_id'] ?? 0) === 3 && (int)($_SESSION['is_main_admin'] ?? 0) !== 1) {
-    if (ob_get_level()) {
-        ob_end_clean();
-    }
-    header("Location: /OMS/dist/pages/access_denied.php");
-    exit();
-}
+include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
 
 $supplier_id = isset($_GET['id']) ? intval($_GET['id']) : 0;
 if ($supplier_id <= 0) { header("Location: supplier_list.php"); exit(); }
@@ -45,8 +35,8 @@ function generateCSRFToken() {
 <!doctype html>
 <html lang="en" data-pc-preset="preset-1" data-pc-sidebar-caption="true" data-pc-direction="ltr" dir="ltr" data-pc-theme="light">
 <head>
-    <title>Edit Supplier | <?= htmlspecialchars($_SESSION['company_name'] ?? 'OMS') ?></title>
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
+    <title>Edit Supplier | <?= htmlspecialchars($_SESSION['company_name'] ?? 'orderhub_nextwave') ?></title>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/head.php'); ?>
     <link rel="stylesheet" href="../assets/css/customers.css" />
     <style>
         .loading-overlay {
@@ -85,9 +75,9 @@ function generateCSRFToken() {
 </head>
 <body>
     <?php
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/loader.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/navbar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/sidebar.php');
     ?>
 
     <div class="loading-overlay" id="loadingOverlay">
@@ -119,7 +109,7 @@ function generateCSRFToken() {
                                     <label for="name" class="form-label">
                                         <i class="fas fa-truck"></i> Supplier Name <span class="required">*</span>
                                     </label>
-                                    <input type="text" class="form-control" id="name" name="name" value="<?php echo htmlspecialchars($supplier['name']); ?>" required maxlength="255">
+                                    <input type="text" class="form-control" id="name" name="name" value="<?php echo htmlspecialchars($supplier['name']); ?>" placeholder="Enter supplier name" required maxlength="255">
                                     <div class="error-feedback" id="name-error"></div>
                                 </div>
 
@@ -127,7 +117,7 @@ function generateCSRFToken() {
                                     <label for="contact_person" class="form-label">
                                         <i class="fas fa-user"></i> Contact Person
                                     </label>
-                                    <input type="text" class="form-control" id="contact_person" name="contact_person" value="<?php echo htmlspecialchars($supplier['contact_person'] ?? ''); ?>" maxlength="255">
+                                    <input type="text" class="form-control" id="contact_person" name="contact_person" value="<?php echo htmlspecialchars($supplier['contact_person'] ?? ''); ?>" placeholder="Enter contact person name" maxlength="255">
                                     <div class="error-feedback" id="contact_person-error"></div>
                                 </div>
                             </div>
@@ -137,7 +127,7 @@ function generateCSRFToken() {
                                     <label for="phone" class="form-label">
                                         <i class="fas fa-phone"></i> Phone
                                     </label>
-                                    <input type="text" class="form-control" id="phone" name="phone" value="<?php echo htmlspecialchars($supplier['phone'] ?? ''); ?>" maxlength="20">
+                                    <input type="text" class="form-control" id="phone" name="phone" value="<?php echo htmlspecialchars($supplier['phone'] ?? ''); ?>" placeholder="Enter phone number" maxlength="20">
                                     <div class="error-feedback" id="phone-error"></div>
                                 </div>
 
@@ -145,7 +135,7 @@ function generateCSRFToken() {
                                     <label for="email" class="form-label">
                                         <i class="fas fa-envelope"></i> Email
                                     </label>
-                                    <input type="email" class="form-control" id="email" name="email" value="<?php echo htmlspecialchars($supplier['email'] ?? ''); ?>" maxlength="255">
+                                    <input type="email" class="form-control" id="email" name="email" value="<?php echo htmlspecialchars($supplier['email'] ?? ''); ?>" placeholder="Enter email address" maxlength="255">
                                     <div class="error-feedback" id="email-error"></div>
                                 </div>
                             </div>
@@ -155,23 +145,12 @@ function generateCSRFToken() {
                                     <label for="address" class="form-label">
                                         <i class="fas fa-home"></i> Address
                                     </label>
-                                    <textarea class="form-control" id="address" name="address" rows="3"><?php echo htmlspecialchars($supplier['address'] ?? ''); ?></textarea>
+                                    <textarea class="form-control" id="address" name="address" rows="3" placeholder="Enter supplier address"><?php echo htmlspecialchars($supplier['address'] ?? ''); ?></textarea>
                                     <div class="error-feedback" id="address-error"></div>
                                 </div>
                             </div>
 
-                            <div class="form-row">
-                                <div class="customer-form-group">
-                                    <label for="status" class="form-label">
-                                        <i class="fas fa-toggle-on"></i> Status <span class="required">*</span>
-                                    </label>
-                                    <select class="form-select" id="status" name="status" required>
-                                        <option value="active" <?php echo ($supplier['status'] == 'active') ? 'selected' : ''; ?>>Active</option>
-                                        <option value="inactive" <?php echo ($supplier['status'] == 'inactive') ? 'selected' : ''; ?>>Inactive</option>
-                                    </select>
-                                    <div class="error-feedback" id="status-error"></div>
-                                </div>
-                            </div>
+                            <input type="hidden" name="status" value="<?php echo htmlspecialchars($supplier['status']); ?>">
                         </div>
                     </div>
 
@@ -188,8 +167,8 @@ function generateCSRFToken() {
         </div>
     </div>
 
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php'); ?>
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/footer.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/scripts.php'); ?>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
 
     <script>

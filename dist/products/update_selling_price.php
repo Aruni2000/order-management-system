@@ -13,15 +13,15 @@ if (!isset($_SESSION['user_id'])) {
     exit();
 }
 
-// Check if user is admin role (Admin only access); non-main-admins are tenant-scoped below
+// Check if user is admin or store role (Admin & Store access); non-main-admins are tenant-scoped below
 $role_id = isset($_SESSION['role_id']) ? (int)$_SESSION['role_id'] : 0;
-if ($role_id != 1) {
+if (!in_array($role_id, [1, 3], true)) {
     http_response_code(403);
-    echo json_encode(['success' => false, 'message' => 'Access denied. Only administrators can update selling prices.']);
+    echo json_encode(['success' => false, 'message' => 'Access denied. Only administrators and store users can update selling prices.']);
     exit();
 }
 
-include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
 
 header('Content-Type: application/json');
 

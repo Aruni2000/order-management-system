@@ -78,7 +78,7 @@
                         // Build query - main admin sees all API couriers, regular tenant sees only their API couriers
                         if ($is_main_admin === 1) {
                             // Main admin sees all active API couriers
-                            $api_courier_query = "SELECT courier_id, courier_name, co_id 
+                            $api_courier_query = "SELECT courier_id, courier_name, co_id, has_api_new, has_api_existing 
                                                  FROM couriers 
                                                  WHERE status = 'active' 
                                                  AND (has_api_new = 1 OR has_api_existing = 1)
@@ -86,7 +86,7 @@
                             $stmt_api = $conn->prepare($api_courier_query);
                         } else {
                             // Regular tenant sees only their API couriers
-                            $api_courier_query = "SELECT courier_id, courier_name, co_id 
+                            $api_courier_query = "SELECT courier_id, courier_name, co_id, has_api_new, has_api_existing 
                                                  FROM couriers 
                                                  WHERE status = 'active' 
                                                  AND (has_api_new = 1 OR has_api_existing = 1)
@@ -102,7 +102,7 @@
                         if ($api_courier_result && $api_courier_result->num_rows > 0) {
                             while($courier = $api_courier_result->fetch_assoc()): 
                         ?>
-                            <option value="<?php echo $courier['courier_id']; ?>">
+                            <option value="<?php echo $courier['courier_id']; ?>" data-co-id="<?php echo htmlspecialchars($courier['co_id']); ?>" data-has-new="<?php echo (int)($courier['has_api_new'] ?? 0); ?>" data-has-existing="<?php echo (int)($courier['has_api_existing'] ?? 0); ?>">
                                 <?php echo htmlspecialchars($courier['courier_name']); ?> (ID: <?php echo htmlspecialchars($courier['co_id']); ?>)
                             </option>
                         <?php 

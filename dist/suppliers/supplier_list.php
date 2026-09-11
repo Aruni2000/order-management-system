@@ -2,20 +2,17 @@
 session_start();
 if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     if (ob_get_level()) ob_end_clean();
-    header("Location: /OMS/dist/pages/login.php");
+    header("Location: /orderhub_nextwave/dist/pages/login.php");
+    exit();
+}
+// Purchasing Management (Suppliers) is accessible only to Main Admin Tenant (Admin & Store roles)
+if ((int)($_SESSION['is_main_admin'] ?? 0) !== 1 || !in_array((int)($_SESSION['role_id'] ?? 0), [1, 3], true)) {
+    if (ob_get_level()) ob_end_clean();
+    header("Location: /orderhub_nextwave/dist/pages/access_denied.php");
     exit();
 }
 
-include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
-
-// Store role (role_id 3, non-main-admin) is limited to Products & Order Management
-if ((int)($_SESSION['role_id'] ?? 0) === 3 && (int)($_SESSION['is_main_admin'] ?? 0) !== 1) {
-    if (ob_get_level()) {
-        ob_end_clean();
-    }
-    header("Location: /OMS/dist/pages/access_denied.php");
-    exit();
-}
+include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
 
 $search = isset($_GET['search']) ? trim($_GET['search']) : '';
 $status_filter = isset($_GET['status_filter']) ? trim($_GET['status_filter']) : '';
@@ -54,16 +51,16 @@ $result = $conn->query($sql);
 <!doctype html>
 <html lang="en" data-pc-preset="preset-1" data-pc-sidebar-caption="true" data-pc-direction="ltr" dir="ltr" data-pc-theme="light">
 <head>
-    <title>Supplier Management | <?= htmlspecialchars($_SESSION['company_name'] ?? 'OMS') ?></title>
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
+    <title>Supplier Management | <?= htmlspecialchars($_SESSION['company_name'] ?? 'orderhub_nextwave') ?></title>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/head.php'); ?>
     <link rel="stylesheet" href="../assets/css/orders.css" />
     <link rel="stylesheet" href="../assets/css/customers.css" />
 </head>
 <body>
     <?php
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/loader.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/navbar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/sidebar.php');
     ?>
 
     <div class="pc-container">
@@ -124,7 +121,7 @@ $result = $conn->query($sql);
                         <thead>
                             <tr>
                                 <th>ID</th>
-                                <th>Name</th>
+                                <th>Supplier Name</th>
                                 <th>Contact Person</th>
                                 <th>Phone & Email</th>
                                 <th>Status</th>
@@ -138,23 +135,21 @@ $result = $conn->query($sql);
                                         <td class="order-id"><?php echo htmlspecialchars($row['id']); ?></td>
                                         <td class="customer-name">
                                             <div class="customer-info">
-                                                <h6 style="margin: 0; font-size: 14px;">
-                                                    <strong><?php echo htmlspecialchars($row['name']); ?></strong>
+                                                <h6 style="margin: 0; font-size: 14px; font-weight: 600;">
+                                                    <?php echo htmlspecialchars($row['name']); ?>
                                                 </h6>
                                             </div>
                                         </td>
                                         <td><?php echo htmlspecialchars($row['contact_person'] ?? '-'); ?></td>
                                         <td>
-                                            <div style="line-height: 1.6;">
+                                            <div style="line-height: 1.4;">
                                                 <?php if (!empty($row['phone'])): ?>
                                                 <div style="font-weight: 500; margin-bottom: 2px;">
-                                                    <i class="fas fa-phone" style="font-size: 11px; margin-right: 4px;"></i>
                                                     <?php echo htmlspecialchars($row['phone']); ?>
                                                 </div>
                                                 <?php endif; ?>
                                                 <?php if (!empty($row['email'])): ?>
-                                                <div style="font-size: 12px; color: #007bff;">
-                                                    <i class="fas fa-envelope" style="font-size: 10px; margin-right: 4px;"></i>
+                                                <div style="font-size: 12px; color: #6c757d; margin-bottom: 2px;">
                                                     <?php echo htmlspecialchars($row['email']); ?>
                                                 </div>
                                                 <?php endif; ?>
@@ -168,7 +163,7 @@ $result = $conn->query($sql);
                                             <?php endif; ?>
                                         </td>
                                         <td>
-                                            <div class="action-buttons-group">
+                                            <div class="action-buttons-group" style="justify-content: flex-start;">
                                                 <button class="action-btn view-btn view-supplier-btn"
                                                     data-id="<?php echo $row['id']; ?>"
                                                     data-name="<?php echo htmlspecialchars($row['name']); ?>"
@@ -177,6 +172,8 @@ $result = $conn->query($sql);
                                                     data-email="<?php echo htmlspecialchars($row['email'] ?? ''); ?>"
                                                     data-address="<?php echo htmlspecialchars($row['address'] ?? ''); ?>"
                                                     data-status="<?php echo $row['status']; ?>"
+                                                    data-created="<?php echo htmlspecialchars($row['created_at'] ?? ''); ?>"
+                                                    data-updated="<?php echo htmlspecialchars($row['updated_at'] ?? ''); ?>"
                                                     title="View Details">
                                                     <i class="fas fa-eye"></i>
                                                 </button>
@@ -239,25 +236,74 @@ $result = $conn->query($sql);
         <div class="modal-content">
             <div class="modal-header">
                 <h4>Supplier Details</h4>
-                <button class="close" onclick="document.getElementById('viewSupplierModal').style.display='none'">&times;</button>
+                <span class="close" onclick="document.getElementById('viewSupplierModal').style.display='none'">&times;</span>
             </div>
             <div class="modal-body">
-                <div class="detail-row"><span class="detail-label">ID:</span><span class="detail-value" id="m-id"></span></div>
-                <div class="detail-row"><span class="detail-label">Name:</span><span class="detail-value" id="m-name"></span></div>
-                <div class="detail-row"><span class="detail-label">Contact Person:</span><span class="detail-value" id="m-contact"></span></div>
-                <div class="detail-row"><span class="detail-label">Phone:</span><span class="detail-value" id="m-phone"></span></div>
-                <div class="detail-row"><span class="detail-label">Email:</span><span class="detail-value" id="m-email"></span></div>
-                <div class="detail-row"><span class="detail-label">Address:</span><span class="detail-value" id="m-address"></span></div>
-                <div class="detail-row"><span class="detail-label">Status:</span><span class="detail-value" id="m-status"></span></div>
+                <div class="customer-detail-row">
+                    <span class="detail-label">ID:</span>
+                    <span class="detail-value" id="m-id"></span>
+                </div>
+                <div class="customer-detail-row">
+                    <span class="detail-label">Name:</span>
+                    <span class="detail-value" id="m-name"></span>
+                </div>
+                <div class="customer-detail-row">
+                    <span class="detail-label">Contact Person:</span>
+                    <span class="detail-value" id="m-contact"></span>
+                </div>
+                <div class="customer-detail-row">
+                    <span class="detail-label">Phone:</span>
+                    <span class="detail-value" id="m-phone"></span>
+                </div>
+                <div class="customer-detail-row">
+                    <span class="detail-label">Email:</span>
+                    <span class="detail-value" id="m-email"></span>
+                </div>
+                <div class="customer-detail-row">
+                    <span class="detail-label">Address:</span>
+                    <span class="detail-value" id="m-address"></span>
+                </div>
+                <div class="customer-detail-row">
+                    <span class="detail-label">Status:</span>
+                    <span class="detail-value" id="m-status"></span>
+                </div>
+                <div class="customer-detail-row">
+                    <span class="detail-label">Created:</span>
+                    <span class="detail-value" id="m-created"></span>
+                </div>
+                <div class="customer-detail-row">
+                    <span class="detail-label">Last Updated:</span>
+                    <span class="detail-value" id="m-updated"></span>
+                </div>
             </div>
         </div>
     </div>
 
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php'); ?>
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/footer.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/scripts.php'); ?>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
 
     <script>
+    function formatDateTime(dateString) {
+        if (!dateString) return '-';
+        try {
+            const date = new Date(dateString);
+            if (isNaN(date.getTime())) return dateString;
+            const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            const yyyy = date.getFullYear();
+            const mmm = months[date.getMonth()];
+            const dd = String(date.getDate()).padStart(2, '0');
+            let hours = date.getHours();
+            const minutes = String(date.getMinutes()).padStart(2, '0');
+            const ampm = hours >= 12 ? 'PM' : 'AM';
+            hours = hours % 12;
+            hours = hours ? hours : 12;
+            return `${mmm} ${dd}, ${yyyy} ${hours}:${minutes} ${ampm}`;
+        } catch (e) {
+            return dateString;
+        }
+    }
+
     // View supplier
     document.querySelectorAll('.view-supplier-btn').forEach(btn => {
         btn.addEventListener('click', function() {
@@ -267,6 +313,8 @@ $result = $conn->query($sql);
             document.getElementById('m-phone').textContent = this.dataset.phone || '-';
             document.getElementById('m-email').textContent = this.dataset.email || '-';
             document.getElementById('m-address').textContent = this.dataset.address || '-';
+            document.getElementById('m-created').textContent = formatDateTime(this.dataset.created);
+            document.getElementById('m-updated').textContent = formatDateTime(this.dataset.updated);
             const statusEl = document.getElementById('m-status');
             statusEl.innerHTML = '<span class="status-badge ' + (this.dataset.status === 'active' ? 'status-active' : 'status-inactive') + '">' + this.dataset.status.charAt(0).toUpperCase() + this.dataset.status.slice(1) + '</span>';
             document.getElementById('viewSupplierModal').style.display = 'block';

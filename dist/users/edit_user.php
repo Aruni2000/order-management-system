@@ -3,7 +3,7 @@
 session_start();
 
 // Include the database connection file FIRST
-include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
 
 // Check if user is logged in, if not redirect to login page
 if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
@@ -11,7 +11,7 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     if (ob_get_level()) {
         ob_end_clean();
     }
-    header("Location: /OMS/dist/pages/login.php");
+    header("Location: /orderhub_nextwave/dist/pages/login.php");
     exit();
 }
 
@@ -29,7 +29,7 @@ $role_result = $role_stmt->get_result();
 if ($role_result->num_rows === 0) {
     // User not found or inactive
     session_destroy();
-    header("Location: /OMS/dist/pages/login.php");
+    header("Location: /orderhub_nextwave/dist/pages/login.php");
     exit();
 }
 
@@ -38,7 +38,7 @@ $user_role = $role_result->fetch_assoc();
 // Check if user is admin (role_id = 1)
 if ($user_role['role_id'] != 1) {
     // User is not admin, redirect to dashboard
-    header("Location: /OMS/dist/dashboard/index.php");
+    header("Location: /orderhub_nextwave/dist/dashboard/index.php");
     exit();
 }
 
@@ -106,7 +106,7 @@ if (isset($_GET['id']) && !empty($_GET['id'])) {
     <title>Edit User | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
 
     <?php
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/head.php');
     ?>
     
     <!-- [Template CSS Files] -->
@@ -259,9 +259,9 @@ input[type="password"] {
 <body>
     <!-- LOADER -->
     <?php 
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/loader.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/navbar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/sidebar.php');
     ?>
     <!-- END LOADER -->
 
@@ -295,6 +295,7 @@ input[type="password"] {
                     <input type="hidden" name="csrf_token" value="<?php echo generateCSRFToken(); ?>">
                     <!-- User ID -->
                     <input type="hidden" name="user_id" value="<?php echo $user_data['id']; ?>">
+                    <input type="hidden" name="status" value="<?php echo htmlspecialchars(strtolower($user_data['status'] ?? 'active')); ?>">
                     
                     <!-- User Details Section -->
                     <div class="form-section">
@@ -352,7 +353,7 @@ input[type="password"] {
                                 </div>
                             </div>
 
-                            <!-- Third Row: NIC Number and Status -->
+                            <!-- Third Row: NIC and Role -->
                             <div class="form-row">
                                 <div class="customer-form-group">
                                     <label for="nic" class="form-label">
@@ -362,26 +363,8 @@ input[type="password"] {
                                         placeholder="Enter NIC Number" 
                                         value="<?php echo htmlspecialchars($user_data['nic'] ?? ''); ?>" required>
                                     <div class="error-feedback" id="nic-error"></div>
-                                    <div class="nic-hint"></div>
                                 </div>
 
-                                <div class="customer-form-group">
-                                    <label for="status" class="form-label">
-                                        <i class="fas fa-toggle-on"></i> Status<span class="required">*</span>
-                                    </label>
-                                    <select class="form-select" id="status" name="status" <?php echo ($userId == 1) ? 'disabled' : ''; ?> required>
-                                        <option value="active" <?php echo (($user_data['status'] ?? '') === 'active' || ($user_data['status'] ?? '') === 'Active') ? 'selected' : ''; ?>>Active</option>
-                                        <option value="inactive" <?php echo (($user_data['status'] ?? '') === 'inactive' || ($user_data['status'] ?? '') === 'Inactive') ? 'selected' : ''; ?>>Inactive</option>
-                                    </select>
-                                    <?php if ($userId == 1): ?>
-                                        <input type="hidden" name="status" value="<?php echo htmlspecialchars($user_data['status'] ?? 'active'); ?>">
-                                    <?php endif; ?>
-                                    <div class="error-feedback" id="status-error"></div>
-                                </div>
-                            </div>
-
-                            <!-- Fourth Row: Role and Tenant (is_main_admin Only) -->
-                            <div class="form-row">
                                 <div class="customer-form-group">
                                     <label for="role" class="form-label">
                                         <i class="fas fa-user-tag"></i> Role<span class="required">*</span>
@@ -407,8 +390,6 @@ input[type="password"] {
                                     <?php endif; ?>
                                     <div class="error-feedback" id="role-error"></div>
                                 </div>
-
-
                             </div>
 
                             <!-- Fifth Row: Address (Full Width) -->
@@ -443,13 +424,13 @@ input[type="password"] {
 
     <!-- FOOTER -->
     <?php
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/footer.php');
     ?>
     <!-- END FOOTER -->
 
     <!-- SCRIPTS -->
     <?php
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/scripts.php');
     ?>
     <!-- END SCRIPTS -->
 
@@ -464,7 +445,6 @@ input[type="password"] {
             mobile: '<?php echo addslashes($user_data['mobile'] ?? ''); ?>',
             nic: '<?php echo addslashes($user_data['nic'] ?? ''); ?>',
             address: '<?php echo addslashes($user_data['address'] ?? ''); ?>',
-            status: '<?php echo ($user_data['status'] ?? 'active'); ?>',
             role: '<?php echo addslashes($user_data['role'] ?? $user_data['role_name'] ?? ''); ?>'
         };
 
@@ -579,7 +559,6 @@ input[type="password"] {
                 $('#mobile').val() !== originalValues.mobile ||
                 $('#nic').val() !== originalValues.nic ||
                 $('#address').val() !== originalValues.address ||
-                $('#status').val() !== originalValues.status ||
                 $('#role').val() !== originalValues.role ||
                 $('#password').val().length > 0
             );
@@ -591,7 +570,6 @@ input[type="password"] {
             originalValues.mobile = $('#mobile').val();
             originalValues.nic = $('#nic').val();
             originalValues.address = $('#address').val();
-            originalValues.status = $('#status').val();
             originalValues.role = $('#role').val();
         }
         
@@ -838,7 +816,7 @@ input[type="password"] {
             const newNICRegex = /^\d{12}$/;
             
             if (!oldNICRegex.test(cleanNIC) && !newNICRegex.test(cleanNIC)) {
-                return { valid: false, message: 'Please enter a valid Sri Lankan NIC (e.g., 123456789V or 123456789012)' };
+                return { valid: false, message: 'Invalid NIC format. Use old format (9 digits + V/X) or new format (12 digits)' };
             }
             return { valid: true, message: '' };
         }
@@ -936,7 +914,6 @@ input[type="password"] {
             const mobile = $('#mobile').val();
             const nic = $('#nic').val();
             const address = $('#address').val();
-            const status = $('#status').val();
             const role = $('#role').val();
             const password = $('#password').val();
             
@@ -948,7 +925,6 @@ input[type="password"] {
                 { field: 'mobile', validator: validateMobile, value: mobile },
                 { field: 'nic', validator: validateNIC, value: nic },
                 { field: 'address', validator: validateAddress, value: address },
-                { field: 'status', validator: (val) => val ? {valid: true} : {valid: false, message: 'Status is required'}, value: status },
                 { field: 'role', validator: validateRole, value: role }
             ];
 

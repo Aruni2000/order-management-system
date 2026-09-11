@@ -13,9 +13,9 @@ session_start();
     <title>Access Denied | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
 
     <?php
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/head.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/navbar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/sidebar.php');
     ?>
     
     <!-- [Template CSS Files] -->
@@ -25,7 +25,7 @@ session_start();
 <body>
     <!-- LOADER -->
     <?php
-        include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php');
+        include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/loader.php');
     ?>
     <!-- END LOADER -->
 
@@ -59,7 +59,7 @@ session_start();
                             <a href="javascript:history.back()" class="btn btn-secondary">
                                 <i class="fas fa-arrow-left"></i> Go Back
                             </a>
-                            <a href='/OMS/dist/dashboard/index.php' class="btn btn-primary">
+                            <a href='/orderhub_nextwave/dist/dashboard/index.php' class="btn btn-primary">
                                 <i class="fas fa-home"></i> Go to Dashboard
                             </a>
                         </div>
@@ -72,13 +72,13 @@ session_start();
 
     <!-- FOOTER -->
     <?php
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/footer.php');
     ?>
     <!-- END FOOTER -->
 
     <!-- SCRIPTS -->
     <?php
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/scripts.php');
     ?>
     <!-- END SCRIPTS -->
 

@@ -3,7 +3,7 @@
 session_start();
 
 // Include the database connection file FIRST
-include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
 
 // Check if user is logged in, if not redirect to login page
 if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
@@ -11,7 +11,7 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     if (ob_get_level()) {
         ob_end_clean();
     }
-    header("Location: /OMS/dist/pages/login.php");
+    header("Location: /orderhub_nextwave/dist/pages/login.php");
     exit();
 }
 
@@ -29,7 +29,7 @@ $role_result = $role_stmt->get_result();
 if ($role_result->num_rows === 0) {
     // User not found or inactive
     session_destroy();
-    header("Location: /OMS/dist/pages/login.php");
+    header("Location: /orderhub_nextwave/dist/pages/login.php");
     exit();
 }
 
@@ -38,7 +38,13 @@ $user_role = $role_result->fetch_assoc();
 // Check if user is admin (role_id = 1)
 if ($user_role['role_id'] != 1) {
     // User is not admin, redirect to dashboard
-    header("Location: /OMS/dist/dashboard/index.php");
+    header("Location: /orderhub_nextwave/dist/dashboard/index.php");
+    exit();
+}
+
+$current_is_main_admin = isset($_SESSION['is_main_admin']) && $_SESSION['is_main_admin'] == 1;
+if (!$current_is_main_admin) {
+    header("Location: /orderhub_nextwave/dist/admin/branding.php");
     exit();
 }
 
@@ -87,7 +93,7 @@ $disabledClass = $isFull ? 'limit-reached-disabled' : '';
     <title>Add New Tenant | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
 
     <?php
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/head.php');
     ?>
     
     <!-- [Template CSS Files] -->
@@ -263,9 +269,9 @@ $disabledClass = $isFull ? 'limit-reached-disabled' : '';
 <body>
     <!-- LOADER -->
     <?php
-        include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php');
-        include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
-        include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
+        include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/loader.php');
+        include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/navbar.php');
+        include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/sidebar.php');
     ?>
     <!-- END LOADER -->
 
@@ -293,12 +299,12 @@ $disabledClass = $isFull ? 'limit-reached-disabled' : '';
                             <form method="POST" id="addTenantForm" class="<?php echo $disabledClass; ?>" enctype="multipart/form-data" novalidate>
 
                                 <div class="form-row">
-                                    <!-- Company Name -->
+                                    <!-- Tenant Name -->
                                     <div class="form-column">
                                         <div class="form-group">
-                                            <label for="company_name" class="form-label">Company Name *</label>
+                                            <label for="company_name" class="form-label">Tenant Name *</label>
                                             <input type="text" class="form-control" id="company_name" name="company_name" required <?php echo $disabledAttr; ?>
-                                                   placeholder="Enter company name" value="">
+                                                   placeholder="Enter Tenant Name" value="">
                                             <div class="error-feedback" id="company_name-error"></div>
                                         </div>
                                     </div>
@@ -405,13 +411,13 @@ $disabledClass = $isFull ? 'limit-reached-disabled' : '';
 
     <!-- FOOTER -->
     <?php
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/footer.php');
     ?>
     <!-- END FOOTER -->
 
     <!-- SCRIPTS -->
     <?php
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/scripts.php');
     ?>
     <!-- END SCRIPTS -->
 
@@ -664,10 +670,10 @@ $disabledClass = $isFull ? 'limit-reached-disabled' : '';
         // Validation functions
         function validateCompanyName(name) {
             if (name.trim() === '') {
-                return { valid: false, message: 'Company name is required' };
+                return { valid: false, message: 'Tenant Name is required' };
             }
             if (name.trim().length < 2) {
-                return { valid: false, message: 'Company name must be at least 2 characters long' };
+                return { valid: false, message: 'Tenant Name must be at least 2 characters long' };
             }
 
             return { valid: true, message: '' };

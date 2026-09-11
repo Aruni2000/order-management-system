@@ -5,13 +5,13 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     echo '<div class="modal-error"><i class="fas fa-lock"></i><h4>Unauthorized</h4><p>Please log in to view GRN details.</p></div>';
     exit();
 }
-if (!isset($_SESSION['is_main_admin']) || $_SESSION['is_main_admin'] != 1) {
+if (!isset($_SESSION['is_main_admin']) || $_SESSION['is_main_admin'] != 1 || !in_array((int)($_SESSION['role_id'] ?? 0), [1, 3], true)) {
     http_response_code(403);
     echo '<div class="modal-error"><i class="fas fa-lock"></i><h4>Access Denied</h4><p>Only main admin can view GRN details.</p></div>';
     exit();
 }
 
-include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
 
 $grn_id = isset($_GET['id']) ? intval($_GET['id']) : 0;
 if ($grn_id <= 0) {
@@ -73,7 +73,7 @@ $conn->close();
             <span class="order-field-value"><strong><?= htmlspecialchars($grn['grn_number']) ?></strong></span>
         </div>
         <div class="order-field">
-            <span class="order-field-label">Tenant Company</span>
+            <span class="order-field-label">Tenant</span>
             <span class="order-field-value">
                 <?= htmlspecialchars($grn['tenant_company_name'] ?? 'N/A') ?>
             </span>

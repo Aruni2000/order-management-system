@@ -17,16 +17,16 @@ if (!isset($_SESSION['user_id'])) {
 }
 
 // Include database connection
-include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
-include_once($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/stock_ledger.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
+include_once($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/stock_ledger.php');
 
 // Set content type to JSON
 header('Content-Type: application/json');
 
-// Check if user is admin role (Admin only access); non-main-admins are tenant-scoped below
+// Check if user is admin or store role (Admin & Store access); non-main-admins are tenant-scoped below
 $role_id = isset($_SESSION['role_id']) ? (int)$_SESSION['role_id'] : 0;
-if ($role_id != 1) {
-    echo json_encode(['success' => false, 'message' => 'Access denied. Only administrators can update stock.']);
+if (!in_array($role_id, [1, 3], true)) {
+    echo json_encode(['success' => false, 'message' => 'Access denied. Only administrators and store users can update stock.']);
     exit();
 }
 
@@ -79,6 +79,10 @@ try {
     }
     if ($reason === '') {
         echo json_encode(['success' => false, 'message' => 'A reason for the stock adjustment is required']);
+        exit();
+    }
+    if (mb_strlen($reason) > 100) {
+        echo json_encode(['success' => false, 'message' => 'Reason must not exceed 100 characters']);
         exit();
     }
     

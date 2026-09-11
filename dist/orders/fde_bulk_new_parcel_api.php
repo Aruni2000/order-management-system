@@ -124,7 +124,7 @@ function extractTrackingNumber($apiResponse) {
 }
 
 try {
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
     
     // Validations
     if (!isset($_SESSION['logged_in']) || !$_SESSION['logged_in']) throw new Exception('Authentication required');
@@ -139,7 +139,7 @@ try {
     // ============================================
     // CRITICAL FIX: Get co_id from POST data
     // ============================================
-    $coId = isset($_POST['co_id']) ? trim($_POST['co_id']) : null;
+    $coId = isset($_POST['co_id']) && trim($_POST['co_id']) !== '' ? trim($_POST['co_id']) : null;
     
     // Log for debugging
     error_log("=== FDE API DEBUG ===");
@@ -149,28 +149,51 @@ try {
     
     if (!is_array($orderIds) || empty($orderIds)) throw new Exception('Invalid order IDs');
     
-    // Get courier details
-    $stmt = $conn->prepare("SELECT courier_name, co_id, api_key, client_id FROM couriers WHERE courier_id = ? AND status = 'active' AND has_api_new = 1");
-    $stmt->bind_param("i", $carrierId);
-    $stmt->execute();
-    $courier = $stmt->get_result()->fetch_assoc();
+    // Get courier details using co_id first (unique per tenant courier account), or fallback to tenant_id from order
+    $courier = null;
+    if (!empty($coId)) {
+        $stmt = $conn->prepare("SELECT courier_name, co_id, courier_id, api_key, client_id, tenant_id FROM couriers WHERE co_id = ? AND status = 'active' AND has_api_new = 1");
+        $stmt->bind_param("i", $coId);
+        $stmt->execute();
+        $courier = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+    }
+    
+    // If not found by co_id, try to find by courier_id AND tenant_id from the orders
+    if (!$courier && !empty($orderIds)) {
+        $firstOrderId = $orderIds[0];
+        $tStmt = $conn->prepare("SELECT tenant_id FROM order_header WHERE order_id = ?");
+        $tStmt->bind_param("s", $firstOrderId);
+        $tStmt->execute();
+        $tResult = $tStmt->get_result();
+        if ($tRow = $tResult->fetch_assoc()) {
+            $orderTenantId = (int)$tRow['tenant_id'];
+            $stmt = $conn->prepare("SELECT courier_name, co_id, courier_id, api_key, client_id, tenant_id FROM couriers WHERE courier_id = ? AND tenant_id = ? AND status = 'active' AND has_api_new = 1");
+            $stmt->bind_param("ii", $carrierId, $orderTenantId);
+            $stmt->execute();
+            $courier = $stmt->get_result()->fetch_assoc();
+            $stmt->close();
+        }
+        $tStmt->close();
+    }
+    
+    // Fallback if not found by tenant_id
+    if (!$courier) {
+        $stmt = $conn->prepare("SELECT courier_name, co_id, courier_id, api_key, client_id, tenant_id FROM couriers WHERE courier_id = ? AND status = 'active' AND has_api_new = 1");
+        $stmt->bind_param("i", $carrierId);
+        $stmt->execute();
+        $courier = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+    }
     
     if (!$courier || empty($courier['api_key']) || empty($courier['client_id'])) {
         throw new Exception('Invalid courier or missing API credentials');
     }
     
-    // ============================================
-    // FALLBACK: If co_id not provided from frontend, get from courier table
-    // ============================================
-    if (empty($coId)) {
-        $coId = $courier['co_id'];
-        error_log("CO_ID fallback from courier table: " . ($coId ?? 'NULL'));
-    }
-    
-    // Validate co_id exists
-    if (empty($coId)) {
-        throw new Exception('CO_ID is required but not found in request or courier configuration');
-    }
+    // Ensure co_id and carrier_id are set from the retrieved courier
+    $coId = $courier['co_id'];
+    $carrierId = (int)$courier['courier_id'];
+    error_log("Using Courier: {$courier['courier_name']}, CO_ID: $coId, Tenant: " . ($courier['tenant_id'] ?? 'NULL'));
     
     // Get orders
     $placeholders = str_repeat('?,', count($orderIds) - 1) . '?';

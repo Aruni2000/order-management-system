@@ -8,11 +8,11 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     if (ob_get_level()) {
         ob_end_clean();
     }
-    header("Location: /OMS/dist/pages/login.php");
+    header("Location: /orderhub_nextwave/dist/pages/login.php");
     exit();
 }
 // Include the database connection file
-include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
 
 // Check if order ID is provided
 if (!isset($_GET['id']) || empty($_GET['id'])) {
@@ -85,8 +85,8 @@ $order_query = "SELECT
 $params = [$order_id];
 $types = "i";
 
-if ($is_main_admin === 1) {
-    // Main Admin: No extra restrictions
+if ($is_main_admin === 1 && $role_id === 1) {
+    // Super Admin: No extra restrictions
 } else {
     // All other users: Restrict to tenant
     $order_query .= " AND oh.tenant_id = ?";
@@ -206,12 +206,12 @@ if (!empty($company['logo_url'])) {
         $logo_url = $company['logo_url'];
     } 
     // Check if it already has the full path
-    else if (strpos($company['logo_url'], '/OMS/') === 0) {
+    else if (strpos($company['logo_url'], '/orderhub_nextwave/') === 0) {
         $logo_url = $company['logo_url']; // Already has full path
     }
     // Otherwise, it's a relative path from dist folder
     else {
-        $logo_url = '/OMS/dist/' . ltrim($company['logo_url'], '/');
+        $logo_url = '/orderhub_nextwave/dist/' . ltrim($company['logo_url'], '/');
     }
 }
 function getPaymentStatusBadge($status) {
@@ -268,6 +268,26 @@ $conditionLabel = $conditionLabels[$conditionVal] ?? 'New';
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Order #<?php echo $order_id; ?> | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
     <link rel="stylesheet" href="../assets/css/orders.css" />
+    <?php
+    $favicon_url = '';
+    if (isset($conn) && $conn) {
+        try {
+            $user_tenant_id = $_SESSION['tenant_id'] ?? null;
+            if ($user_tenant_id) {
+                $fav_query = "SELECT fav_icon_url FROM tenants WHERE tenant_id = " . (int)$user_tenant_id . " AND status = 'active' AND fav_icon_url IS NOT NULL AND fav_icon_url != '' LIMIT 1";
+            } else {
+                $fav_query = "SELECT fav_icon_url FROM tenants WHERE status = 'active' AND fav_icon_url IS NOT NULL AND fav_icon_url != '' LIMIT 1";
+            }
+            $fav_result = $conn->query($fav_query);
+            if ($fav_result && $fav_result->num_rows > 0) {
+                $fav_data = $fav_result->fetch_assoc();
+                $favicon_url = $fav_data['fav_icon_url'];
+            }
+        } catch (Throwable $e) {}
+    }
+    if ($favicon_url) echo '<link rel="icon" href="' . htmlspecialchars($favicon_url) . '" type="image/x-icon" />';
+    else echo '<link rel="icon" href="../assets/images/enterprise.png" type="image/x-icon" />';
+    ?>
     <style>
         .od-wrapper { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 0; }
 
@@ -604,7 +624,7 @@ $conditionLabel = $conditionLabels[$conditionVal] ?? 'New';
             <?php if (!empty($order['payment_slip'])): ?>
             <div class="od-field">
                 <span class="od-field-label">Payment Slip</span>
-                <span class="od-field-value"><a href="/OMS/dist/uploads/<?php echo urlencode($order['payment_slip']); ?>" target="_blank" style="color:#3b82f6;text-decoration:none;font-size:0.8rem;"><i class="fas fa-file-image"></i> View Slip</a></span>
+                <span class="od-field-value"><a href="/orderhub_nextwave/dist/uploads/<?php echo urlencode($order['payment_slip']); ?>" target="_blank" style="color:#3b82f6;text-decoration:none;font-size:0.8rem;"><i class="fas fa-file-image"></i> View Slip</a></span>
             </div>
             <?php endif; ?>
             <?php if (empty($order['payment_method']) && empty($order['amount_paid'])): ?>
@@ -664,7 +684,7 @@ $conditionLabel = $conditionLabels[$conditionVal] ?? 'New';
 
 <script>
 function viewPaymentSlip(slipFileName) {
-    const slipUrl = '/OMS/dist/uploads/' + encodeURIComponent(slipFileName);
+    const slipUrl = '/orderhub_nextwave/dist/uploads/' + encodeURIComponent(slipFileName);
     window.open(slipUrl, '_blank');
 }
 

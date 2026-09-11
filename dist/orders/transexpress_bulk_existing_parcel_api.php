@@ -186,7 +186,7 @@ function formatWaybillId($rawWaybill) {
 }
 
 try {
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
 
     // Validate request
     if (!isset($_SESSION['logged_in']) || !$_SESSION['logged_in']) {
@@ -208,35 +208,84 @@ try {
         throw new Exception('Invalid order IDs');
     }
 
+    $coId = isset($_POST['co_id']) && trim($_POST['co_id']) !== '' ? trim($_POST['co_id']) : null;
+
     // ==========================================
-    // ✅ FIX 1: Get courier details INCLUDING co_id
+    // STEP 1: GET TENANT_ID FROM FIRST ORDER
     // ==========================================
-    $stmt = $conn->prepare("
-        SELECT courier_id, courier_name, co_id, api_key, tenant_id 
-        FROM couriers 
-        WHERE courier_id = ? 
-        AND status = 'active' 
-        AND has_api_existing = 1
-    ");
-    $stmt->bind_param("i", $carrierId);
+    $firstOrderId = $orderIds[0];
+    $stmt = $conn->prepare("SELECT tenant_id FROM order_header WHERE order_id = ?");
+    $stmt->bind_param("s", $firstOrderId);
     $stmt->execute();
-    $courier = $stmt->get_result()->fetch_assoc();
+    $tenantResult = $stmt->get_result();
+    
+    if ($tenantResult->num_rows === 0) {
+        throw new Exception("Order not found: $firstOrderId");
+    }
+    
+    $tenantData = $tenantResult->fetch_assoc();
+    $tenantId = (int)$tenantData['tenant_id'];
     $stmt->close();
+
+    // ==========================================
+    // STEP 2: GET COURIER DETAILS INCLUDING CO_ID
+    // ==========================================
+    $courier = null;
+    if (!empty($coId)) {
+        $stmt = $conn->prepare("
+            SELECT courier_id, courier_name, co_id, api_key, tenant_id 
+            FROM couriers 
+            WHERE co_id = ? 
+            AND status = 'active' 
+            AND has_api_existing = 1
+        ");
+        $stmt->bind_param("i", $coId);
+        $stmt->execute();
+        $courier = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+    }
+
+    if (!$courier && !empty($tenantId)) {
+        $stmt = $conn->prepare("
+            SELECT courier_id, courier_name, co_id, api_key, tenant_id 
+            FROM couriers 
+            WHERE courier_id = ? 
+            AND tenant_id = ? 
+            AND status = 'active' 
+            AND has_api_existing = 1
+        ");
+        $stmt->bind_param("ii", $carrierId, $tenantId);
+        $stmt->execute();
+        $courier = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+    }
+
+    if (!$courier) {
+        $stmt = $conn->prepare("
+            SELECT courier_id, courier_name, co_id, api_key, tenant_id 
+            FROM couriers 
+            WHERE courier_id = ? 
+            AND status = 'active' 
+            AND has_api_existing = 1
+        ");
+        $stmt->bind_param("i", $carrierId);
+        $stmt->execute();
+        $courier = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+    }
     
     if (!$courier || empty($courier['api_key'])) {
         throw new Exception('Invalid courier or missing API credentials');
     }
 
-    // ==========================================
-    // ✅ FIX 2: Store co_id for later use
-    // ==========================================
     $courierCoId = $courier['co_id'];
-    $courierTenantId = $courier['tenant_id'];
+    $carrierId = (int)$courier['courier_id'];
+    $courierTenantId = $tenantId;
 
-    // Get tracking numbers
+    // Get tracking numbers for this tenant
     $orderCount = count($orderIds);
-    $stmt = $conn->prepare("SELECT id, tracking_id FROM tracking WHERE courier_id = ? AND status = 'unused' ORDER BY created_at ASC LIMIT ?");
-    $stmt->bind_param("ii", $carrierId, $orderCount);
+    $stmt = $conn->prepare("SELECT id, tracking_id FROM tracking WHERE courier_id = ? AND tenant_id = ? AND status = 'unused' ORDER BY created_at ASC LIMIT ?");
+    $stmt->bind_param("iii", $carrierId, $tenantId, $orderCount);
     $stmt->execute();
     $tracking = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
     $stmt->close();

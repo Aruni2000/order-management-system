@@ -7,17 +7,26 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     if (ob_get_level()) {
         ob_end_clean();
     }
-    header("Location: /OMS/dist/pages/login.php");
+    header("Location: /orderhub_nextwave/dist/pages/login.php");
     exit();
 }
 
 // Include the database connection file
-include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
 
 // Check database connection
 if ($conn->connect_error) {
     error_log("Database connection failed: " . $conn->connect_error);
     die("Connection failed: " . $conn->connect_error);
+}
+
+// Store role (role_id 3, non-main-admin) is limited to Products & Order Management
+if ((int)($_SESSION['role_id'] ?? 0) === 3 && (int)($_SESSION['is_main_admin'] ?? 0) !== 1) {
+    if (ob_get_level()) {
+        ob_end_clean();
+    }
+    header("Location: /orderhub_nextwave/dist/pages/access_denied.php");
+    exit();
 }
 
 // Function to generate CSRF token
@@ -40,8 +49,10 @@ if ($customer_id <= 0) {
 $customer = null;
 $session_tenant_id = isset($_SESSION['tenant_id']) ? (int)$_SESSION['tenant_id'] : 0;
 $is_main_admin = isset($_SESSION['is_main_admin']) ? (int)$_SESSION['is_main_admin'] : 0;
+$current_role_id = isset($_SESSION['role_id']) ? (int)$_SESSION['role_id'] : 0;
+$is_super_admin = ($is_main_admin === 1 && $current_role_id === 1);
 
-if ($is_main_admin) {
+if ($is_super_admin) {
     $customerStmt = $conn->prepare("
         SELECT c.*, ct.city_name 
         FROM customers c 
@@ -78,7 +89,7 @@ $customerStmt->close();
 <head>
     <title>Edit Customer | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
 
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/head.php'); ?>
     
     <link rel="stylesheet" href="../assets/css/customers.css" />
 
@@ -275,9 +286,9 @@ $customerStmt->close();
 
 <body>
     <?php 
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/loader.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/navbar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/sidebar.php');
     ?>
 
     <div class="loading-overlay" id="loadingOverlay">
@@ -403,8 +414,8 @@ $customerStmt->close();
         </div>
     </div>
 
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php'); ?>
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/footer.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/scripts.php'); ?>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
 

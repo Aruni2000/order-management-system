@@ -2,11 +2,11 @@
 session_start();
 if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     if (ob_get_level()) ob_end_clean();
-    header("Location: /OMS/dist/pages/login.php");
+    header("Location: /orderhub_nextwave/dist/pages/login.php");
     exit();
 }
 
-include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
 
 $grn_id = isset($_GET['id']) ? intval($_GET['id']) : 0;
 if ($grn_id <= 0) {
@@ -15,10 +15,10 @@ if ($grn_id <= 0) {
 
 // Access control
 $is_main_admin = isset($_SESSION['is_main_admin']) ? (int)$_SESSION['is_main_admin'] : 0;
-if ($is_main_admin !== 1) {
-    die("Access Denied: Only main admin can print GRN");
-}
 $role_id = isset($_SESSION['role_id']) ? (int)$_SESSION['role_id'] : 0;
+if ($is_main_admin !== 1 || !in_array($role_id, [1, 3], true)) {
+    die("Access Denied: Only main admin (admin or store role) can print GRN");
+}
 $session_tenant_id = isset($_SESSION['tenant_id']) ? (int)$_SESSION['tenant_id'] : 0;
 
 // Fetch GRN header with supplier + creator
@@ -67,10 +67,10 @@ if ($tenantStmt) {
         $logo = $tenant_data['logo_url'];
         if (strpos($logo, 'http') === 0) {
             $company_logo = $logo;
-        } elseif (strpos($logo, '/OMS/') === 0) {
+        } elseif (strpos($logo, '/orderhub_nextwave/') === 0) {
             $company_logo = $logo;
         } else {
-            $company_logo = '/OMS/dist/' . ltrim($logo, '/');
+            $company_logo = '/orderhub_nextwave/dist/' . ltrim($logo, '/');
         }
     }
     $tenantStmt->close();
@@ -104,6 +104,26 @@ if ($itemsStmt) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GRN Print - <?php echo htmlspecialchars($grn['grn_number']); ?></title>
+    <?php
+    $favicon_url = '';
+    if (isset($conn) && $conn) {
+        try {
+            $user_tenant_id = $_SESSION['tenant_id'] ?? null;
+            if ($user_tenant_id) {
+                $fav_query = "SELECT fav_icon_url FROM tenants WHERE tenant_id = " . (int)$user_tenant_id . " AND status = 'active' AND fav_icon_url IS NOT NULL AND fav_icon_url != '' LIMIT 1";
+            } else {
+                $fav_query = "SELECT fav_icon_url FROM tenants WHERE status = 'active' AND fav_icon_url IS NOT NULL AND fav_icon_url != '' LIMIT 1";
+            }
+            $fav_result = $conn->query($fav_query);
+            if ($fav_result && $fav_result->num_rows > 0) {
+                $fav_data = $fav_result->fetch_assoc();
+                $favicon_url = $fav_data['fav_icon_url'];
+            }
+        } catch (Throwable $e) {}
+    }
+    if ($favicon_url) echo '<link rel="icon" href="' . htmlspecialchars($favicon_url) . '" type="image/x-icon" />';
+    else echo '<link rel="icon" href="../assets/images/enterprise.png" type="image/x-icon" />';
+    ?>
     <style>
         /* ===== Base Reset ===== */
         * {

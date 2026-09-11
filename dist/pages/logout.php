@@ -2,7 +2,7 @@
 session_start(); // Start the session
 
 // Include the database connection file
-include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
 
 // Log logout action
 if (isset($_SESSION['user_id'])) {
@@ -42,6 +42,6 @@ if (isset($_COOKIE['email'])) {
 session_destroy();
 
 // Redirect to login page
-header("Location: /OMS/dist/pages/login.php");
+header("Location: /orderhub_nextwave/dist/pages/login.php");
 exit();
 ?>

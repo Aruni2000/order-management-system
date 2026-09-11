@@ -1,6 +1,6 @@
 <!-- Required Js -->
 <script src="../assets/js/toast.js"></script>
-<?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/action_modals.php'); ?>
+<?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/action_modals.php'); ?>
 <script src="../assets/js/swal-actions.js"></script>
 
 <script src="../assets/js/plugins/simplebar.min.js"></script>

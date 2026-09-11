@@ -12,7 +12,7 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
 }
 
 // Include database connection
-include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
 
 // Check if request method is POST
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -69,8 +69,8 @@ try {
     $checkStmt->close();
     
     // ✅ NEW: Check tenant access permissions
-    // Main admins can manage any courier, regular users only their own tenant
-    if (!($is_main_admin === 1)) {
+    // Super admins (main admin + role 1) can manage any courier, others only their own tenant
+    if (!($is_main_admin === 1 && $role_id === 1)) {
         // Regular user - must match tenant
         if ($courier_tenant_id !== $session_tenant_id) {
             throw new Exception('Access denied: You can only manage couriers from your own tenant');

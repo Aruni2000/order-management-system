@@ -14,7 +14,7 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     if (ob_get_level()) {
         ob_end_clean();
     }
-    header("Location: /OMS/dist/pages/login.php");
+    header("Location: /orderhub_nextwave/dist/pages/login.php");
     exit();
 }
 
@@ -54,7 +54,7 @@ if ($current_user_id == 0 || $current_user_role == 0) {
 }
 
 // Include database connection
-include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
 
 /**
  * SEARCH AND PAGINATION PARAMETERS
@@ -62,6 +62,7 @@ include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 $search = isset($_GET['search']) ? trim($_GET['search']) : '';
 $order_id_filter = isset($_GET['order_id_filter']) ? trim($_GET['order_id_filter']) : '';
 $customer_name_filter = isset($_GET['customer_name_filter']) ? trim($_GET['customer_name_filter']) : '';
+$phone_filter = isset($_GET['phone_filter']) ? trim($_GET['phone_filter']) : '';
 $date_from = isset($_GET['date_from']) ? trim($_GET['date_from']) : '';
 $date_to = isset($_GET['date_to']) ? trim($_GET['date_to']) : '';
 $pay_status_filter = isset($_GET['pay_status_filter']) ? trim($_GET['pay_status_filter']) : '';
@@ -81,10 +82,10 @@ $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 10;
 $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
 $offset = ($page - 1) * $limit;
 
-// NEW: Role-based access control condition
+// Role-based access control condition: Only Main Admin with role 1 can see all tenants
 $roleBasedCondition = "";
-if ($is_main_admin != 1) {
-    // Non-main-admin users can only see their tenant's orders
+if (!($is_main_admin == 1 && $current_user_role == 1)) {
+    // Users who are not (is_main_admin = 1 AND role_id = 1) can only see their tenant's orders
     $roleBasedCondition = " AND i.tenant_id = $tenant_id";
 }
 
@@ -165,13 +166,19 @@ if (!empty($search)) {
 // Specific Order ID filter
 if (!empty($order_id_filter)) {
     $orderIdTerm = $conn->real_escape_string($order_id_filter);
-    $searchConditions[] = "i.order_id LIKE '%$orderIdTerm%'";
+    $searchConditions[] = "i.order_id = '$orderIdTerm'";
 }
 
 // Specific Customer Name filter - UPDATED
 if (!empty($customer_name_filter)) {
     $customerNameTerm = $conn->real_escape_string($customer_name_filter);
     $searchConditions[] = "i.full_name LIKE '%$customerNameTerm%'";
+}
+
+// Customer Phone filter
+if (!empty($phone_filter)) {
+    $phoneTerm = $conn->real_escape_string($phone_filter);
+    $searchConditions[] = "i.mobile = '$phoneTerm'";
 }
 
 // Date range filter
@@ -270,7 +277,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
 <head>
     <title>Pending Orders | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
 
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/head.php'); ?>
 
     <!-- Stylesheets -->
     <link rel="stylesheet" href="../assets/css/orders.css" />
@@ -366,9 +373,9 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
 <body>
     <!-- Page Loader -->
     <?php 
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/loader.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/navbar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/sidebar.php');
     ?>
 
     <div class="pc-container">
@@ -432,6 +439,13 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                             <input type="text" id="customer_name_filter" name="customer_name_filter"
                                 placeholder="Enter customer name"
                                 value="<?php echo htmlspecialchars($customer_name_filter); ?>">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="phone_filter">Customer Phone</label>
+                            <input type="text" id="phone_filter" name="phone_filter"
+                                placeholder="Enter phone number"
+                                value="<?php echo htmlspecialchars($phone_filter); ?>">
                         </div>
 
                         <div class="form-group">
@@ -573,7 +587,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                 <th>Success Rate</th>
                                 <th>Call note</th>
                                 <?php if ($is_main_admin == 1 && $_SESSION['role_id'] == 1) { ?>
-                                <th>Tenant Company</th>
+                                <th>Tenant</th>
                                 <?php } ?>
                                 <th>Processed By</th>
                                 <th>Actions</th>
@@ -596,7 +610,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                 <!-- Order ID -->
                                 <td class="order-id">
                                     <?php echo isset($row['order_id']) ? htmlspecialchars($row['order_id']) : ''; ?>
-                                    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/leads_badge.php'); ?>
+                                    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/leads_badge.php'); ?>
                                     <?php if (!empty($row['upload_error'])): ?>
                                         <br>
                                         <span class="badge bg-warning text-dark" style="font-size: 10px; cursor: help;" title="<?php echo htmlspecialchars($row['upload_error']); ?>">
@@ -707,7 +721,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
     }
     ?>
 </td>
-                                <!-- Tenant Company Name -->
+                                <!-- Tenant Name -->
                                 <?php if ($is_main_admin == 1 && $_SESSION['role_id'] == 1) { ?>
                                 <td class="customer-name">
                                     <div class="customer-info">
@@ -814,21 +828,21 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                     <div class="pagination-controls">
                         <?php if ($page > 1): ?>
                         <button class="page-btn"
-                            onclick="window.location.href='?page=<?php echo $page - 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&call_status_filter=<?php echo urlencode($call_status_filter); ?>&condition_filter=<?php echo urlencode($condition_filter); ?>&tenant_id_filter=<?php echo urlencode($tenant_id_filter); ?>&user_id_filter=<?php echo urlencode($user_id_filter); ?>&search=<?php echo urlencode($search); ?>'">
+                            onclick="window.location.href='?page=<?php echo $page - 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&call_status_filter=<?php echo urlencode($call_status_filter); ?>&condition_filter=<?php echo urlencode($condition_filter); ?>&tenant_id_filter=<?php echo urlencode($tenant_id_filter); ?>&user_id_filter=<?php echo urlencode($user_id_filter); ?>&search=<?php echo urlencode($search); ?>'">
                             <i class="fas fa-chevron-left"></i>
                         </button>
                         <?php endif; ?>
 
                         <?php for ($i = max(1, $page - 2); $i <= min($totalPages, $page + 2); $i++): ?>
                         <button class="page-btn <?php echo ($i == $page) ? 'active' : ''; ?>"
-                            onclick="window.location.href='?page=<?php echo $i; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&call_status_filter=<?php echo urlencode($call_status_filter); ?>&condition_filter=<?php echo urlencode($condition_filter); ?>&tenant_id_filter=<?php echo urlencode($tenant_id_filter); ?>&user_id_filter=<?php echo urlencode($user_id_filter); ?>&search=<?php echo urlencode($search); ?>'">
+                            onclick="window.location.href='?page=<?php echo $i; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&call_status_filter=<?php echo urlencode($call_status_filter); ?>&condition_filter=<?php echo urlencode($condition_filter); ?>&tenant_id_filter=<?php echo urlencode($tenant_id_filter); ?>&user_id_filter=<?php echo urlencode($user_id_filter); ?>&search=<?php echo urlencode($search); ?>'">
                             <?php echo $i; ?>
                         </button>
                         <?php endfor; ?>
 
                         <?php if ($page < $totalPages): ?>
                         <button class="page-btn"
-                            onclick="window.location.href='?page=<?php echo $page + 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&call_status_filter=<?php echo urlencode($call_status_filter); ?>&condition_filter=<?php echo urlencode($condition_filter); ?>&tenant_id_filter=<?php echo urlencode($tenant_id_filter); ?>&user_id_filter=<?php echo urlencode($user_id_filter); ?>&search=<?php echo urlencode($search); ?>'">
+                            onclick="window.location.href='?page=<?php echo $page + 1; ?>&limit=<?php echo $limit; ?>&order_id_filter=<?php echo urlencode($order_id_filter); ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&pay_status_filter=<?php echo urlencode($pay_status_filter); ?>&call_status_filter=<?php echo urlencode($call_status_filter); ?>&condition_filter=<?php echo urlencode($condition_filter); ?>&tenant_id_filter=<?php echo urlencode($tenant_id_filter); ?>&user_id_filter=<?php echo urlencode($user_id_filter); ?>&search=<?php echo urlencode($search); ?>'">
                             <i class="fas fa-chevron-right"></i>
                         </button>
                         <?php endif; ?>
@@ -840,19 +854,19 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
 
 
     <!-- Include MODAL for View Order -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/order_view_modal.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/order_view_modal.php'); ?>
 
     <!-- DISPATCH MODAL HTML -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/dispatch_modal.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/dispatch_modal.php'); ?>
 
     <!-- BULK DISPATCH MODAL HTML  -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/bulk_dispatch_modal.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/bulk_dispatch_modal.php'); ?>
 
     <!--  ADD THE API DISPATCH MODAL HTML -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/api_dispatch.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/api_dispatch.php'); ?>
 
     <!-- ANSWER STATUS MODAL -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/answer_status_modal.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/answer_status_modal.php'); ?>
 
     <script>
     /**
@@ -872,6 +886,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
     function clearFilters() {
         document.getElementById('order_id_filter').value = '';
         document.getElementById('customer_name_filter').value = '';
+        document.getElementById('phone_filter').value = '';
         document.getElementById('date_from').value = '';
         document.getElementById('date_to').value = '';
         document.getElementById('pay_status_filter').value = '';
@@ -1024,7 +1039,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
         }
 
         // Construct the payment slip URL
-        const slipUrl = '/OMS/dist/uploads/' + encodeURIComponent(currentPaymentSlip);
+        const slipUrl = '/orderhub_nextwave/dist/uploads/' + encodeURIComponent(currentPaymentSlip);
 
         // Open payment slip in new tab
         window.open(slipUrl, '_blank');
@@ -2208,9 +2223,10 @@ function loadApiCouriersForOrders() {
                     
                     option.textContent = `${courier.courier_name} (ID: ${courier.co_id}) - [${capabilities.join(', ')}]`;
                     
-                    // Store capabilities as data attributes
+                    // Store capabilities and co_id as data attributes
                     option.setAttribute('data-has-new', courier.has_api_new);
                     option.setAttribute('data-has-existing', courier.has_api_existing);
+                    option.setAttribute('data-co-id', courier.co_id);
                     
                     carrierSelect.appendChild(option);
                 });
@@ -2484,7 +2500,18 @@ function fetchApiTrackingNumbers(courierId) {
             return;
         }
 
-        const capabilities = courierCapabilities[courierId];
+        // Check selected option's data attributes first for tenant-specific capabilities
+        const selectedOption = apiCarrierSelect ? apiCarrierSelect.options[apiCarrierSelect.selectedIndex] : null;
+        let capabilities = null;
+        if (selectedOption && (selectedOption.hasAttribute('data-has-new') || selectedOption.hasAttribute('data-has-existing'))) {
+            capabilities = {
+                has_api_new: parseInt(selectedOption.getAttribute('data-has-new') || '0'),
+                has_api_existing: parseInt(selectedOption.getAttribute('data-has-existing') || '0')
+            };
+        } else {
+            capabilities = courierCapabilities[courierId];
+        }
+
         if (capabilities) {
             updateDispatchTypeOptions(capabilities);
         } else {
@@ -2672,10 +2699,10 @@ if (apiDispatchForm) {
         }
 
         // ============================================
-        // CRITICAL: Extract co_id from selected courier option text
+        // CRITICAL: Extract co_id from selected courier option data attribute or text
         // ============================================
         const selectedOption = apiCarrierSelect.options[apiCarrierSelect.selectedIndex];
-        const coId = selectedOption.textContent.match(/\(ID:\s*(\d+)\)/)?.[1];
+        const coId = selectedOption ? (selectedOption.getAttribute('data-co-id') || selectedOption.textContent.match(/\(ID:\s*(\d+)\)/)?.[1]) : null;
         
         console.log('=== CO_ID EXTRACTION DEBUG ===');
         console.log('Selected option text:', selectedOption.textContent);
@@ -2887,8 +2914,8 @@ if (apiDispatchForm) {
     </script>
 
     <!-- Include Footer and Scripts -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php'); ?>
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/footer.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/scripts.php'); ?>
 
 </body>
 

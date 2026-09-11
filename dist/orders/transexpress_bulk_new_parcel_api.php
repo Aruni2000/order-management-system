@@ -73,7 +73,7 @@ function extractTransexpressTracking($responseData) {
 }
 
 try {
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
 
     // Validations
     if (!isset($_SESSION['logged_in']) || !$_SESSION['logged_in']) {
@@ -126,32 +126,67 @@ try {
     $tenantId = $tenantIds[0];
     error_log("Validated Tenant ID: $tenantId");
 
+    $coId = isset($_POST['co_id']) && trim($_POST['co_id']) !== '' ? trim($_POST['co_id']) : null;
+
     // ==========================================
     // STEP 2: GET COURIER DETAILS WITH TENANT VALIDATION
     // ==========================================
-    $stmt = $conn->prepare("
-        SELECT courier_id, courier_name, co_id, api_key, tenant_id 
-        FROM couriers 
-        WHERE courier_id = ? 
-        AND status = 'active' 
-        AND has_api_new = 1
-    ");
-    $stmt->bind_param("i", $carrierId);
-    $stmt->execute();
-    $courier = $stmt->get_result()->fetch_assoc();
-    $stmt->close();
+    $courier = null;
+    if (!empty($coId)) {
+        $stmt = $conn->prepare("
+            SELECT courier_id, courier_name, co_id, api_key, tenant_id 
+            FROM couriers 
+            WHERE co_id = ? 
+            AND status = 'active' 
+            AND has_api_new = 1
+        ");
+        $stmt->bind_param("i", $coId);
+        $stmt->execute();
+        $courier = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+    }
+
+    if (!$courier && !empty($tenantId)) {
+        $stmt = $conn->prepare("
+            SELECT courier_id, courier_name, co_id, api_key, tenant_id 
+            FROM couriers 
+            WHERE courier_id = ? 
+            AND tenant_id = ? 
+            AND status = 'active' 
+            AND has_api_new = 1
+        ");
+        $stmt->bind_param("ii", $carrierId, $tenantId);
+        $stmt->execute();
+        $courier = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+    }
+
+    if (!$courier) {
+        $stmt = $conn->prepare("
+            SELECT courier_id, courier_name, co_id, api_key, tenant_id 
+            FROM couriers 
+            WHERE courier_id = ? 
+            AND status = 'active' 
+            AND has_api_new = 1
+        ");
+        $stmt->bind_param("i", $carrierId);
+        $stmt->execute();
+        $courier = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+    }
     
     if (!$courier || empty($courier['api_key'])) {
         throw new Exception('Invalid courier or missing API credentials');
     }
 
     // Validate courier belongs to the same tenant
-    if ((int)$courier['tenant_id'] !== $tenantId) {
+    if (!empty($courier['tenant_id']) && (int)$courier['tenant_id'] !== $tenantId) {
         error_log("ERROR: Courier tenant mismatch - Courier Tenant: {$courier['tenant_id']}, Order Tenant: $tenantId");
         throw new Exception("Selected courier does not belong to the same tenant as the orders. Courier Tenant: {$courier['tenant_id']}, Order Tenant: $tenantId");
     }
 
     $courierCoId = $courier['co_id'];
+    $carrierId = (int)$courier['courier_id'];
     $courierTenantId = $tenantId; // Use validated tenant ID
 
     // ==========================================

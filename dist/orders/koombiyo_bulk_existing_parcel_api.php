@@ -108,7 +108,7 @@ function getParcelData($orderId, $conn) {
 }
 
 try {
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
     
     // ============================================
     // AUTHENTICATION & VALIDATION
@@ -146,43 +146,11 @@ try {
     }
     
     // ============================================
-    // GET COURIER DETAILS (INCLUDING CO_ID)
-    // ============================================
-    $stmt = $conn->prepare("
-        SELECT courier_id, courier_name, co_id, api_key, client_id 
-        FROM couriers 
-        WHERE courier_id = ? 
-        AND status = 'active' 
-        AND has_api_existing = 1
-    ");
-    $stmt->bind_param("i", $carrierId);
-    $stmt->execute();
-    $courier = $stmt->get_result()->fetch_assoc();
-    $stmt->close();
-    
-    if (!$courier || empty($courier['api_key'])) {
-        throw new Exception('Invalid courier or missing API credentials');
-    }
-    
-    // ============================================
-    // FALLBACK: Use co_id from courier table if not provided
-    // ============================================
-    if (empty($coId)) {
-        $coId = $courier['co_id'];
-        error_log("CO_ID fallback from courier table: " . ($coId ?? 'NULL'));
-    }
-    
-    // Validate co_id exists
-    if (empty($coId)) {
-        throw new Exception('CO_ID is required but not found in request or courier configuration');
-    }
-    
-    // ============================================
     // STEP 1: GET TENANT_ID FROM FIRST ORDER
     // ============================================
     $firstOrderId = $orderIds[0];
     $stmt = $conn->prepare("SELECT tenant_id FROM order_header WHERE order_id = ?");
-    $stmt->bind_param("i", $firstOrderId);
+    $stmt->bind_param("s", $firstOrderId);
     $stmt->execute();
     $tenantResult = $stmt->get_result();
     
@@ -195,6 +163,62 @@ try {
     $stmt->close();
     
     error_log("Tenant ID from order: $tenantId");
+
+    // ============================================
+    // STEP 2: GET COURIER DETAILS (USING CO_ID OR TENANT_ID)
+    // ============================================
+    $courier = null;
+    if (!empty($coId)) {
+        $stmt = $conn->prepare("
+            SELECT courier_id, courier_name, co_id, api_key, client_id, tenant_id 
+            FROM couriers 
+            WHERE co_id = ? 
+            AND status = 'active' 
+            AND has_api_existing = 1
+        ");
+        $stmt->bind_param("i", $coId);
+        $stmt->execute();
+        $courier = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+    }
+
+    if (!$courier && !empty($tenantId)) {
+        $stmt = $conn->prepare("
+            SELECT courier_id, courier_name, co_id, api_key, client_id, tenant_id 
+            FROM couriers 
+            WHERE courier_id = ? 
+            AND tenant_id = ? 
+            AND status = 'active' 
+            AND has_api_existing = 1
+        ");
+        $stmt->bind_param("ii", $carrierId, $tenantId);
+        $stmt->execute();
+        $courier = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+    }
+
+    if (!$courier) {
+        $stmt = $conn->prepare("
+            SELECT courier_id, courier_name, co_id, api_key, client_id, tenant_id 
+            FROM couriers 
+            WHERE courier_id = ? 
+            AND status = 'active' 
+            AND has_api_existing = 1
+        ");
+        $stmt->bind_param("i", $carrierId);
+        $stmt->execute();
+        $courier = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+    }
+    
+    if (!$courier || empty($courier['api_key'])) {
+        throw new Exception('Invalid courier or missing API credentials');
+    }
+
+    // Ensure co_id and carrier_id are set from the retrieved courier
+    $coId = $courier['co_id'];
+    $carrierId = (int)$courier['courier_id'];
+    error_log("Using Courier: {$courier['courier_name']}, CO_ID: $coId, Tenant: " . ($courier['tenant_id'] ?? 'NULL'));
     
     // ============================================
     // STEP 2: GET TRACKING NUMBERS FOR THIS TENANT ONLY

@@ -7,16 +7,16 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     if (ob_get_level()) {
         ob_end_clean();
     }
-    header("Location: /OMS/dist/pages/login.php");
+    header("Location: /orderhub_nextwave/dist/pages/login.php");
     exit();
 }
 
 // Include the database connection file
-include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
 
 // Check if user has admin role (role_id = 1)
 if (!isset($_SESSION['user_id'])) {
-    header("Location: /OMS/dist/pages/login.php");
+    header("Location: /orderhub_nextwave/dist/pages/login.php");
     exit();
 }
 
@@ -33,7 +33,7 @@ $role_result = $role_stmt->get_result();
 
 if ($role_result->num_rows === 0) {
     session_destroy();
-    header("Location: /OMS/dist/pages/login.php");
+    header("Location: /orderhub_nextwave/dist/pages/login.php");
     exit();
 }
 
@@ -47,7 +47,7 @@ $is_main_admin = isset($_SESSION['is_main_admin']) && $_SESSION['is_main_admin']
 $session_tenant_id = $_SESSION['tenant_id'] ?? null;
 
 if ($user_role['role_id'] != 1) {
-    header("Location: /OMS/dist/dashboard/index.php");
+    header("Location: /orderhub_nextwave/dist/dashboard/index.php");
     exit();
 }
 
@@ -241,7 +241,7 @@ $countSql = "SELECT COUNT(*) as total FROM users u LEFT JOIN tenants t ON u.tena
 
 // Main query with success rate calculation
 $sql = "SELECT u.id as user_id, u.name as username, u.email, u.mobile as phone, 
-               u.nic, r.name as role, u.status, u.created_at, t.company_name as tenant_name,
+               u.nic, r.name as role, u.role_id, u.status, u.created_at, t.company_name as tenant_name, t.is_main_admin,
                (SELECT COUNT(*) FROM order_header WHERE user_id = u.id AND status NOT IN ('pending', 'cancel', 'dispatch','waiting')) as dispatched_orders,
                (SELECT COUNT(*) FROM order_header WHERE user_id = u.id AND status IN ('done', 'delivered')) as delivered_orders,
                (SELECT COUNT(*) FROM order_header WHERE user_id = u.id AND status IN ('return_handover', 'return', 'return pending', 'return transfer', 'return complete')) as return_orders
@@ -325,7 +325,7 @@ $role_sql = "SELECT DISTINCT r.name as role FROM roles r WHERE r.name IS NOT NUL
 $role_result = $conn->query($role_sql);
 $roles = [];
 if ($role_result && $role_result->num_rows > 0) {
-    $roles = $role_result->fetch_all(MYSQLI_ASSOC);  // ← FIXED: Changed from OMSSQLI_ASSOC
+    $roles = $role_result->fetch_all(MYSQLI_ASSOC);  // ← FIXED: Changed from OrderhubSQLI_ASSOC
 }
 
 // Get active tenants for filter dropdown
@@ -396,7 +396,7 @@ function getSuccessRateBadgeClass($rate) {
 <head>
     <title>User Management | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
     
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/head.php'); ?>
     
     <!-- Stylesheets -->
     <link rel="stylesheet" href="../assets/css/orders.css" />
@@ -504,9 +504,9 @@ function getSuccessRateBadgeClass($rate) {
 <body>
     <!-- Page Loader -->
     <?php 
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/loader.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/navbar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/sidebar.php');
     ?>
 
     <div class="pc-container">
@@ -594,7 +594,7 @@ function getSuccessRateBadgeClass($rate) {
                         <!-- Tenant Filter: Only for Main Admins -->
                         <div class="form-group">
                             <label for="tenant_filter">
-                                Tenant Company
+                                Tenant
                                 <small style="color: #6c757d; font-weight: normal;"></small>
                             </label>
                             <select id="tenant_filter" name="tenant_filter">
@@ -655,11 +655,11 @@ function getSuccessRateBadgeClass($rate) {
                             <tr>
                                 <th>ID</th>
                                 <th>User Name</th>
-                                <?php if ($is_main_admin && $_SESSION['role_id'] == 1): ?>
-                                <th>Tenant Company</th>
-                                <?php endif; ?>
                                 <th>Contact Info</th>
-                                <th>Role & Status</th>
+                                <th>Status</th>
+                                <?php if ($is_main_admin && $_SESSION['role_id'] == 1): ?>
+                                <th>Tenant</th>
+                                <?php endif; ?>
                                 <th>Success Rate</th>
                                 <th>Created</th>
                             </tr>
@@ -678,19 +678,16 @@ function getSuccessRateBadgeClass($rate) {
                                         <!-- User Name -->
                                         <td class="customer-name">
                                             <div class="customer-info">
-                                                <h6 style="margin: 0; font-size: 14px; font-weight: 600;"><?php echo htmlspecialchars($row['username']); ?>
+                                                <h6 style="margin: 0; font-size: 14px; font-weight: 600;"><?php echo htmlspecialchars($row['username']); ?> <br>
+                                                <span class="status-badge role-badge <?php echo 'role-badge-' . strtolower($row['role'] ?: 'user'); ?>">
+                                                    <?php echo htmlspecialchars($row['role'] ?: 'User'); ?>
+                                                </span>
+                                                <?php if ((int)($row['is_main_admin'] ?? 0) === 1 && (int)($row['role_id'] ?? 0) === 1): ?>
+                                                    <span class="main-admin-badge">Main Tenant</span>
+                                                <?php endif; ?>
                                             </div>
                                         </td>
 
-                                        <!-- Tenant Info - Only for Main Admins -->
-                                        <?php if ($is_main_admin && $_SESSION['role_id'] == 1): ?>
-                                        <td>
-                                            <div style="font-weight: 500; color: #495057;">
-                                                <?php echo htmlspecialchars($row['tenant_name'] ?: 'N/A'); ?>
-                                            </div>
-                                        </td>
-                                        <?php endif; ?>
-                                        
                                         <!-- Contact Info & NIC -->
                                         <td>
                                             <div style="line-height: 1.4;">
@@ -705,9 +702,6 @@ function getSuccessRateBadgeClass($rate) {
                                         <!-- Role & Status -->
                                         <td>
                                             <div style="line-height: 1.4;">
-                                                <div style="font-weight: 500; margin-bottom: 4px; color: #495057;">
-                                                    <?php echo htmlspecialchars($row['role'] ?: 'User'); ?>
-                                                </div>
                                                 <?php if ($row['status'] === 'active'): ?>
                                                     <span class="status-badge pay-status-paid">Active</span>
                                                 <?php else: ?>
@@ -715,6 +709,17 @@ function getSuccessRateBadgeClass($rate) {
                                                 <?php endif; ?>
                                             </div>
                                         </td>
+
+                                        <!-- Tenant Info - Only for Main Admins -->
+                                        <?php if ($is_main_admin && $_SESSION['role_id'] == 1): ?>
+                                        <td class="customer-name">
+                                            <div class="customer-info">
+                                                <h6 style="margin: 0; font-size: 14px;">
+                                                    <?php echo htmlspecialchars($row['tenant_name'] ?: 'N/A'); ?>
+                                                </h6>
+                                            </div>
+                                        </td>
+                                        <?php endif; ?>
                                         
                                         <!-- Success Rate -->
                                         <td>
@@ -860,7 +865,7 @@ function getSuccessRateBadgeClass($rate) {
 
     <!-- Info Modal -->
     <?php
-    include_once($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/info_modal.php');
+    include_once($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/info_modal.php');
     renderInfoModal(
         'How User Success Rate Works',
         'fas fa-chart-line',
@@ -894,7 +899,7 @@ function getSuccessRateBadgeClass($rate) {
     ?>
 
     <!-- Scripts -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/scripts.php'); ?>
 
     <script>
         /* ================================
@@ -978,7 +983,7 @@ function getSuccessRateBadgeClass($rate) {
     </script>
 
     <!--Footer-->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/footer.php'); ?>
 
 </body>
 </html>

@@ -8,13 +8,13 @@ header("Pragma: no-cache");
 
 // Check if user is already logged in
 if (isset($_SESSION['logged_in']) && $_SESSION['logged_in'] === true) {
-    header("Location: /OMS/dist/dashboard/index.php");
+    header("Location: /orderhub_nextwave/dist/dashboard/index.php");
     exit();
 }
 
 // Include both database connection files
-include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
-include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/fe_it_db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/fe_it_db_connection.php');
 
 // Check connections
 if ($conn->connect_error) {
@@ -26,15 +26,6 @@ if ($fe_conn->connect_error) {
 
 // Initialize variables
 $error_message = "";
-$logo_url = "../assets/images/placeholder.png"; // fallback logo
-
-//  Fetch logo from tenants table
-$sql_logo = "SELECT logo_url FROM tenants WHERE status = 'active' AND logo_url IS NOT NULL AND logo_url != '' LIMIT 1";
-$result_logo = $conn->query($sql_logo);
-if ($result_logo && $result_logo->num_rows > 0) {
-    $logo_data = $result_logo->fetch_assoc();
-    $logo_url = $logo_data['logo_url'];
-}
 
 //  Handle form submit
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
@@ -182,7 +173,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                             $_SESSION['logged_in'] = true;
                             $_SESSION['tenant_id'] = $user['tenant_id']; // ← CRITICAL: Set tenant_id
                             $_SESSION['is_main_admin'] = $user['is_main_admin']; // ← Store is_main_admin flag
-                            $_SESSION['company_name'] = $user['company_name']; // ← Store company name
+                            $_SESSION['company_name'] = $user['company_name']; // ← Store Tenant Name
                             
                             if (!empty($customer_id)) {
                                 $_SESSION['customer_id'] = $customer_id;
@@ -213,7 +204,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                             }
 
                             // Redirect by role
-                            header("Location: /OMS/dist/dashboard/index.php");
+                            header("Location: /orderhub_nextwave/dist/dashboard/index.php");
                             exit();
                         }
                     } else {
@@ -243,8 +234,9 @@ $fe_conn->close();
     data-pc-theme="light">
 
 <head>
-    <title>Login | OMS</title>
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
+    <title>Login</title>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/head.php'); ?>
+    <link rel="icon" href="../assets/images/enterprise.png" type="image/x-icon" />
     <link rel="stylesheet" href="../assets/css/login.css" />
     <script>
         // Force reload if page is loaded from back-forward cache
@@ -283,12 +275,7 @@ $fe_conn->close();
 
                     <div class="card sm:my-12 w-full shadow-none">
                         <div class="card-body ">
-                            <div class="text-center mb-8">
-                                <!-- Branding logo -->
-                                <a href="#"><img src="<?php echo $logo_url; ?>" alt="Company Logo" class="w-40 mx-auto" /></a>
-                            </div>
-
-                            <h4 class="text-center font-medium mb-4">Login</h4>
+                            <h4 class="text-center font-bold mb-4" style="color: #1e293b;">LOGIN</h4>
 
                             <!-- Error Message -->
                             <?php if (!empty($error_message)): ?>
@@ -333,7 +320,7 @@ $fe_conn->close();
     </div>
     
     <!-- SCRIPTS -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/scripts.php'); ?>
     <!-- END SCRIPTS -->
 
     <!-- Password Toggle Script -->

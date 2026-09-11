@@ -636,7 +636,7 @@
         <i class="fas fa-times"></i>
       </button>
     </div>
-    <form id="waybillsDownloadForm" method="POST" action="/OMS/dist/api/koombiyo_get_waybills.php">
+    <form id="waybillsDownloadForm" method="POST" action="/orderhub_nextwave/dist/api/koombiyo_get_waybills.php">
       <div class="action-modal-body">
         <input type="hidden" id="waybills_courier_id" name="courier_id" value="">
         <input type="hidden" name="csrf_token" value="demo_token">

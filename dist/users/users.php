@@ -8,16 +8,16 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     if (ob_get_level()) {
         ob_end_clean();
     }
-    header("Location: /OMS/dist/pages/login.php");
+    header("Location: /orderhub_nextwave/dist/pages/login.php");
     exit();
 }
 
 // Include the database connection file
-include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
 
 // Check if user has admin role (role_id = 1)
 if (!isset($_SESSION['user_id'])) {
-    header("Location: /OMS/dist/pages/login.php");
+    header("Location: /orderhub_nextwave/dist/pages/login.php");
     exit();
 }
 
@@ -35,7 +35,7 @@ $role_result = $role_stmt->get_result();
 if ($role_result->num_rows === 0) {
     // User not found or inactive
     session_destroy();
-    header("Location: /OMS/dist/pages/login.php");
+    header("Location: /orderhub_nextwave/dist/pages/login.php");
     exit();
 }
 
@@ -44,7 +44,7 @@ $user_role = $role_result->fetch_assoc();
 // Check if user is admin (role_id = 1)
 if ($user_role['role_id'] != 1) {
     // User is not admin, redirect to dashboard
-    header("Location: /OMS/dist/dashboard/index.php");
+    header("Location: /orderhub_nextwave/dist/dashboard/index.php");
     exit();
 }
 
@@ -75,7 +75,7 @@ $countSql = "SELECT COUNT(*) as total FROM users";
 
 // Main query - updated to match your actual database schema
 $sql = "SELECT u.id as user_id, u.name as username, u.name as full_name, u.email, u.mobile as phone, 
-               u.nic, r.name as role, u.status, u.created_at, u.updated_at, t.company_name as tenant_name
+               u.nic, r.name as role, u.role_id, u.status, u.created_at, u.updated_at, t.company_name as tenant_name, t.is_main_admin
         FROM users u 
         LEFT JOIN roles r ON u.role_id = r.id
         LEFT JOIN tenants t ON u.tenant_id = t.tenant_id";
@@ -201,7 +201,7 @@ if ($is_main_admin && $_SESSION['role_id'] == 1) {
 <head>
     <title>User Management | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
     
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/head.php'); ?>
     
     <!-- Stylesheets -->
     <link rel="stylesheet" href="../assets/css/orders.css" />
@@ -211,9 +211,9 @@ if ($is_main_admin && $_SESSION['role_id'] == 1) {
 <body>
     <!-- Page Loader -->
     <?php 
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/loader.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/navbar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/sidebar.php');
     ?>
 
     <div class="pc-container">
@@ -285,7 +285,7 @@ if ($is_main_admin && $_SESSION['role_id'] == 1) {
 
                         <?php if ($is_main_admin && $_SESSION['role_id'] == 1): ?>
                         <div class="form-group">
-                            <label for="tenant_filter">Tenant Company</label>
+                            <label for="tenant_filter">Tenant</label>
                             <select id="tenant_filter" name="tenant_filter">
                                 <option value="">All Companies</option>
                                 <?php foreach ($tenants_list as $tenant): ?>
@@ -327,11 +327,11 @@ if ($is_main_admin && $_SESSION['role_id'] == 1) {
                             <tr>
                                 <th>ID</th>
                                 <th>User Name</th>
-                                <?php if ($is_main_admin && $_SESSION['role_id'] == 1): ?>
-                                    <th>Tenant Company</th>
-                                <?php endif; ?>
                                 <th>Contact & NIC</th>
-                                <th>Role & Status</th>
+                                <th>Status</th>
+                                <?php if ($is_main_admin && $_SESSION['role_id'] == 1): ?>
+                                    <th>Tenant</th>
+                                <?php endif; ?>
                                 <th>Created</th>
                                 <th>Actions</th>
                             </tr>
@@ -346,19 +346,15 @@ if ($is_main_admin && $_SESSION['role_id'] == 1) {
                                         <td class="customer-name">
                                             <div class="customer-info">
                                                 <h6 style="margin: 0; font-size: 14px; font-weight: 600;"><?php echo htmlspecialchars($row['username']); ?></h6>
-                                                
+                                                <span class="status-badge role-badge <?php echo 'role-badge-' . strtolower($row['role'] ?: 'user'); ?>">
+                                                    <?php echo htmlspecialchars($row['role'] ?: 'User'); ?>
+                                                </span>
+                                                <?php if ((int)($row['is_main_admin'] ?? 0) === 1 && (int)($row['role_id'] ?? 0) === 1): ?>
+                                                    <span class="main-admin-badge">Main Tenant</span>
+                                                <?php endif; ?>
                                             </div>
                                         </td>
 
-                                        <!-- Tenant Info -->
-                                        <?php if ($is_main_admin && $_SESSION['role_id'] == 1): ?>
-                                            <td>
-                                                <div style="font-weight: 500; color: #495057;">
-                                                    <?php echo htmlspecialchars($row['tenant_name'] ?: 'N/A'); ?>
-                                                </div>
-                                            </td>
-                                        <?php endif; ?>
-                                        
                                         <!-- Contact Info & NIC -->
                                         <td>
                                             <div style="line-height: 1.4;">
@@ -373,9 +369,6 @@ if ($is_main_admin && $_SESSION['role_id'] == 1) {
                                         <!-- Role & Status -->
                                         <td>
                                             <div style="line-height: 1.4;">
-                                                <div style="font-weight: 500; margin-bottom: 4px; color: #495057;">
-                                                    <?php echo htmlspecialchars($row['role'] ?: 'User'); ?>
-                                                </div>
                                                 <?php if ($row['status'] === 'active'): ?>
                                                     <span class="status-badge pay-status-paid">Active</span>
                                                 <?php else: ?>
@@ -383,7 +376,17 @@ if ($is_main_admin && $_SESSION['role_id'] == 1) {
                                                 <?php endif; ?>
                                             </div>
                                         </td>
-                                        
+
+                                        <!-- Tenant Info -->
+                                        <?php if ($is_main_admin && $_SESSION['role_id'] == 1): ?>
+                                            <td class="customer-name">
+                                                <div class="customer-info">
+                                                    <h6 style="margin: 0; font-size: 14px;">
+                                                        <?php echo htmlspecialchars($row['tenant_name'] ?: 'N/A'); ?>
+                                                    </h6>
+                                                </div>
+                                            </td>
+                                        <?php endif; ?>
                                         
                                         <!-- Created -->
                                         <td>
@@ -523,10 +526,10 @@ if ($is_main_admin && $_SESSION['role_id'] == 1) {
 
 
     <!-- Footer -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/footer.php'); ?>
 
     <!-- Scripts -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/scripts.php'); ?>
 
     <script>
 // Complete JavaScript code for user management page
@@ -584,17 +587,16 @@ function formatDateTime(dateString) {
     try {
         const date = new Date(dateString);
         if (isNaN(date.getTime())) return dateString;
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
         const yyyy = date.getFullYear();
-        const mm = String(date.getMonth() + 1).padStart(2, '0');
+        const mmm = months[date.getMonth()];
         const dd = String(date.getDate()).padStart(2, '0');
         let hours = date.getHours();
         const minutes = String(date.getMinutes()).padStart(2, '0');
-        const seconds = String(date.getSeconds()).padStart(2, '0');
         const ampm = hours >= 12 ? 'PM' : 'AM';
         hours = hours % 12;
         hours = hours ? hours : 12;
-        const hh = String(hours).padStart(2, '0');
-        return `${yyyy}-${mm}-${dd} ${hh}:${minutes}:${seconds} ${ampm}`;
+        return `${mmm} ${dd}, ${yyyy} ${hours}:${minutes} ${ampm}`;
     } catch (e) {
         return dateString;
     }

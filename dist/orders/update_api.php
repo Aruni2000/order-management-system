@@ -10,10 +10,18 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
 }
 
 // Include database connection
-include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
 
 // Set content type to JSON
 header('Content-Type: application/json');
+
+// Page-level access: Only Admin (role_id=1) can update courier API settings
+$role_id = isset($_SESSION['role_id']) ? (int)$_SESSION['role_id'] : 0;
+if ($role_id !== 1) {
+    http_response_code(403);
+    echo json_encode(['success' => false, 'message' => 'Access denied: Admin role required']);
+    exit();
+}
 
 // Only allow POST method
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -41,10 +49,18 @@ try {
         exit();
     }
 
-    // Check if courier exists using co_id
-    $checkSql = "SELECT co_id, courier_id, courier_name, client_id, api_key, origin_city_name, origin_state_name FROM couriers WHERE co_id = ?";
-    $checkStmt = $conn->prepare($checkSql);
-    $checkStmt->bind_param("i", $co_id);
+    // Check if courier exists using co_id (scoped to session tenant for non-super-admin)
+    $is_main_admin = isset($_SESSION['is_main_admin']) ? (int)$_SESSION['is_main_admin'] : 0;
+    if ($is_main_admin === 1) {
+        $checkSql = "SELECT co_id, courier_id, courier_name, client_id, api_key, origin_city_name, origin_state_name FROM couriers WHERE co_id = ?";
+        $checkStmt = $conn->prepare($checkSql);
+        $checkStmt->bind_param("i", $co_id);
+    } else {
+        $session_tenant_id = isset($_SESSION['tenant_id']) ? (int)$_SESSION['tenant_id'] : 0;
+        $checkSql = "SELECT co_id, courier_id, courier_name, client_id, api_key, origin_city_name, origin_state_name FROM couriers WHERE co_id = ? AND tenant_id = ?";
+        $checkStmt = $conn->prepare($checkSql);
+        $checkStmt->bind_param("ii", $co_id, $session_tenant_id);
+    }
     $checkStmt->execute();
     $checkResult = $checkStmt->get_result();
 

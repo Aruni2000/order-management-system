@@ -8,7 +8,7 @@ session_start();
 
 // Authentication check
 if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
-    header("Location: /OMS/dist/pages/login.php");
+    header("Location: /orderhub_nextwave/dist/pages/login.php");
     exit();
 }
 
@@ -19,7 +19,7 @@ if (!isset($_GET['export']) || $_GET['export'] != '1') {
 }
 
 // Include database connection
-include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
 
 // Get current user's role information
 $current_user_id = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
@@ -29,7 +29,7 @@ $tenant_id = isset($_SESSION['tenant_id']) ? (int)$_SESSION['tenant_id'] : 0;
 
 // If still no user data, redirect to login
 if ($current_user_id == 0) {
-    header("Location: /OMS/dist/pages/login.php");
+    header("Location: /orderhub_nextwave/dist/pages/login.php");
     exit();
 }
 
@@ -120,7 +120,7 @@ if (!empty($search)) {
 // Specific Order ID filter
 if (!empty($order_id_filter)) {
     $orderIdTerm = $conn->real_escape_string($order_id_filter);
-    $searchConditions[] = "i.order_id LIKE '%$orderIdTerm%'";
+    $searchConditions[] = "i.order_id = '$orderIdTerm'";
 }
 
 // Specific Customer Name filter - UPDATED to use order_header full_name
@@ -146,7 +146,7 @@ if (!empty($user_id_filter)) {
 // Tracking ID filter
 if (!empty($tracking_id)) {
     $trackingTerm = $conn->real_escape_string($tracking_id);
-    $searchConditions[] = "i.tracking_number LIKE '%$trackingTerm%'";
+    $searchConditions[] = "i.tracking_number = '$trackingTerm'";
 }
 
 // Date range filter

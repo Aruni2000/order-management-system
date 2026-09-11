@@ -3,14 +3,14 @@
 session_start();
 
 // Include the database connection file FIRST
-include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
 
 // Check if user is logged in, if not redirect to login page
 if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     if (ob_get_level()) {
         ob_end_clean();
     }
-    header("Location: /OMS/dist/pages/login.php");
+    header("Location: /orderhub_nextwave/dist/pages/login.php");
     exit();
 }
 
@@ -27,7 +27,7 @@ $role_result = $role_stmt->get_result();
 
 if ($role_result->num_rows === 0) {
     session_destroy();
-    header("Location: /OMS/dist/pages/login.php");
+    header("Location: /orderhub_nextwave/dist/pages/login.php");
     exit();
 }
 
@@ -35,7 +35,7 @@ $user_role = $role_result->fetch_assoc();
 
 // Check if user is admin (role_id = 1)
 if ($user_role['role_id'] != 1) {
-    header("Location: /OMS/dist/dashboard/index.php");
+    header("Location: /orderhub_nextwave/dist/dashboard/index.php");
     exit();
 }
 
@@ -52,7 +52,7 @@ if ($current_is_main_admin) {
 $session_tenant_id = $_SESSION['tenant_id'] ?? null;
 
 if (!$session_tenant_id) {
-    header("Location: /OMS/dist/dashboard/index.php");
+    header("Location: /orderhub_nextwave/dist/dashboard/index.php");
     exit();
 }
 
@@ -69,11 +69,11 @@ if ($stmt) {
     mysqli_stmt_close($stmt);
 
     if (!$tenant_data) {
-        header("Location: /OMS/dist/dashboard/index.php");
+        header("Location: /orderhub_nextwave/dist/dashboard/index.php");
         exit();
     }
 } else {
-    header("Location: /OMS/dist/dashboard/index.php?error=Database error");
+    header("Location: /orderhub_nextwave/dist/dashboard/index.php?error=Database error");
     exit();
 }
 
@@ -94,7 +94,7 @@ function generateCSRFToken() {
     <title>Edit Branding | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
 
     <?php
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/head.php');
     ?>
     
     <!-- Custom CSS for form UI -->
@@ -186,24 +186,6 @@ function generateCSRFToken() {
     cursor: pointer;
 }
 
-/* Form check styles for remove logo/favicon checkboxes */
-.form-check {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    margin-top: 0.5rem;
-}
-.form-check-input {
-    width: auto;
-    height: auto;
-    margin: 0;
-    cursor: pointer;
-}
-.form-check-label {
-    margin: 0;
-    cursor: pointer;
-}
-
 /* Mobile responsive fixes */
 @media screen and (max-width: 767.98px) {
     .form-row {
@@ -230,9 +212,9 @@ function generateCSRFToken() {
 <body>
     <!-- LOADER -->
     <?php 
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/loader.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/navbar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/sidebar.php');
     ?>
     <!-- END LOADER -->
 
@@ -263,13 +245,13 @@ function generateCSRFToken() {
                                 <!-- Tenant ID -->
                                 <input type="hidden" name="tenant_id" value="<?php echo $tenant_data['tenant_id']; ?>">
 
-                                <!-- Company Name -->
+                                <!-- Tenant Name -->
                                 <div class="form-row">
                                     <div class="form-column">
                                         <div class="form-group">
-                                            <label for="company_name" class="form-label">Company Name *</label>
+                                            <label for="company_name" class="form-label">Tenant Name *</label>
                                             <input type="text" class="form-control" id="company_name" name="company_name" 
-                                                   placeholder="Enter company name" value="<?php echo htmlspecialchars($tenant_data['company_name'] ?? ''); ?>" required>
+                                                   placeholder="Enter Tenant Name" value="<?php echo htmlspecialchars($tenant_data['company_name'] ?? ''); ?>" required>
                                             <div class="error-feedback" id="company_name-error"></div>
                                         </div>
                                     </div>
@@ -377,13 +359,13 @@ function generateCSRFToken() {
 
     <!-- FOOTER -->
     <?php
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/footer.php');
     ?>
     <!-- END FOOTER -->
 
     <!-- SCRIPTS -->
     <?php
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/scripts.php');
     ?>
     <!-- END SCRIPTS -->
 
@@ -518,8 +500,8 @@ function generateCSRFToken() {
                 $('#delivery_fee').val() !== originalValues.delivery_fee ||
                 $('#logo').get(0).files.length > 0 ||
                 $('#fav_icon').get(0).files.length > 0 ||
-                $('input[name="remove_logo"]').is(':checked') ||
-                $('input[name="remove_favicon"]').is(':checked')
+                $('#remove_logo').is(':checked') ||
+                $('#remove_favicon').is(':checked')
             );
         }
         
@@ -660,10 +642,10 @@ function generateCSRFToken() {
         // Validation functions
         function validateCompanyName(name) {
             if (name.trim() === '') {
-                return { valid: false, message: 'Company name is required' };
+                return { valid: false, message: 'Tenant Name is required' };
             }
             if (name.trim().length < 2) {
-                return { valid: false, message: 'Company name must be at least 2 characters long' };
+                return { valid: false, message: 'Tenant Name must be at least 2 characters long' };
             }
 
             return { valid: true, message: '' };

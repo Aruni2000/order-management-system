@@ -5,11 +5,11 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     if (ob_get_level()) {
         ob_end_clean();
     }
-    header("Location: /OMS/dist/pages/login.php");
+    header("Location: /orderhub_nextwave/dist/pages/login.php");
     exit();
 }
 
-include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
 
 if (!isset($_GET['id']) || empty($_GET['id'])) {
     die("Order ID is required");
@@ -51,6 +51,17 @@ if ($result->num_rows === 0) {
 }
 
 $order = $result->fetch_assoc();
+
+// Tenant access check: only main admin with role 1 can view receipts of other tenants
+$is_main_admin = isset($_SESSION['is_main_admin']) ? (int)$_SESSION['is_main_admin'] : 0;
+$role_id = isset($_SESSION['role_id']) ? (int)$_SESSION['role_id'] : 0;
+$session_tenant_id = isset($_SESSION['tenant_id']) ? (int)$_SESSION['tenant_id'] : 0;
+
+if (!($is_main_admin === 1 && $role_id === 1)) {
+    if ((int)($order['tenant_id'] ?? 0) !== $session_tenant_id) {
+        die("Access denied: Order belongs to another tenant.");
+    }
+}
 
 $currency = isset($order['currency']) ? strtolower($order['currency']) : 'lkr';
 $currencySymbol = ($currency == 'usd') ? '$' : 'Rs.';
@@ -108,7 +119,7 @@ $tenant_result = $stmt_tenant->get_result();
 $tenant_data = ($tenant_result && $tenant_result->num_rows > 0) ? $tenant_result->fetch_assoc() : [];
 
 $company = [
-    'company_name' => $tenant_data['company_name'] ?? 'Company Name',
+    'company_name' => $tenant_data['company_name'] ?? 'Tenant Name',
     'address' => str_replace(['\\\\r\\\\n', '\\r\\n', '\\n'], "\n", $tenant_data['address'] ?? ''),
     'email' => $tenant_data['email'] ?? '',
     'hotline' => $tenant_data['phone'] ?? ''
@@ -117,10 +128,10 @@ $company = [
 if (!empty($tenant_data['logo_url'])) {
     if (strpos($tenant_data['logo_url'], 'http') === 0) {
         $logo_url = $tenant_data['logo_url'];
-    } else if (strpos($tenant_data['logo_url'], '/OMS/') === 0) {
+    } else if (strpos($tenant_data['logo_url'], '/orderhub_nextwave/') === 0) {
         $logo_url = $tenant_data['logo_url'];
     } else {
-        $logo_url = '/OMS/dist/' . ltrim($tenant_data['logo_url'], '/');
+        $logo_url = '/orderhub_nextwave/dist/' . ltrim($tenant_data['logo_url'], '/');
     }
 } else {
     $logo_url = '';
@@ -213,6 +224,26 @@ if ($grand_total_words) {
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Order Receipt - #<?php echo htmlspecialchars($order_id); ?> | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
+    <?php
+    $favicon_url = '';
+    if (isset($conn) && $conn) {
+        try {
+            $user_tenant_id = $_SESSION['tenant_id'] ?? null;
+            if ($user_tenant_id) {
+                $fav_query = "SELECT fav_icon_url FROM tenants WHERE tenant_id = " . (int)$user_tenant_id . " AND status = 'active' AND fav_icon_url IS NOT NULL AND fav_icon_url != '' LIMIT 1";
+            } else {
+                $fav_query = "SELECT fav_icon_url FROM tenants WHERE status = 'active' AND fav_icon_url IS NOT NULL AND fav_icon_url != '' LIMIT 1";
+            }
+            $fav_result = $conn->query($fav_query);
+            if ($fav_result && $fav_result->num_rows > 0) {
+                $fav_data = $fav_result->fetch_assoc();
+                $favicon_url = $fav_data['fav_icon_url'];
+            }
+        } catch (Throwable $e) {}
+    }
+    if ($favicon_url) echo '<link rel="icon" href="' . htmlspecialchars($favicon_url) . '" type="image/x-icon" />';
+    else echo '<link rel="icon" href="../assets/images/enterprise.png" type="image/x-icon" />';
+    ?>
     <style>
         body {
             font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
@@ -438,7 +469,7 @@ if ($grand_total_words) {
                     <img src="<?php echo htmlspecialchars($logo_url); ?>" alt="<?php echo htmlspecialchars($company['company_name']); ?> Logo">
                 </div>
                 <?php endif; ?>
-                <h1><?php echo htmlspecialchars($company['company_name'] ?: 'Company Name'); ?></h1>
+                <h1><?php echo htmlspecialchars($company['company_name'] ?: 'Tenant Name'); ?></h1>
                 <div><?php echo !empty($company['address']) ? nl2br(htmlspecialchars($company['address'])) : ''; ?></div>
                 <div>
                     <?php

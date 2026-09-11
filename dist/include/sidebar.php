@@ -4,7 +4,7 @@
 // =========================================================================
 if (!function_exists('get_logo_with_fallback')) {
     /**
-     * Fetches logo URL and company name from the tenants table.
+     * Fetches logo URL and Tenant Name from the tenants table.
      * Always returns database values or null if not found.
      * Assumes $conn is a valid mysqli link.
      */
@@ -39,12 +39,12 @@ if (!function_exists('get_logo_with_fallback')) {
             $result['debug'][] = "Query executed successfully.";
             
             if ($data) {
-                // Set company name
+                // Set Tenant Name
                 if (!empty($data['company_name'])) {
                     $result['company_name'] = trim($data['company_name']);
-                    $result['debug'][] = "DB Company name set: " . $result['company_name'];
+                    $result['debug'][] = "DB Tenant Name set: " . $result['company_name'];
                 } else {
-                    $result['debug'][] = "Company name is empty in database.";
+                    $result['debug'][] = "Tenant Name is empty in database.";
                 }
                 
                 // Set logo URL
@@ -73,7 +73,6 @@ if (!function_exists('get_logo_with_fallback')) {
 // PERMISSION CHECKS AND GLOBAL CONTEXT (TOP OF SIDEBAR)
 // =========================================================================
 $is_admin = false;
-$is_moderator = false;
 $is_user = false;
 $is_store = false;
 $is_main_admin_tenant = false;
@@ -81,7 +80,6 @@ $user_id = $_SESSION['user_id'] ?? null;
 
 // Look up role IDs from database by name (avoid hardcoded IDs)
 $admin_role_id = 0;
-$moderator_role_id = 0;
 $user_role_id = 0;
 $store_role_id = 0;
 if (isset($conn) && $conn) {
@@ -89,7 +87,6 @@ if (isset($conn) && $conn) {
     if ($roleLookup && $roleLookup->num_rows > 0) {
         while ($r = $roleLookup->fetch_assoc()) {
             if ($r['l_name'] === 'admin') $admin_role_id = (int)$r['id'];
-            if ($r['l_name'] === 'moderator') $moderator_role_id = (int)$r['id'];
             if ($r['l_name'] === 'user') $user_role_id = (int)$r['id'];
             if ($r['l_name'] === 'store') $store_role_id = (int)$r['id'];
         }
@@ -99,7 +96,6 @@ if (isset($conn) && $conn) {
 // Check flags from session
 if (isset($_SESSION['role_id'])) {
     $is_admin = ($_SESSION['role_id'] == $admin_role_id && $admin_role_id > 0);
-    $is_moderator = ($_SESSION['role_id'] == $moderator_role_id && $moderator_role_id > 0);
     $is_user = ($_SESSION['role_id'] == $user_role_id && $user_role_id > 0);
     $is_store = ($_SESSION['role_id'] == $store_role_id && $store_role_id > 0);
 }
@@ -118,7 +114,6 @@ if ((!$is_admin || !isset($_SESSION['is_main_admin'])) && $user_id && isset($con
         $perm_res = $stmt->get_result();
         if ($perm_res && $perm_data = $perm_res->fetch_assoc()) {
             $is_admin = ($perm_data['role_id'] == $admin_role_id && $admin_role_id > 0);
-            $is_moderator = ($perm_data['role_id'] == $moderator_role_id && $moderator_role_id > 0);
             $is_user = ($perm_data['role_id'] == $user_role_id && $user_role_id > 0);
             $is_store = ($perm_data['role_id'] == $store_role_id && $store_role_id > 0);
             $is_main_admin_tenant = ($perm_data['is_main_admin'] == 1);
@@ -221,11 +216,9 @@ $safe_company_name = htmlspecialchars($company_name, ENT_QUOTES, 'UTF-8');
             <li class="pc-item"><a class="pc-link" href="../orders/payment_report.php">Payment Report</a></li>
             <?php endif; ?>
           </ul>
-        </li>
-
-        <?php if ($is_admin || $is_moderator): ?>
+        </li>        <?php if ($is_admin): ?>
         <li class="pc-item pc-hasmenu">
-            <a href="#!" class="pc-link"><span class="pc-micon"> <i data-feather="truck"></i></span><span class="pc-mtext">Courier Management</span><span class="pc-arrow"><i class="ti ti-chevron-right"></i></span></a>
+          <a href="#!" class="pc-link"><span class="pc-micon"> <i data-feather="truck"></i></span><span class="pc-mtext">Courier Management</span><span class="pc-arrow"><i class="ti ti-chevron-right"></i></span></a>
             <ul class="pc-submenu">
                 <li class="pc-item"><a class="pc-link" href="../orders/couriers.php">Courier List</a></li>
                 <?php if ($is_admin && $is_main_admin_tenant): ?>
@@ -235,7 +228,7 @@ $safe_company_name = htmlspecialchars($company_name, ENT_QUOTES, 'UTF-8');
         </li>
         <?php endif; ?>
 
-        <?php if ($is_admin || $is_moderator): ?>
+        <?php if ($is_admin): ?>
         <li class="pc-item pc-hasmenu">
           <a href="#!" class="pc-link"><span class="pc-micon"> <i data-feather="map-pin"></i></span><span class="pc-mtext">Tracking Management</span><span class="pc-arrow"><i class="ti ti-chevron-right"></i></span></a>
           <ul class="pc-submenu">
@@ -287,7 +280,7 @@ $safe_company_name = htmlspecialchars($company_name, ENT_QUOTES, 'UTF-8');
             <?php if ($is_admin || $is_user): ?>
             <li class="pc-item"><a class="pc-link" href="../products/product_analysis.php">Product Analysis</a></li>
             <?php endif; ?>
-            <?php if ($is_main_admin_tenant): ?>
+            <?php if ($is_admin || $is_store): ?>
             <li class="pc-item"><a class="pc-link" href="../products/stock_movements.php">Stock Movements</a></li>
             <?php endif; ?>
           </ul>
@@ -331,6 +324,11 @@ $safe_company_name = htmlspecialchars($company_name, ENT_QUOTES, 'UTF-8');
             <li class="pc-item"><a class="pc-link" href="../leads/city_list.php">City List</a></li>
           </ul>
         </li>
+        <?php endif; ?>
+
+        <?php if ($is_user): ?>
+        <li class="pc-item pc-caption"><label>My Performance</label></li>
+        <li class="pc-item"><a class="pc-link" href="../users/my_success_rate.php"><span class="pc-micon"><i data-feather="bar-chart-2"></i></span><span class="pc-mtext">My Success Rate</span></a></li>
         <?php endif; ?>
 
         <?php if ($is_admin && !$is_main_admin_tenant): ?>

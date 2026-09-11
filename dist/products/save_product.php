@@ -24,7 +24,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 // Include database connection
-include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
 
 // Verify CSRF token
 if (!isset($_POST['csrf_token']) || !isset($_SESSION['csrf_token']) || $_POST['csrf_token'] !== $_SESSION['csrf_token']) {
@@ -74,7 +74,7 @@ try {
     if ($is_main_admin && $_SESSION['role_id'] == 1) {
         $tenant_id = isset($_POST['tenant_id']) ? intval($_POST['tenant_id']) : 0;
         if ($tenant_id <= 0) {
-            $response['errors']['tenant_id'] = 'Tenant Company is required';
+            $response['errors']['tenant_id'] = 'Tenant is required';
             $response['message'] = 'Required fields are missing';
             echo json_encode($response);
             exit();

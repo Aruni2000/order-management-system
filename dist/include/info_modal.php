@@ -2,7 +2,7 @@
 // dist/include/info_modal.php
 // Shared info modal component — outputs CSS + JS once, provides renderInfoModal() function.
 // Usage:
-//   include_once($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/info_modal.php');
+//   include_once($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/info_modal.php');
 //   renderInfoModal('How ... Works', 'fas fa-upload', '<h6>...</h6><ul>...</ul>', '500px');
 
 // Output modal CSS only once per page

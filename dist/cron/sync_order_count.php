@@ -1,9 +1,9 @@
 <?php
 /**
- * Cron Job: Sync Order Count from OMS to fe_it_db
+ * Cron Job: Sync Order Count from orderhub_nextwave to fe_it_db
  * 
  * Logic:
- * 1. Fetch customer_id and billing_date from branding table in OMS DB.
+ * 1. Fetch customer_id and billing_date from branding table in orderhub_nextwave DB.
  *    NOTE: Requires a 'branding' table with columns: customer_id (int), billing_date (int = day of month), active (tinyint).
  * 2. If today matches billing_date:
  *    a. Get start date from Admin API.

@@ -240,3 +240,51 @@
   color: #92400e;
   border: 1px solid #fcd34d;
 }
+
+/* ====================================
+   USER ROLE BADGES
+   ==================================== */
+
+.role-badge {
+  display: inline-block;
+  background: #f1f5f9;
+  color: #64748b;
+  font-size: 9px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  line-height: 1.5;
+  vertical-align: middle;
+}
+
+.role-badge-admin {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.role-badge-store {
+  background: #ffedd5;
+  color: #9a3412;
+}
+
+.role-badge-user {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.main-admin-badge {
+  display: inline-block;
+  background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+  color: #000;
+  font-size: 9px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  line-height: 1.5;
+  vertical-align: middle;
+  margin-left: 3px;
+}

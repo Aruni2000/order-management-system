@@ -11,13 +11,13 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     echo json_encode([
         'success' => false,
         'message' => 'Unauthorized access. Please login again.',
-        'redirect' => '/OMS/dist/pages/login.php'
+        'redirect' => '/orderhub_nextwave/dist/pages/login.php'
     ]);
     exit();
 }
 
 // Include the database connection file
-include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
 
 // Check database connection
 if ($conn->connect_error) {
@@ -91,7 +91,7 @@ try {
         echo json_encode([
             'success' => false,
             'message' => 'User session not found. Please login again.',
-            'redirect' => '/OMS/dist/pages/login.php'
+            'redirect' => '/orderhub_nextwave/dist/pages/login.php'
         ]);
         exit();
     }
@@ -197,14 +197,14 @@ try {
 
     // 8. TENANT VALIDATION
     if (empty($tenantID) || $tenantID <= 0) {
-        $errors['tenantID'] = 'Please select a Tenant Company';
+        $errors['tenantID'] = 'Please select a Tenant';
     } else {
         $tenantCheckStmt = $conn->prepare("SELECT tenant_id FROM tenants WHERE tenant_id = ? AND status = 'Active'");
         $tenantCheckStmt->bind_param("i", $tenantID);
         $tenantCheckStmt->execute();
         $tenantCheckResult = $tenantCheckStmt->get_result();
         if ($tenantCheckResult->num_rows === 0) {
-            $errors['tenantID'] = 'Selected Tenant Company is not valid or inactive';
+            $errors['tenantID'] = 'Selected Tenant is not valid or inactive';
         }
         $tenantCheckStmt->close();
     }

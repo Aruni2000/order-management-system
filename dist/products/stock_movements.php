@@ -7,22 +7,25 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     if (ob_get_level()) {
         ob_end_clean();
     }
-    header("Location: /OMS/dist/pages/login.php");
+    header("Location: /orderhub_nextwave/dist/pages/login.php");
     exit();
 }
 
 // Include the database connection file
-include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
 
 $is_main_admin = (int)($_SESSION['is_main_admin'] ?? 0) === 1;
 $session_tenant_id = (int)($_SESSION['tenant_id'] ?? 0);
-$canManageAllTenants = $is_main_admin;
+$role_id = (int)($_SESSION['role_id'] ?? 0);
 
-// Access control: only main admin users may view stock movements
-if (!$is_main_admin) {
-    header("Location: /OMS/dist/pages/access_denied.php");
+// Only Admin (1) and Store (3) roles may view stock movements; User (2) is denied
+if (!in_array($role_id, [1, 3], true)) {
+    header("Location: /orderhub_nextwave/dist/pages/access_denied.php");
     exit();
 }
+
+// Super Admin (is_main_admin=1 AND role_id=1) sees all tenants; others see only their own company
+$canManageAllTenants = ($is_main_admin && $role_id === 1);
 
 // Fetch tenants for main admin (company filter) - active only
 $tenants = [];
@@ -144,7 +147,7 @@ function movementTypeClass($type, $typeLabels) {
 <head>
     <title>Stock Movements | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
 
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/head.php'); ?>
 
     <!-- Stylesheets -->
     <link rel="stylesheet" href="../assets/css/orders.css" />
@@ -202,9 +205,9 @@ function movementTypeClass($type, $typeLabels) {
 <body>
     <!-- Page Loader -->
     <?php
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/loader.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/navbar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/sidebar.php');
     ?>
 
     <div class="pc-container">
@@ -246,7 +249,7 @@ function movementTypeClass($type, $typeLabels) {
 
                         <?php if ($canManageAllTenants): ?>
                         <div class="form-group">
-                            <label for="tenant_filter">Tenant Company</label>
+                            <label for="tenant_filter">Tenant</label>
                             <select id="tenant_filter" name="tenant_filter">
                                 <option value="">All Companies</option>
                                 <?php foreach ($tenants as $t): ?>
@@ -295,16 +298,16 @@ function movementTypeClass($type, $typeLabels) {
                     <table class="orders-table">
                         <thead>
                             <tr>
-                                <th>Date / Time</th>
+                                <th>Date</th>
                                 <th>Product</th>
                                 <th>Batch</th>
                                 <th>Type</th>
                                 <th>Qty</th>
-                                <?php if ($canManageAllTenants): ?>
-                                <th>Company</th>
-                                <?php endif; ?>
                                 <th>Reference</th>
                                 <th>User</th>
+                                <?php if ($canManageAllTenants): ?>
+                                <th>Tenant</th>
+                                <?php endif; ?>
                                 <th>Note</th>
                             </tr>
                         </thead>
@@ -330,7 +333,9 @@ function movementTypeClass($type, $typeLabels) {
                                         </td>
                                         <td>
                                             <div class="product-name"><?php echo htmlspecialchars($row['product_name'] ?? 'Deleted product #' . $row['product_id']); ?></div>
-                                            <small style="color: #6c757d;"><?php echo htmlspecialchars($row['product_code'] ?? ''); ?></small>
+                                            <div class="product-code" style="font-family: monospace; font-size: 13px; color: #495057; background: #f8f9fa; padding: 4px 8px; border-radius: 4px; display: inline-block;">
+                                                <?php echo htmlspecialchars($row['product_code'] ?? 'N/A'); ?>
+                                            </div>
                                         </td>
                                         <td>
                                             <?php if (!empty($row['batch_number'])): ?>
@@ -347,11 +352,17 @@ function movementTypeClass($type, $typeLabels) {
                                         <td>
                                             <span class="<?php echo $qtyClass; ?>"><?php echo $qtyText; ?></span>
                                         </td>
-                                        <?php if ($canManageAllTenants): ?>
-                                        <td><?php echo htmlspecialchars($row['company_name'] ?? '-'); ?></td>
-                                        <?php endif; ?>
                                         <td style="font-size: 13px;"><?php echo htmlspecialchars($refText); ?></td>
                                         <td style="font-size: 13px;"><?php echo htmlspecialchars($row['user_name'] ?? ($row['user_id'] ? '#' . $row['user_id'] : '-')); ?></td>
+                                        <?php if ($canManageAllTenants): ?>
+                                        <td class="customer-name">
+                                            <div class="customer-info">
+                                                <h6 style="margin: 0; font-size: 14px;">
+                                                    <?php echo htmlspecialchars($row['company_name'] ?? 'N/A'); ?>
+                                                </h6>
+                                            </div>
+                                        </td>
+                                        <?php endif; ?>
                                         <td class="note-cell" title="<?php echo htmlspecialchars($row['note'] ?? ''); ?>">
                                             <?php echo htmlspecialchars($row['note'] ?? '-'); ?>
                                         </td>
@@ -409,10 +420,10 @@ function movementTypeClass($type, $typeLabels) {
     </div>
 
     <!-- Footer -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/footer.php'); ?>
 
     <!-- Scripts -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/scripts.php'); ?>
 
     <script>
         function clearFilters() {

@@ -15,12 +15,12 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     if (ob_get_level()) {
         ob_end_clean();
     }
-    header("Location: /OMS/dist/pages/login.php");
+    header("Location: /orderhub_nextwave/dist/pages/login.php");
     exit();
 }
 
-if (!isset($_SESSION['is_main_admin']) || $_SESSION['is_main_admin'] != 1) {
-    header("Location: /OMS/dist/dashboard/index.php");
+if (!isset($_SESSION['is_main_admin']) || $_SESSION['is_main_admin'] != 1 || !in_array((int)($_SESSION['role_id'] ?? 0), [1, 3], true)) {
+    header("Location: /orderhub_nextwave/dist/dashboard/index.php");
     exit();
 }
 
@@ -34,18 +34,28 @@ function generateCSRFToken() {
 $csrf_token = generateCSRFToken();
 
 // Include database connection
-include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
 
 /**
  * SEARCH AND PAGINATION PARAMETERS
  */
 $search = isset($_GET['search']) ? trim($_GET['search']) : '';
 $supplier_filter = isset($_GET['supplier_filter']) ? intval($_GET['supplier_filter']) : 0;
+$tenant_filter = isset($_GET['tenant_filter']) ? intval($_GET['tenant_filter']) : 0;
 $date_from = isset($_GET['date_from']) ? trim($_GET['date_from']) : '';
 $date_to = isset($_GET['date_to']) ? trim($_GET['date_to']) : '';
 $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 10;
 $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
 $offset = ($page - 1) * $limit;
+
+// Fetch active tenants for filter
+$tenants = [];
+$tRes = $conn->query("SELECT tenant_id, company_name FROM tenants WHERE status = 'active' ORDER BY company_name ASC");
+if ($tRes) {
+    while ($row = $tRes->fetch_assoc()) {
+        $tenants[] = $row;
+    }
+}
 
 // Fetch active suppliers for filter
 $suppliers = [];
@@ -57,15 +67,18 @@ if ($supResult) {
 }
 
 // Count query - draft GRNs only
-$countSql = "SELECT COUNT(*) as total FROM grn g LEFT JOIN suppliers s ON g.supplier_id = s.id WHERE g.status = 'draft'";
+$countSql = "SELECT COUNT(*) as total FROM grn g LEFT JOIN suppliers s ON g.supplier_id = s.id LEFT JOIN tenants t ON g.tenant_id = t.tenant_id WHERE g.status = 'draft'";
 // Main query - draft GRNs only
-$sql = "SELECT g.*, s.name as supplier_name FROM grn g LEFT JOIN suppliers s ON g.supplier_id = s.id WHERE g.status = 'draft'";
+$sql = "SELECT g.*, s.name as supplier_name, t.company_name FROM grn g LEFT JOIN suppliers s ON g.supplier_id = s.id LEFT JOIN tenants t ON g.tenant_id = t.tenant_id WHERE g.status = 'draft'";
 
 // Build search conditions
 $conditions = [];
 if (!empty($search)) {
     $t = $conn->real_escape_string($search);
-    $conditions[] = "(g.grn_number LIKE '%$t%' OR s.name LIKE '%$t%')";
+    $conditions[] = "(g.grn_number LIKE '%$t%' OR s.name LIKE '%$t%' OR t.company_name LIKE '%$t%')";
+}
+if ($tenant_filter > 0) {
+    $conditions[] = "g.tenant_id = $tenant_filter";
 }
 if ($supplier_filter > 0) {
     $conditions[] = "g.supplier_id = $supplier_filter";
@@ -98,17 +111,17 @@ $result = $conn->query($sql);
 <!doctype html>
 <html lang="en" data-pc-preset="preset-1" data-pc-sidebar-caption="true" data-pc-direction="ltr" dir="ltr" data-pc-theme="light">
 <head>
-    <title>Draft GRNs | <?= htmlspecialchars($_SESSION['company_name'] ?? 'OMS') ?></title>
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
+    <title>Draft GRNs | <?= htmlspecialchars($_SESSION['company_name'] ?? 'orderhub_nextwave') ?></title>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/head.php'); ?>
     <link rel="stylesheet" href="../assets/css/orders.css" />
     <link rel="stylesheet" href="../assets/css/customers.css" />
     <link rel="stylesheet" href="../assets/css/status-badge-colors.css" />
 </head>
 <body>
     <?php
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/loader.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/navbar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/sidebar.php');
     ?>
 
     <div class="pc-container">
@@ -130,6 +143,18 @@ $result = $conn->query($sql);
                             <label for="search">Search</label>
                             <input type="text" id="search" name="search" placeholder="GRN number, supplier..."
                                 value="<?php echo htmlspecialchars($search); ?>">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="tenant_filter">Tenant</label>
+                            <select id="tenant_filter" name="tenant_filter">
+                                <option value="">All Companies</option>
+                                <?php foreach ($tenants as $t): ?>
+                                    <option value="<?php echo $t['tenant_id']; ?>" <?php echo ($tenant_filter == $t['tenant_id']) ? 'selected' : ''; ?>>
+                                        <?php echo htmlspecialchars($t['company_name']); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
                         </div>
 
                         <div class="form-group">
@@ -180,6 +205,7 @@ $result = $conn->query($sql);
                         <thead>
                             <tr>
                                 <th>GRN Number</th>
+                                <th>Tenant</th>
                                 <th>Supplier</th>
                                 <th>Received Date</th>
                                 <th>Total Amount</th>
@@ -197,6 +223,13 @@ $result = $conn->query($sql);
                                     ?>
                                     <tr>
                                         <td class="order-id"><?php echo htmlspecialchars($row['grn_number']); ?></td>
+                                        <td class="customer-name">
+                                            <div class="customer-info">
+                                                <h6 style="margin: 0; font-size: 14px;">
+                                                    <?php echo isset($row['company_name']) && $row['company_name'] !== '' ? htmlspecialchars($row['company_name']) : 'N/A'; ?>
+                                                </h6>
+                                            </div>
+                                        </td>
                                         <td>
                                             <div style="font-weight: 600; color: #1e293b;">
                                                 <?php echo htmlspecialchars($row['supplier_name'] ?? 'Unknown'); ?>
@@ -236,7 +269,7 @@ $result = $conn->query($sql);
                                 <?php endwhile; ?>
                             <?php else: ?>
                                 <tr>
-                                    <td colspan="7" style="text-align: center; padding: 40px; color: #64748b;">
+                                    <td colspan="8" style="text-align: center; padding: 40px; color: #64748b;">
                                         <i class="fas fa-clipboard-list" style="font-size: 2.2rem; display: block; margin-bottom: 12px; color: #94a3b8;"></i>
                                         No draft GRNs found
                                     </td>
@@ -304,8 +337,8 @@ $result = $conn->query($sql);
         </div>
     </div>
 
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php'); ?>
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/footer.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/scripts.php'); ?>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
 
     <script>
