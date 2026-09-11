@@ -2,18 +2,18 @@
 session_start();
 if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     if (ob_get_level()) ob_end_clean();
-    header("Location: /orderhub_nextwave/dist/pages/login.php");
+    header("Location: /OMS/dist/pages/login.php");
     exit();
 }
 
 // Access Control: Only Main Admin (admin or store role) can create GRNs
 if (!isset($_SESSION['is_main_admin']) || $_SESSION['is_main_admin'] != 1 || !in_array((int)($_SESSION['role_id'] ?? 0), [1, 3], true)) {
     if (ob_get_level()) ob_end_clean();
-    header("Location: /orderhub_nextwave/dist/dashboard/index.php");
+    header("Location: /OMS/dist/dashboard/index.php");
     exit();
 }
 
-include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
 function generateCSRFToken() {
     if (!isset($_SESSION['csrf_token'])) {
@@ -59,8 +59,8 @@ $initial_batch_number = 'BN-' . date('Ymd') . '-' . date('His') . '-0'; // depre
 <!doctype html>
 <html lang="en" data-pc-preset="preset-1" data-pc-sidebar-caption="true" data-pc-direction="ltr" dir="ltr" data-pc-theme="light">
 <head>
-    <title>Create GRN | <?= htmlspecialchars($_SESSION['company_name'] ?? 'orderhub_nextwave') ?></title>
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/head.php'); ?>
+    <title>Create GRN | <?= htmlspecialchars($_SESSION['company_name'] ?? 'OMS') ?></title>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
     <link rel="stylesheet" href="../assets/css/styles.css" />
     <link rel="stylesheet" href="../assets/css/orders.css" />
     <link rel="stylesheet" href="../assets/css/customers.css" />
@@ -139,9 +139,9 @@ $initial_batch_number = 'BN-' . date('Ymd') . '-' . date('His') . '-0'; // depre
 </head>
 <body>
     <?php
-    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/loader.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/navbar.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/sidebar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
     ?>
 
     <div class="loading-overlay" id="loadingOverlay">
@@ -332,8 +332,8 @@ $initial_batch_number = 'BN-' . date('Ymd') . '-' . date('His') . '-0'; // depre
         </div>
     </div>
 
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/footer.php'); ?>
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/scripts.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php'); ?>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 

@@ -11,7 +11,7 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     echo json_encode([
         'success' => false,
         'message' => 'Unauthorized access. Please login again.',
-        'redirect' => '/orderhub_nextwave/dist/pages/login.php'
+        'redirect' => '/OMS/dist/pages/login.php'
     ]);
     exit();
 }
@@ -27,7 +27,7 @@ if ((int)($_SESSION['role_id'] ?? 0) === 3 && (int)($_SESSION['is_main_admin'] ?
 }
 
 // Include the database connection file
-include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
 // Check database connection
 if ($conn->connect_error) {
@@ -101,7 +101,7 @@ try {
         echo json_encode([
             'success' => false,
             'message' => 'User session not found. Please login again.',
-            'redirect' => '/orderhub_nextwave/dist/pages/login.php'
+            'redirect' => '/OMS/dist/pages/login.php'
         ]);
         exit();
     }

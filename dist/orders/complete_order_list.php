@@ -14,12 +14,12 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     if (ob_get_level()) {
         ob_end_clean();
     }
-    header("Location: /orderhub_nextwave/dist/pages/login.php");
+    header("Location: /OMS/dist/pages/login.php");
     exit();
 }
 
 // Include database connection
-include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
 // Check if user is main admin
 $is_main_admin = $_SESSION['is_main_admin'] ?? 0;
@@ -56,7 +56,7 @@ if ($current_user_id == 0 || $current_user_role == 0) {
 
 // If still no user data, redirect to login
 if ($current_user_id == 0) {
-    header("Location: /orderhub_nextwave/dist/pages/login.php");
+    header("Location: /OMS/dist/pages/login.php");
     exit();
 }
 
@@ -224,7 +224,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
 <head>
     <title>Complete Orders | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
     
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/head.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
     
     <!-- Stylesheets -->
     <link rel="stylesheet" href="../assets/css/orders.css" />
@@ -266,9 +266,9 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
 <body>
     <!-- Page Loader -->
     <?php 
-    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/loader.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/navbar.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/sidebar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
     ?>
 
     <div class="pc-container">
@@ -405,7 +405,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                     <tr>
                                         <!-- Order ID -->
                                         <td class="order-id">
-                                            <?php echo isset($row['order_id']) ? htmlspecialchars($row['order_id']) : ''; ?>                                                <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/leads_badge.php'); ?>
+                                            <?php echo isset($row['order_id']) ? htmlspecialchars($row['order_id']) : ''; ?>                                                <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/leads_badge.php'); ?>
                                         </td>
 
                                         <!-- NEW: Issue Date Column -->
@@ -759,7 +759,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
             }
 
             // Construct the payment slip URL
-            const slipUrl = '/orderhub_nextwave/dist/uploads/' + encodeURIComponent(currentPaymentSlip);
+            const slipUrl = '/OMS/dist/uploads/' + encodeURIComponent(currentPaymentSlip);
 
             // Open payment slip in new tab
             window.open(slipUrl, '_blank');
@@ -1033,8 +1033,8 @@ document.addEventListener('DOMContentLoaded', function() {
     </script>
 
     <!-- Include Footer and Scripts -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/footer.php'); ?>
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/scripts.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php'); ?>
 
 </body>
 </html>

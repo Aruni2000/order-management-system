@@ -11,7 +11,7 @@ header('Content-Type: application/json');
 ob_start();
 session_start();
 
-include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
 /* ================================
    Helper: JSON Response
@@ -266,12 +266,12 @@ if (isset($_FILES['logo']) && $_FILES['logo']['error'] == 0) {
     $allowed = ['jpg', 'jpeg', 'png', 'gif'];
     $ext = strtolower(pathinfo($_FILES['logo']['name'], PATHINFO_EXTENSION));
     if (in_array($ext, $allowed)) {
-        $uploadDir = $_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/uploads/';
+        $uploadDir = $_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/uploads/';
         if (!is_dir($uploadDir)) mkdir($uploadDir, 0755, true);
         $newName = $nameSlug . '_logo_' . time() . '.' . $ext;
         if (move_uploaded_file($_FILES['logo']['tmp_name'], $uploadDir . $newName)) {
             $deleteOldFile($existingTenant['logo_url'] ?? '');
-            $logoUrl = '/orderhub_nextwave/dist/uploads/' . $newName;
+            $logoUrl = '/OMS/dist/uploads/' . $newName;
         }
     }
 } elseif ($removeLogo) {
@@ -284,12 +284,12 @@ if (isset($_FILES['fav_icon']) && $_FILES['fav_icon']['error'] == 0) {
     $allowed = ['jpg', 'jpeg', 'png', 'ico'];
     $ext = strtolower(pathinfo($_FILES['fav_icon']['name'], PATHINFO_EXTENSION));
     if (in_array($ext, $allowed)) {
-        $uploadDir = $_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/uploads/';
+        $uploadDir = $_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/uploads/';
         if (!is_dir($uploadDir)) mkdir($uploadDir, 0755, true);
         $newName = $nameSlug . '_favicon_' . time() . '.' . $ext;
         if (move_uploaded_file($_FILES['fav_icon']['tmp_name'], $uploadDir . $newName)) {
             $deleteOldFile($existingTenant['fav_icon_url'] ?? '');
-            $faviconUrl = '/orderhub_nextwave/dist/uploads/' . $newName;
+            $faviconUrl = '/OMS/dist/uploads/' . $newName;
         }
     }
 } elseif ($removeFavicon) {

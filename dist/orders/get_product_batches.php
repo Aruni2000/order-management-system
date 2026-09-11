@@ -7,7 +7,7 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     exit();
 }
 
-include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
 $product_id = isset($_GET['product_id']) ? intval($_GET['product_id']) : 0;
 $tenant_id = isset($_GET['tenant_id']) ? intval($_GET['tenant_id']) : (isset($_SESSION['tenant_id']) ? intval($_SESSION['tenant_id']) : 0);

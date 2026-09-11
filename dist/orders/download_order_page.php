@@ -8,11 +8,11 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     if (ob_get_level()) {
         ob_end_clean();
     }
-    header("Location: /orderhub_nextwave/dist/pages/login.php");
+    header("Location: /OMS/dist/pages/login.php");
     exit();
 }
 // Include the database connection file
-include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
 // Check if order ID is provided
 if (!isset($_GET['id']) || empty($_GET['id'])) {
@@ -206,12 +206,12 @@ if (!empty($company['logo_url'])) {
         $logo_url = $company['logo_url'];
     } 
     // Check if it already has the full path
-    else if (strpos($company['logo_url'], '/orderhub_nextwave/') === 0) {
+    else if (strpos($company['logo_url'], '/OMS/') === 0) {
         $logo_url = $company['logo_url']; // Already has full path
     }
     // Otherwise, it's a relative path from dist folder
     else {
-        $logo_url = '/orderhub_nextwave/dist/' . ltrim($company['logo_url'], '/');
+        $logo_url = '/OMS/dist/' . ltrim($company['logo_url'], '/');
     }
 }
 function getPaymentStatusBadge($status) {
@@ -624,7 +624,7 @@ $conditionLabel = $conditionLabels[$conditionVal] ?? 'New';
             <?php if (!empty($order['payment_slip'])): ?>
             <div class="od-field">
                 <span class="od-field-label">Payment Slip</span>
-                <span class="od-field-value"><a href="/orderhub_nextwave/dist/uploads/<?php echo urlencode($order['payment_slip']); ?>" target="_blank" style="color:#3b82f6;text-decoration:none;font-size:0.8rem;"><i class="fas fa-file-image"></i> View Slip</a></span>
+                <span class="od-field-value"><a href="/OMS/dist/uploads/<?php echo urlencode($order['payment_slip']); ?>" target="_blank" style="color:#3b82f6;text-decoration:none;font-size:0.8rem;"><i class="fas fa-file-image"></i> View Slip</a></span>
             </div>
             <?php endif; ?>
             <?php if (empty($order['payment_method']) && empty($order['amount_paid'])): ?>
@@ -684,7 +684,7 @@ $conditionLabel = $conditionLabels[$conditionVal] ?? 'New';
 
 <script>
 function viewPaymentSlip(slipFileName) {
-    const slipUrl = '/orderhub_nextwave/dist/uploads/' + encodeURIComponent(slipFileName);
+    const slipUrl = '/OMS/dist/uploads/' + encodeURIComponent(slipFileName);
     window.open(slipUrl, '_blank');
 }
 

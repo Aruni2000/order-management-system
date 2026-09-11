@@ -14,7 +14,7 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     if (ob_get_level()) {
         ob_end_clean();
     }
-    header("Location: /orderhub_nextwave/dist/pages/login.php");
+    header("Location: /OMS/dist/pages/login.php");
     exit();
 }
 
@@ -54,7 +54,7 @@ if ($current_user_id == 0 || $current_user_role == 0) {
 }
 
 // Include database connection
-include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
 /**
  * SEARCH AND PAGINATION PARAMETERS
@@ -277,7 +277,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
 <head>
     <title>Pending Orders | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
 
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/head.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
 
     <!-- Stylesheets -->
     <link rel="stylesheet" href="../assets/css/orders.css" />
@@ -373,9 +373,9 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
 <body>
     <!-- Page Loader -->
     <?php 
-    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/loader.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/navbar.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/sidebar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
     ?>
 
     <div class="pc-container">
@@ -610,7 +610,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                 <!-- Order ID -->
                                 <td class="order-id">
                                     <?php echo isset($row['order_id']) ? htmlspecialchars($row['order_id']) : ''; ?>
-                                    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/leads_badge.php'); ?>
+                                    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/leads_badge.php'); ?>
                                     <?php if (!empty($row['upload_error'])): ?>
                                         <br>
                                         <span class="badge bg-warning text-dark" style="font-size: 10px; cursor: help;" title="<?php echo htmlspecialchars($row['upload_error']); ?>">
@@ -854,19 +854,19 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
 
 
     <!-- Include MODAL for View Order -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/order_view_modal.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/order_view_modal.php'); ?>
 
     <!-- DISPATCH MODAL HTML -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/dispatch_modal.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/dispatch_modal.php'); ?>
 
     <!-- BULK DISPATCH MODAL HTML  -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/bulk_dispatch_modal.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/bulk_dispatch_modal.php'); ?>
 
     <!--  ADD THE API DISPATCH MODAL HTML -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/api_dispatch.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/api_dispatch.php'); ?>
 
     <!-- ANSWER STATUS MODAL -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/answer_status_modal.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/answer_status_modal.php'); ?>
 
     <script>
     /**
@@ -1039,7 +1039,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
         }
 
         // Construct the payment slip URL
-        const slipUrl = '/orderhub_nextwave/dist/uploads/' + encodeURIComponent(currentPaymentSlip);
+        const slipUrl = '/OMS/dist/uploads/' + encodeURIComponent(currentPaymentSlip);
 
         // Open payment slip in new tab
         window.open(slipUrl, '_blank');
@@ -2914,8 +2914,8 @@ if (apiDispatchForm) {
     </script>
 
     <!-- Include Footer and Scripts -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/footer.php'); ?>
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/scripts.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php'); ?>
 
 </body>
 

@@ -8,13 +8,13 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     if (ob_get_level()) {
         ob_end_clean();
     }
-    header("Location: /orderhub_nextwave/dist/pages/login.php");
+    header("Location: /OMS/dist/pages/login.php");
     exit();
 }
 
 // Include database connection
-include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
-include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/fe_it_db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/fe_it_db_connection.php');
 
 // Check if user is main admin
 $is_main_admin = $_SESSION['is_main_admin'];
@@ -95,7 +95,7 @@ if ($current_user_id == 0 || $current_user_role == 0) {
 
 // If still no user data, redirect to login
 if ($current_user_id == 0) {
-    header("Location: /orderhub_nextwave/dist/pages/login.php");
+    header("Location: /OMS/dist/pages/login.php");
     exit();
 }
 
@@ -348,7 +348,7 @@ if (isset($_SESSION['customer_id'])) {
     <!-- TITLE -->
     <title>Dashboard | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
     <?php
-    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/head.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php');
     ?>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
     <link rel="stylesheet" href="../assets/css/style.css" id="main-style-link" />
@@ -556,9 +556,9 @@ if (isset($_SESSION['customer_id'])) {
 <body>
     <!-- LOADER -->
     <?php
-        include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/loader.php');
-        include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/navbar.php');
-        include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/sidebar.php');
+        include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php');
+        include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
+        include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
     ?>
     <!-- END LOADER -->
 
@@ -831,7 +831,7 @@ if (isset($_SESSION['customer_id'])) {
                 <?php if ($rbac->isAdmin()): ?>
                 <!-- Total Users - Admin Only -->
                 <div class="col-span-12 xl:col-span-4 md:col-span-6">
-                    <a href="/orderhub_nextwave/dist/users/users.php" class="card-link">
+                    <a href="/OMS/dist/users/users.php" class="card-link">
                         <div class="card">
                             <div class="card-header !pb-0 !border-b-0">
                                 <h5>Total Users</h5>
@@ -858,7 +858,7 @@ if (isset($_SESSION['customer_id'])) {
                 <?php if (!$is_store_limited): ?>
                 <!-- Total Customers -->
                 <div class="col-span-12 xl:col-span-4 md:col-span-6">
-                    <a href="/orderhub_nextwave/dist/customers/customer_list.php" class="card-link">
+                    <a href="/OMS/dist/customers/customer_list.php" class="card-link">
                         <div class="card">
                             <div class="card-header !pb-0 !border-b-0">
                                 <h5>Total Customers
@@ -888,7 +888,7 @@ if (isset($_SESSION['customer_id'])) {
 
                 <!-- Total Products - All users can view products -->
                 <div class="col-span-12 xl:col-span-4 md:col-span-6">
-                    <a href="/orderhub_nextwave/dist/products/product_list.php" class="card-link">
+                    <a href="/OMS/dist/products/product_list.php" class="card-link">
                         <div class="card">
                             <div class="card-header !pb-0 !border-b-0">
                                 <h5>Total Products</h5>
@@ -919,13 +919,13 @@ if (isset($_SESSION['customer_id'])) {
 
     <!-- FOOTER -->
     <?php
-    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/footer.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php');
     ?>
     <!-- END FOOTER -->
 
     <!-- SCRIPTS -->
     <?php
-    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/scripts.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php');
     ?>
     <!-- END SCRIPTS -->
 

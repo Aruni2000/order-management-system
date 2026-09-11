@@ -8,16 +8,16 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     if (ob_get_level()) {
         ob_end_clean();
     }
-    header("Location: /orderhub_nextwave/dist/pages/login.php");
+    header("Location: /OMS/dist/pages/login.php");
     exit();
 }
 
 // Include the database connection file
-include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
 // Check if user has admin role (role_id = 1)
 if (!isset($_SESSION['user_id'])) {
-    header("Location: /orderhub_nextwave/dist/pages/login.php");
+    header("Location: /OMS/dist/pages/login.php");
     exit();
 }
 
@@ -30,13 +30,13 @@ $role_result = $role_stmt->get_result();
 
 if ($role_result->num_rows === 0) {
     session_destroy();
-    header("Location: /orderhub_nextwave/dist/pages/login.php");
+    header("Location: /OMS/dist/pages/login.php");
     exit();
 }
 
 $user_role = $role_result->fetch_assoc();
 if ($user_role['role_id'] != 1) {
-    header("Location: /orderhub_nextwave/dist/dashboard/index.php");
+    header("Location: /OMS/dist/dashboard/index.php");
     exit();
 }
 
@@ -240,7 +240,7 @@ function formatLogDetails($details) {
 <head>
     <title>User Activity Logs | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
     
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/head.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
     
     <!-- Stylesheets -->
     <link rel="stylesheet" href="../assets/css/orders.css" />
@@ -250,9 +250,9 @@ function formatLogDetails($details) {
 <body>
     <!-- Page Loader -->
     <?php 
-    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/loader.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/navbar.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/sidebar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
     ?>
 
     <div class="pc-container">
@@ -505,7 +505,7 @@ function formatLogDetails($details) {
 
     <!-- Info Modal -->
     <?php
-    include_once($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/info_modal.php');
+    include_once($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/info_modal.php');
     renderInfoModal(
         'How User Activity Logs Work',
         'fas fa-history',
@@ -533,10 +533,10 @@ function formatLogDetails($details) {
     ?>
 
     <!-- Footer -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/footer.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php'); ?>
 
     <!-- Scripts -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/scripts.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php'); ?>
 
     <script>
 // Toggle Details Function

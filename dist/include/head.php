@@ -10,7 +10,7 @@
 
     <meta
       name="keywords"
-      content="FEIT Solutions, Order Management System, orderhub_nextwave dashboard, order tracking system, inventory management, business dashboard, admin panel"
+      content="FEIT Solutions, Order Management System, OMS dashboard, order tracking system, inventory management, business dashboard, admin panel"
     />
 
     <meta name="author" content="FEIT Solutions" />

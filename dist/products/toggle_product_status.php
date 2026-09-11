@@ -24,7 +24,7 @@ if (isset($_SESSION['role_id']) && (int)$_SESSION['role_id'] == 2) {
 }
 
 // Include database connection
-include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
 // Set content type to JSON
 header('Content-Type: application/json');

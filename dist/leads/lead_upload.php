@@ -9,19 +9,19 @@ session_start();
 // Check if user is logged in, if not redirect to login page
 if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     ob_end_clean();
-    header("Location: /orderhub_nextwave/dist/pages/login.php");
+    header("Location: /OMS/dist/pages/login.php");
     exit();
 }
 
 // Include the database connection file early
-include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
 // Store role (role_id 3, non-main-admin) is limited to Products & Order Management
 if ((int)($_SESSION['role_id'] ?? 0) === 3 && (int)($_SESSION['is_main_admin'] ?? 0) !== 1) {
     if (ob_get_level()) {
         ob_end_clean();
     }
-    header("Location: /orderhub_nextwave/dist/pages/access_denied.php");
+    header("Location: /OMS/dist/pages/access_denied.php");
     exit();
 }
 
@@ -823,7 +823,7 @@ if ($selectedTenantId) {
 <head>
     <title>Lead Upload | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
     
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/head.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
     
     <link rel="stylesheet" href="../assets/css/leads.css" />
 </head>
@@ -1143,9 +1143,9 @@ if ($selectedTenantId) {
 
 <body>
     <?php 
-    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/loader.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/navbar.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/sidebar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
     ?>
 
     <div class="pc-container">
@@ -1311,7 +1311,7 @@ if ($selectedTenantId) {
                                     <div style="display: flex; gap: 10px; width: 100%; justify-content: space-between; align-items: center;">
                                         <input type="file" id="csv_file" name="csv_file" accept=".csv" style="display: none;">
                                         <button type="button" class="choose-file-btn" onclick="document.getElementById('csv_file').click()">Choose File</button>
-                                        <a href="/orderhub_nextwave/dist/templates/generate_template.php" class="choose-file-btn" style="text-decoration: none;">Generate Template</a>
+                                        <a href="/OMS/dist/templates/generate_template.php" class="choose-file-btn" style="text-decoration: none;">Generate Template</a>
                                     </div>
                                 </div>
                             </div>
@@ -1377,7 +1377,7 @@ if ($selectedTenantId) {
         </div>
     </div>
     <?php
-    include_once($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/info_modal.php');
+    include_once($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/info_modal.php');
     renderInfoModal(
         'How Lead Upload Works',
         'fas fa-upload',
@@ -1433,8 +1433,8 @@ if ($selectedTenantId) {
     ?>
 
     <?php
-    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/footer.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/scripts.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php');
     ?>
 
 
@@ -1518,7 +1518,7 @@ if ($selectedTenantId) {
         if (sellingPriceHidden) sellingPriceHidden.value = '';
         if (sellingPriceHint) sellingPriceHint.textContent = '';
 
-        fetch('/orderhub_nextwave/dist/orders/get_product_batches.php?product_id=' + encodeURIComponent(productId) +
+        fetch('/OMS/dist/orders/get_product_batches.php?product_id=' + encodeURIComponent(productId) +
               (tenantIdForPrices ? '&tenant_id=' + encodeURIComponent(tenantIdForPrices) : ''))
             .then(response => response.json())
             .then(data => {

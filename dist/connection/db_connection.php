@@ -4,7 +4,7 @@ date_default_timezone_set('Asia/Colombo');
 $servername = "localhost";
 $username = "root";
 $password = ""; // Use your actual database password
-$dbname = "oms_management"; // Replace with your database name
+$dbname = "orderhub"; // Replace with your database name
 
 $conn = new mysqli($servername, $username, $password, $dbname);
 

@@ -5,11 +5,11 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     if (ob_get_level()) {
         ob_end_clean();
     }
-    header("Location: /orderhub_nextwave/dist/pages/login.php");
+    header("Location: /OMS/dist/pages/login.php");
     exit();
 }
 
-include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
 if (!isset($_GET['id']) || empty($_GET['id'])) {
     die("Order ID is required");
@@ -128,10 +128,10 @@ $company = [
 if (!empty($tenant_data['logo_url'])) {
     if (strpos($tenant_data['logo_url'], 'http') === 0) {
         $logo_url = $tenant_data['logo_url'];
-    } else if (strpos($tenant_data['logo_url'], '/orderhub_nextwave/') === 0) {
+    } else if (strpos($tenant_data['logo_url'], '/OMS/') === 0) {
         $logo_url = $tenant_data['logo_url'];
     } else {
-        $logo_url = '/orderhub_nextwave/dist/' . ltrim($tenant_data['logo_url'], '/');
+        $logo_url = '/OMS/dist/' . ltrim($tenant_data['logo_url'], '/');
     }
 } else {
     $logo_url = '';

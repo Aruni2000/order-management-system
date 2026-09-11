@@ -8,13 +8,13 @@ header("Pragma: no-cache");
 
 // Check if user is already logged in
 if (isset($_SESSION['logged_in']) && $_SESSION['logged_in'] === true) {
-    header("Location: /orderhub_nextwave/dist/dashboard/index.php");
+    header("Location: /OMS/dist/dashboard/index.php");
     exit();
 }
 
 // Include both database connection files
-include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
-include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/fe_it_db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/fe_it_db_connection.php');
 
 // Check connections
 if ($conn->connect_error) {
@@ -204,7 +204,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                             }
 
                             // Redirect by role
-                            header("Location: /orderhub_nextwave/dist/dashboard/index.php");
+                            header("Location: /OMS/dist/dashboard/index.php");
                             exit();
                         }
                     } else {
@@ -235,7 +235,7 @@ $fe_conn->close();
 
 <head>
     <title>Login</title>
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/head.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
     <link rel="icon" href="../assets/images/enterprise.png" type="image/x-icon" />
     <link rel="stylesheet" href="../assets/css/login.css" />
     <script>
@@ -320,7 +320,7 @@ $fe_conn->close();
     </div>
     
     <!-- SCRIPTS -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/scripts.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php'); ?>
     <!-- END SCRIPTS -->
 
     <!-- Password Toggle Script -->

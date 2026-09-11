@@ -7,16 +7,16 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     if (ob_get_level()) {
         ob_end_clean();
     }
-    header("Location: /orderhub_nextwave/dist/pages/login.php");
+    header("Location: /OMS/dist/pages/login.php");
     exit();
 }
 
 // Include the database connection file
-include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
 // Check if user has admin role (role_id = 1)
 if (!isset($_SESSION['user_id'])) {
-    header("Location: /orderhub_nextwave/dist/pages/login.php");
+    header("Location: /OMS/dist/pages/login.php");
     exit();
 }
 
@@ -33,7 +33,7 @@ $role_result = $role_stmt->get_result();
 
 if ($role_result->num_rows === 0) {
     session_destroy();
-    header("Location: /orderhub_nextwave/dist/pages/login.php");
+    header("Location: /OMS/dist/pages/login.php");
     exit();
 }
 
@@ -47,7 +47,7 @@ $is_main_admin = isset($_SESSION['is_main_admin']) && $_SESSION['is_main_admin']
 $session_tenant_id = $_SESSION['tenant_id'] ?? null;
 
 if ($user_role['role_id'] != 1) {
-    header("Location: /orderhub_nextwave/dist/dashboard/index.php");
+    header("Location: /OMS/dist/dashboard/index.php");
     exit();
 }
 
@@ -396,7 +396,7 @@ function getSuccessRateBadgeClass($rate) {
 <head>
     <title>User Management | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
     
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/head.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
     
     <!-- Stylesheets -->
     <link rel="stylesheet" href="../assets/css/orders.css" />
@@ -504,9 +504,9 @@ function getSuccessRateBadgeClass($rate) {
 <body>
     <!-- Page Loader -->
     <?php 
-    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/loader.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/navbar.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/sidebar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
     ?>
 
     <div class="pc-container">
@@ -865,7 +865,7 @@ function getSuccessRateBadgeClass($rate) {
 
     <!-- Info Modal -->
     <?php
-    include_once($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/info_modal.php');
+    include_once($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/info_modal.php');
     renderInfoModal(
         'How User Success Rate Works',
         'fas fa-chart-line',
@@ -899,7 +899,7 @@ function getSuccessRateBadgeClass($rate) {
     ?>
 
     <!-- Scripts -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/scripts.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php'); ?>
 
     <script>
         /* ================================
@@ -983,7 +983,7 @@ function getSuccessRateBadgeClass($rate) {
     </script>
 
     <!--Footer-->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/footer.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php'); ?>
 
 </body>
 </html>

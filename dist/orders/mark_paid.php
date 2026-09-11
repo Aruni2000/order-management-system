@@ -19,7 +19,7 @@ try {
     }
 
     // Include database connection
-    $db_path = $_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php';
+    $db_path = $_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php';
     if (!file_exists($db_path)) {
         throw new Exception('Database connection file not found');
     }
@@ -112,7 +112,7 @@ try {
         }
 
         // Create upload directory if it doesn't exist
-        $uploadDir = $_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/uploads/';
+        $uploadDir = $_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/uploads/';
         if (!is_dir($uploadDir)) {
             if (!mkdir($uploadDir, 0755, true)) {
                 throw new Exception('Failed to create upload directory');

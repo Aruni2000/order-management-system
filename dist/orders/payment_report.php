@@ -2,17 +2,17 @@
 session_start();
 if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     if (ob_get_level()) ob_end_clean();
-    header("Location: /orderhub_nextwave/dist/pages/login.php");
+    header("Location: /OMS/dist/pages/login.php");
     exit();
 }
-include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
 // Check if user is Super Admin (role_id=1 AND is_main_admin=1)
 $is_main_admin = (int)($_SESSION['is_main_admin'] ?? 0);
 $role_id = (int)($_SESSION['role_id'] ?? 0);
 if ($is_main_admin !== 1 || $role_id !== 1) {
     if (ob_get_level()) ob_end_clean();
-    header("Location: /orderhub_nextwave/dist/pages/access_denied.php");
+    header("Location: /OMS/dist/pages/access_denied.php");
     exit();
 }
 
@@ -189,7 +189,7 @@ $courierDisabled = ($is_main_admin == 1) && empty($tenant_id_filter);
 
 <head>
     <title>Payment Report | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/head.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
     <link rel="stylesheet" href="../assets/css/orders.css" />
     <style>
     .total-row {
@@ -371,7 +371,7 @@ $courierDisabled = ($is_main_admin == 1) && empty($tenant_id_filter);
         courierSelect.innerHTML = '<option value="">Loading...</option>';
         courierSelect.disabled = true;
 
-        fetch('/orderhub_nextwave/dist/tracking/get_couriers_by_tenant.php?tenant_id=' + encodeURIComponent(tenantId))
+        fetch('/OMS/dist/tracking/get_couriers_by_tenant.php?tenant_id=' + encodeURIComponent(tenantId))
             .then(response => response.json())
             .then(data => {
                 courierSelect.innerHTML = '<option value="">Select Courier</option>';
@@ -406,9 +406,9 @@ $courierDisabled = ($is_main_admin == 1) && empty($tenant_id_filter);
 <body>
     <!-- Page Loader -->
     <?php 
-    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/loader.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/navbar.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/sidebar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
     ?>
     <div class="pc-container">
         <div class="pc-content">
@@ -655,10 +655,10 @@ $courierDisabled = ($is_main_admin == 1) && empty($tenant_id_filter);
         </div>
     </div>
 
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/scripts.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php'); ?>
 
     <!--Footer-->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/footer.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php'); ?>
 </body>
 
 </html>

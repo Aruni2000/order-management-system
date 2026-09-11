@@ -19,7 +19,7 @@ try {
     }
 
     // Include database connection
-    $db_path = $_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php';
+    $db_path = $_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php';
     if (!file_exists($db_path)) {
         throw new Exception('Database connection file not found');
     }
@@ -190,7 +190,7 @@ try {
         
         $paymentSlip = isset($orderData['slip']) ? $orderData['slip'] : '';
         if (!empty($paymentSlip)) {
-            $uploadDir = $_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/uploads/';
+            $uploadDir = $_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/uploads/';
             $slipFilePath = $uploadDir . $paymentSlip;
             if (file_exists($slipFilePath)) {
                 unlink($slipFilePath);

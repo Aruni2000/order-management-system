@@ -112,7 +112,7 @@ function getParcelData($orderId, $conn) {
 }
 
 try {
-    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
     
     // ============================================
     // AUTHENTICATION & VALIDATION

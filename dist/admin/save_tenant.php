@@ -6,7 +6,7 @@ session_start();
 header('Content-Type: application/json');
 
 // Include database connection
-include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
 // Check if user is logged in and is admin
 if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
@@ -222,11 +222,11 @@ try {
         $allowed = ['jpg', 'jpeg', 'png', 'gif'];
         $ext = strtolower(pathinfo($_FILES['logo']['name'], PATHINFO_EXTENSION));
         if (in_array($ext, $allowed)) {
-            $upload_dir = $_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/uploads/';
+            $upload_dir = $_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/uploads/';
             if (!is_dir($upload_dir)) mkdir($upload_dir, 0755, true);
             $new_name = $name_slug . '_logo_' . time() . '.' . $ext;
             if (move_uploaded_file($_FILES['logo']['tmp_name'], $upload_dir . $new_name)) {
-                $logo_url = '/orderhub_nextwave/dist/uploads/' . $new_name;
+                $logo_url = '/OMS/dist/uploads/' . $new_name;
             }
         }
     }
@@ -237,11 +237,11 @@ try {
         $allowed = ['jpg', 'jpeg', 'png', 'ico'];
         $ext = strtolower(pathinfo($_FILES['fav_icon']['name'], PATHINFO_EXTENSION));
         if (in_array($ext, $allowed)) {
-            $upload_dir = $_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/uploads/';
+            $upload_dir = $_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/uploads/';
             if (!is_dir($upload_dir)) mkdir($upload_dir, 0755, true);
             $new_name = $name_slug . '_favicon_' . time() . '.' . $ext;
             if (move_uploaded_file($_FILES['fav_icon']['tmp_name'], $upload_dir . $new_name)) {
-                $fav_icon_url = '/orderhub_nextwave/dist/uploads/' . $new_name;
+                $fav_icon_url = '/OMS/dist/uploads/' . $new_name;
             }
         }
     }

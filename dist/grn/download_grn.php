@@ -11,7 +11,7 @@ if (!isset($_SESSION['is_main_admin']) || $_SESSION['is_main_admin'] != 1 || !in
     exit();
 }
 
-include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
 $grn_id = isset($_GET['id']) ? intval($_GET['id']) : 0;
 if ($grn_id <= 0) {

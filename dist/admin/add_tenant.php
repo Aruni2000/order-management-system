@@ -3,7 +3,7 @@
 session_start();
 
 // Include the database connection file FIRST
-include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
 // Check if user is logged in, if not redirect to login page
 if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
@@ -11,7 +11,7 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     if (ob_get_level()) {
         ob_end_clean();
     }
-    header("Location: /orderhub_nextwave/dist/pages/login.php");
+    header("Location: /OMS/dist/pages/login.php");
     exit();
 }
 
@@ -29,7 +29,7 @@ $role_result = $role_stmt->get_result();
 if ($role_result->num_rows === 0) {
     // User not found or inactive
     session_destroy();
-    header("Location: /orderhub_nextwave/dist/pages/login.php");
+    header("Location: /OMS/dist/pages/login.php");
     exit();
 }
 
@@ -38,13 +38,13 @@ $user_role = $role_result->fetch_assoc();
 // Check if user is admin (role_id = 1)
 if ($user_role['role_id'] != 1) {
     // User is not admin, redirect to dashboard
-    header("Location: /orderhub_nextwave/dist/dashboard/index.php");
+    header("Location: /OMS/dist/dashboard/index.php");
     exit();
 }
 
 $current_is_main_admin = isset($_SESSION['is_main_admin']) && $_SESSION['is_main_admin'] == 1;
 if (!$current_is_main_admin) {
-    header("Location: /orderhub_nextwave/dist/admin/branding.php");
+    header("Location: /OMS/dist/admin/branding.php");
     exit();
 }
 
@@ -93,7 +93,7 @@ $disabledClass = $isFull ? 'limit-reached-disabled' : '';
     <title>Add New Tenant | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
 
     <?php
-    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/head.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php');
     ?>
     
     <!-- [Template CSS Files] -->
@@ -269,9 +269,9 @@ $disabledClass = $isFull ? 'limit-reached-disabled' : '';
 <body>
     <!-- LOADER -->
     <?php
-        include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/loader.php');
-        include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/navbar.php');
-        include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/sidebar.php');
+        include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php');
+        include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
+        include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
     ?>
     <!-- END LOADER -->
 
@@ -411,13 +411,13 @@ $disabledClass = $isFull ? 'limit-reached-disabled' : '';
 
     <!-- FOOTER -->
     <?php
-    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/footer.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php');
     ?>
     <!-- END FOOTER -->
 
     <!-- SCRIPTS -->
     <?php
-    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/scripts.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php');
     ?>
     <!-- END SCRIPTS -->
 

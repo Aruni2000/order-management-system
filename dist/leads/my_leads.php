@@ -14,26 +14,26 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     if (ob_get_level()) {
         ob_end_clean();
     }
-    header("Location: /orderhub_nextwave/dist/pages/login.php");
+    header("Location: /OMS/dist/pages/login.php");
     exit();
 }
 
 // Get logged-in user ID
 $logged_user_id = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
 if ($logged_user_id <= 0) {
-    header("Location: /orderhub_nextwave/dist/pages/login.php");
+    header("Location: /OMS/dist/pages/login.php");
     exit();
 }
 
 // Include database connection
-include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
 // Store role (role_id 3, non-main-admin) is limited to Products & Order Management
 if ((int)($_SESSION['role_id'] ?? 0) === 3 && (int)($_SESSION['is_main_admin'] ?? 0) !== 1) {
     if (ob_get_level()) {
         ob_end_clean();
     }
-    header("Location: /orderhub_nextwave/dist/pages/access_denied.php");
+    header("Location: /OMS/dist/pages/access_denied.php");
     exit();
 }
 
@@ -182,7 +182,7 @@ $userInfo = $userInfoResult->fetch_assoc();
 <head>
     <title>My Assigned Leads | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
     
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/head.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
     
     <!-- Stylesheets -->
     <link rel="stylesheet" href="../assets/css/orders.css" />
@@ -270,9 +270,9 @@ $userInfo = $userInfoResult->fetch_assoc();
 
 <body>
     <!-- Page Loader -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/loader.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/navbar.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/sidebar.php');?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');?>
 
     <div class="pc-container">
         <div class="pc-content">
@@ -707,7 +707,7 @@ $userInfo = $userInfoResult->fetch_assoc();
     </div>
 
     <!-- Lead View Modal -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/order_view_modal.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/order_view_modal.php'); ?>
 
 
 
@@ -844,7 +844,7 @@ $userInfo = $userInfoResult->fetch_assoc();
         }
         
         // Construct the payment slip URL
-        const slipUrl = '/orderhub_nextwave/dist/uploads/' + encodeURIComponent(currentLeadId) + '.jpg';
+        const slipUrl = '/OMS/dist/uploads/' + encodeURIComponent(currentLeadId) + '.jpg';
         
         // Open payment slip in new tab
         window.open(slipUrl, '_blank');
@@ -888,7 +888,7 @@ $userInfo = $userInfoResult->fetch_assoc();
         console.log('Printing Order ID:', orderId);
         
         // Construct the print URL
-        const printUrl = '/orderhub_nextwave/dist/orders/download_order_print.php?id=' + encodeURIComponent(orderId.trim());
+        const printUrl = '/OMS/dist/orders/download_order_print.php?id=' + encodeURIComponent(orderId.trim());
 
         
         // Open print page in new window
@@ -938,8 +938,8 @@ $userInfo = $userInfoResult->fetch_assoc();
     </script>
 
     <!-- Include Footer and Scripts -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/footer.php'); ?>
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/scripts.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php'); ?>
 
 </body>
 </html>

@@ -35,11 +35,11 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     if (ob_get_level()) {
         ob_end_clean();
     }
-    header("Location: /orderhub_nextwave/dist/pages/login.php");
+    header("Location: /OMS/dist/pages/login.php");
     exit();
 }
 
-include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
 $current_user_id = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
 $current_user_role = isset($_SESSION['role_id']) ? (int)$_SESSION['role_id'] : 0;
@@ -67,7 +67,7 @@ if ($current_user_id == 0 || $current_user_role == 0) {
 }
 
 if ($current_user_id == 0) {
-    header("Location: /orderhub_nextwave/dist/pages/login.php");
+    header("Location: /OMS/dist/pages/login.php");
     exit();
 }
 
@@ -81,7 +81,7 @@ $is_user = $current_user_role == 2;
 $is_super_admin = ($is_main_admin && $is_admin);
 $session_tenant_id = (int)($_SESSION['tenant_id'] ?? 0);
 if (!$is_admin && !$is_user) {
-    header("Location: /orderhub_nextwave/dist/pages/access_denied.php");
+    header("Location: /OMS/dist/pages/access_denied.php");
     exit();
 }
 
@@ -241,7 +241,7 @@ $summary['avg_success_rate'] = $summaryDecided > 0 ? $summaryCompleted * 100 / $
 
 <head>
     <title>Product Analysis | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/head.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
     <link rel="stylesheet" href="../assets/css/tailwind-utilities.css" />
     <link rel="stylesheet" href="../assets/css/orders.css" />
     <link rel="stylesheet" href="../assets/css/customers.css" />
@@ -258,9 +258,9 @@ $summary['avg_success_rate'] = $summaryDecided > 0 ? $summaryCompleted * 100 / $
 </head>
 
 <body>
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/loader.php'); 
-    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/navbar.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/sidebar.php');?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php'); 
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');?>
 
     <div class="pc-container">
         <div class="pc-content">
@@ -507,7 +507,7 @@ $summary['avg_success_rate'] = $summaryDecided > 0 ? $summaryCompleted * 100 / $
     </div>
 
     <?php
-    include_once($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/info_modal.php');
+    include_once($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/info_modal.php');
     renderInfoModal(
         'How Product Analysis Works',
         'fas fa-chart-bar',
@@ -561,8 +561,8 @@ $summary['avg_success_rate'] = $summaryDecided > 0 ? $summaryCompleted * 100 / $
     );
     ?>
 
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/footer.php'); ?>
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/scripts.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php'); ?>
 
     <script>
         function clearFilters() {

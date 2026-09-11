@@ -8,12 +8,12 @@ session_start();
 // Check if user is logged in, if not redirect to login page
 if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     ob_end_clean();
-    header("Location: /orderhub_nextwave/dist/pages/login.php");
+    header("Location: /OMS/dist/pages/login.php");
     exit();
 }
 
 // Include the database connection file early
-include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
 // Check if user is main admin
 $is_main_admin = $_SESSION['is_main_admin'];
@@ -66,7 +66,7 @@ if (!($is_main_admin === 1 && $_SESSION['role_id'] == 1) && !empty($tenants)) {
 <head>
     <title>Delivery CSV Upload | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
 
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/head.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
 
     <!-- Stylesheets -->
     <link rel="stylesheet" href="../assets/css/leads.css" />
@@ -75,9 +75,9 @@ if (!($is_main_admin === 1 && $_SESSION['role_id'] == 1) && !empty($tenants)) {
 <body>
     <!-- Page Loader -->
     <?php 
-    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/loader.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/navbar.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/sidebar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
     ?>
 
     <div class="pc-container">
@@ -162,7 +162,7 @@ if (!($is_main_admin === 1 && $_SESSION['role_id'] == 1) && !empty($tenants)) {
                 <form enctype="multipart/form-data" id="uploadForm" name="uploadForm" method="POST" action="complete_mark_upload_submit.php">
                     <!-- Download CSV Temp late Section -->
                     <div class="file-upload-section template-download-section">
-                        <a href="/orderhub_nextwave/dist/templates/delivery_csv.php" class="choose-file-btn template-download-btn">
+                        <a href="/OMS/dist/templates/delivery_csv.php" class="choose-file-btn template-download-btn">
                             Download CSV Template
                         </a>
                         <div class="form-container">
@@ -233,7 +233,7 @@ if (!($is_main_admin === 1 && $_SESSION['role_id'] == 1) && !empty($tenants)) {
         </div>
     </div>
     <?php
-    include_once($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/info_modal.php');
+    include_once($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/info_modal.php');
     renderInfoModal(
         'How Delivery Completion CSV Upload Works',
         'fas fa-truck',
@@ -273,10 +273,10 @@ if (!($is_main_admin === 1 && $_SESSION['role_id'] == 1) && !empty($tenants)) {
     );
     ?>
     <!-- Footer -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/footer.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php'); ?>
 
     <!-- Scripts -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/scripts.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php'); ?>
 
 
 

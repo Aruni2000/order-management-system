@@ -14,7 +14,7 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     if (ob_get_level()) {
         ob_end_clean();
     }
-    header("Location: /orderhub_nextwave/dist/pages/login.php");
+    header("Location: /OMS/dist/pages/login.php");
     exit();
 }
 
@@ -30,12 +30,12 @@ if ($is_admin != 1) {
     if (ob_get_level()) {
         ob_end_clean();
     }
-    header("Location: /orderhub_nextwave/dist/pages/access_denied.php");
+    header("Location: /OMS/dist/pages/access_denied.php");
     exit();
 }
 
 // Include database connection
-include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
 /**
  * SEARCH AND PAGINATION PARAMETERS
@@ -230,7 +230,7 @@ $result = $conn->query($sql);
 <head>
     <title>Leads Management - All Leads | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
     
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/head.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
     
     <!-- Stylesheets -->
     <link rel="stylesheet" href="../assets/css/orders.css" />
@@ -298,9 +298,9 @@ $result = $conn->query($sql);
 <body>
     <!-- Page Loader -->
     <?php 
-    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/loader.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/navbar.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/sidebar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
     ?>
 
     <div class="pc-container">
@@ -754,7 +754,7 @@ $result = $conn->query($sql);
     </div>
 
     <!-- Lead View Modal -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/order_view_modal.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/order_view_modal.php'); ?>
 
     <script>
     // Lead-specific JavaScript functionality
@@ -894,7 +894,7 @@ $result = $conn->query($sql);
         }
         
         // Construct the payment slip URL
-        const slipUrl = '/orderhub_nextwave/dist/uploads/' + encodeURIComponent(currentLeadId) + '.jpg';
+        const slipUrl = '/OMS/dist/uploads/' + encodeURIComponent(currentLeadId) + '.jpg';
         
         // Open payment slip in new tab
         window.open(slipUrl, '_blank');
@@ -938,7 +938,7 @@ $result = $conn->query($sql);
         console.log('Printing Order ID:', orderId);
         
         // Construct the print URL
-        const printUrl = '/orderhub_nextwave/dist/orders/download_order_print.php?id=' + encodeURIComponent(orderId.trim());
+        const printUrl = '/OMS/dist/orders/download_order_print.php?id=' + encodeURIComponent(orderId.trim());
 
         // Open print page in new window
         const printWindow = window.open(printUrl, '_blank');
@@ -987,8 +987,8 @@ $result = $conn->query($sql);
     </script>
 
     <!-- Include Footer and Scripts -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/footer.php'); ?>
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/scripts.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php'); ?>
 
 </body>
 </html>

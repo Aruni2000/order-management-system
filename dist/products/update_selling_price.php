@@ -21,7 +21,7 @@ if (!in_array($role_id, [1, 3], true)) {
     exit();
 }
 
-include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
 header('Content-Type: application/json');
 

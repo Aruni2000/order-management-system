@@ -12,8 +12,8 @@ error_reporting(0);
 ini_set('display_errors', 0);
 
 // Include the database connection file
-include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
-include_once($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/stock_ledger.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
+include_once($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/stock_ledger.php');
 
 // Session validation - fail if user_id is missing
 $user_id = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
@@ -131,7 +131,7 @@ function setMessageAndRedirect($type, $message, $redirect_url = null) {
     
     // Default redirect to create order page
     if (!$redirect_url) {
-        $redirect_url = "/orderhub_nextwave/dist/orders/create_order.php";
+        $redirect_url = "/OMS/dist/orders/create_order.php";
     }
     
     // Clean output buffer
@@ -876,7 +876,7 @@ foreach ($order_items as $item) {
                     // FDE NEW PARCEL API INTEGRATION
                     
                     // Include the FDE API function
-                    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/api/fde_new_parcel_api.php');
+                    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/api/fde_new_parcel_api.php');
                     
                     // CITY HANDLING
                     $city_name = '';
@@ -1045,7 +1045,7 @@ foreach ($order_items as $item) {
                     // FDE EXISTING PARCEL API INTEGRATION
                     
                     // Include the FDE Existing Parcel API function
-                    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/api/fde_existing_parcel_api.php');
+                    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/api/fde_existing_parcel_api.php');
                     
                     // CITY HANDLING
                     $city_name = '';
@@ -1295,7 +1295,7 @@ $updateOrderStmt->bind_param("iisi", $co_id, $default_courier_id, $tracking_numb
                             $courier_warning = '';
                             
                             // Validate API file and function
-                            $api_file_path = $_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/api/koombiyo_delivery_api.php';
+                            $api_file_path = $_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/api/koombiyo_delivery_api.php';
                             
                             if (!file_exists($api_file_path)) {
                                 $courier_warning = "Koombiyo API configuration error. Please contact support.";
@@ -1583,7 +1583,7 @@ $updateOrderStmt->bind_param("iisi", $co_id, $default_courier_id, $tracking_numb
                     
 // FIXED TransExpress New Parcel API Integration (Type 2)
 } elseif ($courier_type == 2) {
-    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/api/transexpress_new_parcel_api.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/api/transexpress_new_parcel_api.php');
     
     $proceed_with_api = false;
     $district_id = null;
@@ -1671,7 +1671,7 @@ $updateOrderStmt->bind_param("iisi", $co_id, $default_courier_id, $tracking_numb
 
 // FIXED TransExpress Existing Parcel API Integration (Type 3)
 } elseif ($courier_type == 3) {
-    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/api/transexpress_existing_parcel_api.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/api/transexpress_existing_parcel_api.php');
     
     $proceed_with_api = false;
     $city_name = '';
@@ -1849,7 +1849,7 @@ $updateOrderStmt->bind_param("iisi", $co_id, $default_courier_id, $tracking_numb
 
                 } elseif ($courier_type == 3) {
 
-                    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/api/royal_express_existing_parcel_api.php');
+                    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/api/royal_express_existing_parcel_api.php');
 
                     // STEP 1: Validate city and state
                     $proceed_with_api = false;

@@ -8,12 +8,12 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     if (ob_get_level()) {
         ob_end_clean();
     }
-    header("Location: /orderhub_nextwave/dist/pages/login.php");
+    header("Location: /OMS/dist/pages/login.php");
     exit();
 }
 
 // Include the database connection file
-include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/connection/db_connection.php');
+include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
 
 // Multi-tenant permissions
@@ -171,7 +171,7 @@ $result = $conn->query($sql);
 <head>
     <title>Product Management | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
     
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/head.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
     
     <!-- Stylesheets -->
     <link rel="stylesheet" href="../assets/css/orders.css" />
@@ -191,9 +191,9 @@ $result = $conn->query($sql);
 <body>
     <!-- Page Loader -->
     <?php 
-    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/loader.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/navbar.php');
-    include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/sidebar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/loader.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/navbar.php');
+    include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
     ?>
 
     <div class="pc-container">
@@ -610,10 +610,10 @@ $result = $conn->query($sql);
 
 
     <!-- Footer -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/footer.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/footer.php'); ?>
 
     <!-- Scripts -->
-    <?php include($_SERVER['DOCUMENT_ROOT'] . '/orderhub_nextwave/dist/include/scripts.php'); ?>
+    <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/scripts.php'); ?>
 
     <script>
         function clearFilters() {
@@ -662,7 +662,7 @@ $result = $conn->query($sql);
             batchesContainer.innerHTML = '<div style="text-align: center; padding: 15px; color: #64748b; font-size: 13px;"><i class="fas fa-spinner fa-spin"></i> Loading batch details...</div>';
             batchCountEl.textContent = 'Loading...';
 
-            fetch('/orderhub_nextwave/dist/products/get_stock_batches.php?product_id=' + encodeURIComponent(productId))
+            fetch('/OMS/dist/products/get_stock_batches.php?product_id=' + encodeURIComponent(productId))
                 .then(res => res.json())
                 .then(data => {
                     if (data.success && data.batches && data.batches.length > 0) {
@@ -1006,7 +1006,7 @@ $result = $conn->query($sql);
             const batchSelect = document.getElementById('stock_batch_id');
             batchSelect.innerHTML = '<option value="">Loading batches...</option>';
 
-            fetch('/orderhub_nextwave/dist/products/get_stock_batches.php?product_id=' + encodeURIComponent(productId))
+            fetch('/OMS/dist/products/get_stock_batches.php?product_id=' + encodeURIComponent(productId))
                 .then(response => response.json())
                 .then(data => {
                     if (!data.success) {
@@ -1140,7 +1140,7 @@ $result = $conn->query($sql);
             btn.textContent = 'Updating...';
             btn.disabled = true;
 
-            fetch('/orderhub_nextwave/dist/products/update_stock_action.php', {
+            fetch('/OMS/dist/products/update_stock_action.php', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -1210,7 +1210,7 @@ $result = $conn->query($sql);
             batchSelect.innerHTML = '<option value="">Loading batches...</option>';
             pricesContainer.innerHTML = '<div style="text-align: center; color: #64748b; font-size: 13px;"><i class="fas fa-spinner fa-spin"></i> Loading...</div>';
 
-            fetch('/orderhub_nextwave/dist/products/get_stock_batches.php?product_id=' + encodeURIComponent(productId))
+            fetch('/OMS/dist/products/get_stock_batches.php?product_id=' + encodeURIComponent(productId))
                 .then(response => response.json())
                 .then(data => {
                     if (!data.success || !data.batches || data.batches.length === 0) {
@@ -1278,7 +1278,7 @@ $result = $conn->query($sql);
             btn.textContent = 'Updating...';
             btn.disabled = true;
 
-            fetch('/orderhub_nextwave/dist/products/update_selling_price.php', {
+            fetch('/OMS/dist/products/update_selling_price.php', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
