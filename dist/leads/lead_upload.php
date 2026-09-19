@@ -284,7 +284,7 @@ function cs_condition($conn, $customer_id, $tenant_id) {
 }
 
         // Fetch product data once for all rows (filtered by tenant)
-        $productSql = "SELECT id, product_code, description, selling_price FROM products WHERE id = ? AND status = 'active' AND tenant_id = ?";
+        $productSql = "SELECT id, product_code, description, lkr_price FROM products WHERE id = ? AND status = 'active' AND tenant_id = ?";
         $productStmt = $conn->prepare($productSql);
         if (!$productStmt) {
             throw new Exception("Failed to prepare product query: " . $conn->error);
@@ -304,23 +304,7 @@ function cs_condition($conn, $customer_id, $tenant_id) {
         $productDescription = $product['description'] ?? '';
         $productStmt->close();
 
-        // Read and validate selected selling price when inventory is enabled
-        $selectedSellingPrice = 0.00;
-        if (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1) {
-            if (empty($_POST['selling_price'])) {
-                throw new Exception("Please select a selling price for this upload.");
-            }
-            $selectedSellingPrice = (float)$_POST['selling_price'];
-            if ($selectedSellingPrice <= 0) {
-                throw new Exception("The selected selling price is invalid.");
-            }
-            $productSellingPrice = (float)($product['selling_price'] ?? 0);
-            if (abs($selectedSellingPrice - $productSellingPrice) > 0.005) {
-                throw new Exception("The selected selling price does not match this product's current selling price.");
-            }
 
-            $unitPrice = $selectedSellingPrice;
-        }
         
         // Process each row
         while (($row = fgetcsv($handle)) !== FALSE) {
@@ -723,7 +707,7 @@ if ($selectedTenantId) {
 // Fetch active products for dropdown based on selected tenant
 $products = [];
 if ($selectedTenantId) {
-    $productsSql = "SELECT id, name, product_code, selling_price, stock_quantity FROM products WHERE status = 'active' AND tenant_id = ? ORDER BY name ASC";
+    $productsSql = "SELECT id, name, product_code, lkr_price, stock_quantity FROM products WHERE status = 'active' AND tenant_id = ? ORDER BY name ASC";
     $productsStmt = $conn->prepare($productsSql);
     if ($productsStmt) {
         $productsStmt->bind_param("i", $selectedTenantId);
@@ -816,6 +800,23 @@ if ($selectedTenantId) {
 .error-section h5 {
     color: #721c24;
     margin-bottom: 0.5rem;
+}
+
+.download-errors-btn {
+    display: inline-block;
+    background-color: #dc3545;
+    color: white;
+    padding: 0.5rem 1rem;
+    border-radius: 4px;
+    text-decoration: none;
+    font-weight: bold;
+    margin-top: 1rem;
+    transition: background-color 0.2s;
+}
+
+.download-errors-btn:hover {
+    background-color: #c82333;
+    color: white;
 }
 
 .tenant-selector-card {
@@ -964,7 +965,7 @@ if ($selectedTenantId) {
     text-align: left;
 }
 
-#uploadBtn {
+#importBtn {
     background-color: #1565C0;
     border-color: #1565C0;
     font-weight: 500;
@@ -976,19 +977,19 @@ if ($selectedTenantId) {
     padding: 9px 24px;
 }
 
-#uploadBtn:hover {
+#importBtn:hover {
     background-color: #0b5ed7;
     border-color: #0a58ca;
 }
 
-#uploadBtn:disabled {
+#importBtn:disabled {
     background-color: #6c757d;
     border-color: #6c757d;
     cursor: not-allowed;
     opacity: 0.65;
 }
 
-#uploadBtn i {
+#importBtn i {
     margin-right: 8px;
 }
 
@@ -1084,72 +1085,38 @@ if ($selectedTenantId) {
                 </div>
             </div>
 
-          <?php if (isset($_SESSION['import_result'])): ?>
-    <?php 
-        $impSuccess = $_SESSION['import_result']['success'];
-        $impErrors = $_SESSION['import_result']['errors'];
-        $impMessages = $_SESSION['import_result']['messages'] ?? [];
-        $impInfo = $_SESSION['import_result']['info'] ?? [];
-    ?>
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            <?php if ($impErrors > 0): ?>
-                toastManager.warning('Import completed: <?php echo $impSuccess; ?> imported, <?php echo $impErrors; ?> failed', 8000);
-            <?php else: ?>
-                toastManager.success('Successfully imported <?php echo $impSuccess; ?> records', 5000);
-            <?php endif; ?>
-        });
-    </script>
-
-    <?php if ($impErrors > 0 || !empty($impInfo)): ?>
-    <div style="background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 20px; margin-bottom: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.06);">
-        <?php if ($impErrors > 0): ?>
-            <div style="margin-bottom: 16px;">
-                <?php if (isset($_SESSION['failed_rows_data'])): ?>
-                    <div style="margin-bottom: 14px;">
-                        <a href="?download_errors=1" class="btn btn-danger btn-sm">
-                            <i class="feather icon-download"></i> Download Failed Rows CSV
-                        </a>
-                        <p style="margin-top: 6px; font-size: 0.8rem; color: #6b7280;">
-                            <em>Fix the issues in the CSV and re-upload just those rows.</em>
-                        </p>
+            <?php if (isset($_SESSION['import_result'])): ?>
+                    <div class="alert alert-<?php echo $_SESSION['import_result']['errors'] > 0 ? 'warning' : 'success'; ?>">
+                        <h4>Import Results</h4>
+                        <p><strong>Successfully imported:</strong> <?php echo $_SESSION['import_result']['success']; ?> records</p>
+                        <?php if ($_SESSION['import_result']['errors'] > 0): ?>
+                            <p><strong>Failed imports:</strong> <?php echo $_SESSION['import_result']['errors']; ?> records</p>
+                            
+                            <?php if (isset($_SESSION['failed_rows_data'])): ?>
+                                <a href="?download_errors=1" class="download-errors-btn">
+                                    📥 Download Failed Rows CSV
+                                </a>
+                                <p style="margin-top: 0.5rem; font-size: 0.9rem;">
+                                    <em>Download the CSV file containing only the failed rows with error reasons. Fix the issues and re-upload.</em>
+                                </p>
+                            <?php endif; ?>
+                            
+                            <?php if (!empty($_SESSION['import_result']['messages'])): ?>
+                                <details style="margin-top: 1rem;">
+                                    <summary style="cursor: pointer; font-weight: bold;">View Error Details</summary>
+                                    <div class="error-section">
+                                        <ul class="mt-2">
+                                            <?php foreach ($_SESSION['import_result']['messages'] as $message): ?>
+                                                <li><?php echo htmlspecialchars($message); ?></li>
+                                            <?php endforeach; ?>
+                                        </ul>
+                                    </div>
+                                </details>
+                            <?php endif; ?>
+                        <?php endif; ?>
                     </div>
+                    <?php unset($_SESSION['import_result']); ?>
                 <?php endif; ?>
-                <?php if (!empty($impMessages)): ?>
-                    <details>
-                        <summary style="cursor: pointer; font-weight: 600; color: #92400e; font-size: 0.85rem;">
-                            <i class="fas fa-exclamation-triangle"></i> View Error Details (<?php echo count($impMessages); ?>)
-                        </summary>
-                        <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 12px 16px; margin-top: 8px;">
-                            <ul style="margin-bottom: 0; padding-left: 20px; color: #991b1b; font-size: 0.82rem;">
-                                <?php foreach ($impMessages as $message): ?>
-                                    <li style="margin-bottom: 4px;"><?php echo htmlspecialchars($message); ?></li>
-                                <?php endforeach; ?>
-                            </ul>
-                        </div>
-                    </details>
-                <?php endif; ?>
-            </div>
-        <?php endif; ?>
-        <?php if (!empty($impInfo)): ?>
-            <div>
-                <details open>
-                    <summary style="cursor: pointer; font-weight: 600; color: #0369a1; font-size: 0.85rem;">
-                        <i class="fas fa-info-circle"></i> Additional Information (<?php echo count($impInfo); ?> notices)
-                    </summary>
-                    <ul style="margin-top: 8px; margin-bottom: 0; padding-left: 20px; color: #0c4a6e; font-size: 0.85rem;">
-                        <?php foreach ($impInfo as $infoMsg): ?>
-                            <li style="margin-bottom: 4px;"><?php echo htmlspecialchars($infoMsg); ?></li>
-                        <?php endforeach; ?>
-                    </ul>
-                </details>
-            </div>
-        <?php endif; ?>
-    </div>
-    <?php endif; ?>
-
-    <?php unset($_SESSION['import_result']); ?>
-<?php endif; ?>
             
             <?php if (isset($_SESSION['import_error'])): ?>
                 <div class="alert alert-danger">
@@ -1198,9 +1165,9 @@ if ($selectedTenantId) {
                                 <div class="form-group" style="position: relative;">
                                     <input type="text" id="product_search" class="form-control" placeholder="Type to search product..." autocomplete="off" style="width: 100%; padding: 10px; border: 1px solid #ced4da; border-radius: 4px;">
                                     <input type="hidden" name="product_id" id="product_id" required>
-                                    <div id="product_dropdown" style="display: none; position: absolute; background: white; border: 1px solid #ced4da; border-top: none; max-height: 200px; overflow-y: auto; width: 100%; z-index: 1000; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                                    <div id="product_dropdown" style="display: none; position: absolute; background: white; border: 1px solid #ced4da; border-top: none; max-height: 150px; overflow-y: auto; width: 100%; z-index: 1000; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
                                         <?php foreach ($products as $prod): ?>
-                                            <div class="product-option" data-id="<?php echo $prod['id']; ?>" data-name="<?php echo htmlspecialchars($prod['name']); ?>" data-code="<?php echo htmlspecialchars($prod['product_code']); ?>" data-price="<?php echo (float)$prod['selling_price']; ?>" data-stock="<?php echo (int)$prod['stock_quantity']; ?>" style="padding: 10px; cursor: pointer; border-bottom: 1px solid #f0f0f0;">
+                                            <div class="product-option" data-id="<?php echo $prod['id']; ?>" data-name="<?php echo htmlspecialchars($prod['name']); ?>" data-code="<?php echo htmlspecialchars($prod['product_code']); ?>"  style="padding: 10px; cursor: pointer; border-bottom: 1px solid #f0f0f0;">
                                                 <strong><?php echo htmlspecialchars($prod['name']); ?></strong> (<?php echo htmlspecialchars($prod['product_code']); ?>)
                                                 <?php if (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1): ?>
                                                     <span style="color: #6c757d; font-size: 0.9em;"> - Stock: <?php echo $prod['stock_quantity']; ?></span>
@@ -1211,72 +1178,63 @@ if ($selectedTenantId) {
                                     </div>
                                 </div>
 
-                                <?php if (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1): ?>
-                                <div class="form-group" style="margin-top: 15px;">
-                                    <label for="selling_price_dropdown" style="font-size: 0.9rem; font-weight: 500;">
-                                        Select Selling Price <span style="color: red;">*</span>
-                                    </label>
-                                    <select id="selling_price_dropdown" name="selling_price_dropdown" class="form-control" disabled style="width: 100%; padding: 10px; border: 1px solid #ced4da; border-radius: 4px;">
-                                        <option value="">-- Select a product first --</option>
-                                    </select>
-                                    <div id="selling_price_hint" style="font-size: 0.8rem; color: #6c757d; margin-top: 5px;"></div>
-                                    <input type="hidden" name="selling_price" id="selling_price" value="">
-                                </div>
-                                <?php endif; ?>
+
                             </div>
 
                             <!-- Right Column: CSV Upload -->
                             <div class="upload-column file-upload-section" style="margin-bottom: 0; padding-bottom: 0;">
-                                <h2 class="section-title">CSV Upload</h2>
-                                <div class="file-upload-box" style="margin-top: 0.5rem; display: flex; flex-direction: column; align-items: start; gap: 10px; padding: 15px;">
-                                    <p id="file-name" style="margin-bottom: 0;">No file selected</p>
-                                    <div style="display: flex; gap: 10px; width: 100%; justify-content: space-between; align-items: center;">
-                                        <input type="file" id="csv_file" name="csv_file" accept=".csv" style="display: none;">
-                                        <button type="button" class="choose-file-btn" onclick="document.getElementById('csv_file').click()">Choose File</button>
-                                        <a href="/OMS/dist/templates/generate_template.php" class="choose-file-btn" style="text-decoration: none;">Generate Template</a>
-                                    </div>
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <h2 class="section-title" style="margin-bottom: 0;">CSV Upload</h2>
+                                    <a href="/OMS/dist/templates/generate_template.php" class="choose-file-btn" style="padding: 5px 10px; font-size: 12px;">Download Template</a>
+                                </div>
+                                <div class="file-upload-box" style="margin-top: 0.5rem;">
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <p id="file-name" style="margin-bottom: 0.5rem;">No file selected</p>
+                                    <input type="file" id="csv_file" name="csv_file" accept=".csv" style="display: none;">
+                                    <button type="button" class="choose-file-btn" onclick="document.getElementById('csv_file').click()">Choose File</button>
+                                </div>
                                 </div>
                             </div>
                         </div>
 
                         <hr>
 
-                        <div class="user-selection-section">
+                        <br>
+
+                        <div class="users-section">
                             <h2 class="section-title">Select Users</h2>
                             <p class="text-muted">Choose which users will receive the imported leads</p>
                             
-                            <div class="user-checkboxes" id="usersList">
+                            <ul class="users-list" id="usersList">
                                 <?php if (!empty($users)): ?>
                                     <?php foreach ($users as $user): ?>
-                                        <div class="form-check" style="min-width: 150px;">
-                                            <input class="form-check-input" 
-                                                type="checkbox" 
-                                                name="users[]" 
-                                                value="<?php echo $user['id']; ?>" 
-                                                id="user_<?php echo $user['id']; ?>">
-                                            <label class="form-check-label" for="user_<?php echo $user['id']; ?>">
-                                                <?php echo htmlspecialchars($user['name']); ?>
-                                            </label>
-                                        </div>
+                                        <li>
+                                            <input type="checkbox" id="user_<?php echo $user['id']; ?>" name="users[]" value="<?php echo $user['id']; ?>">
+                                            <label for="user_<?php echo $user['id']; ?>"><?php echo htmlspecialchars($user['name']); ?></label>
+                                        </li>
                                     <?php endforeach; ?>
                                 <?php else: ?>
-                                    <p class="text-danger">No active users found for this tenant.</p>
+                                    <li class="no-users">No active users found</li>
                                 <?php endif; ?>
-                            </div>
-                            
-                            <?php if (!empty($users)): ?>
-                                <button type="button" class="btn btn-outline-secondary btn-sm mb-3" id="toggleSelectAll">Select All</button>
-                            <?php endif; ?>
-
-                            <div class="action-buttons mt-4" style="display: flex; gap: 15px;">
-                                <button type="button" class="btn btn-secondary" id="resetBtn">Reset</button>
-                                <button type="submit" class="btn btn-primary btn-lg" id="uploadBtn" <?php echo empty($users) ? 'disabled' : ''; ?>>
-                                    <i class="feather icon-upload"></i> Import Leads
-                                </button>
-                            </div>
+                            </ul>
                         </div>
-
+                        
+                        <?php if (!empty($users)): ?>
+                            <button type="button" class="select-all-btn" id="toggleSelectAll">Select All</button>
+                        <?php endif; ?>
+                        
                         <hr>
+                        
+
+                        <div class="action-buttons">
+                            <button type="button" class="action-btn reset-btn" id="resetBtn">Reset</button>
+                            <button type="submit" class="action-btn import-btn" id="importBtn">
+                                 Import Leads
+                            </button>
+                        </div>
+                        
+                                
+                        <br>
 
                     </form>
                 <?php else: ?>
@@ -1422,47 +1380,8 @@ if ($selectedTenantId) {
             productId.value = id;
             productSearch.value = name + ' (' + code + ')';
             productDropdown.style.display = 'none';
-            loadSellingPrices(id);
         });
     });
-
-    // Load the selected product's current selling price
-    const sellingPriceDropdown = document.getElementById('selling_price_dropdown');
-    const sellingPriceHidden = document.getElementById('selling_price');
-    const sellingPriceHint = document.getElementById('selling_price_hint');
-
-    function loadSellingPrices(productId) {
-        if (!sellingPriceDropdown) return;
-
-        sellingPriceDropdown.innerHTML = '<option value="">-- Loading... --</option>';
-        sellingPriceDropdown.disabled = true;
-        if (sellingPriceHidden) sellingPriceHidden.value = '';
-        if (sellingPriceHint) sellingPriceHint.textContent = '';
-
-        const selectedOption = Array.from(productOptions).find(o => o.dataset.id === productId);
-        const price = selectedOption ? parseFloat(selectedOption.dataset.price) : 0;
-        const stock = selectedOption ? selectedOption.dataset.stock : null;
-
-        if (!isNaN(price) && price > 0) {
-            let opts = '<option value="" disabled selected>-- Select Selling Price --</option>';
-            opts += '<option value="' + price + '" data-stock="' + (stock !== null ? stock : '') + '">Rs. ' +
-                    price.toFixed(2) + (stock !== null ? ' (Stock: ' + stock + ')' : '') + '</option>';
-            sellingPriceDropdown.innerHTML = opts;
-            sellingPriceDropdown.disabled = false;
-            if (sellingPriceHint) sellingPriceHint.textContent = 'Use this selling price for all imported rows.';
-        } else {
-            sellingPriceDropdown.innerHTML = '<option value="">-- No selling price set --</option>';
-            sellingPriceDropdown.disabled = true;
-            if (sellingPriceHidden) sellingPriceHidden.value = '';
-            if (sellingPriceHint) sellingPriceHint.textContent = 'This product has no selling price set.';
-        }
-    }
-
-    if (sellingPriceDropdown) {
-        sellingPriceDropdown.addEventListener('change', function() {
-            if (sellingPriceHidden) sellingPriceHidden.value = this.value;
-        });
-    }
 
     // Display selected file name
     document.getElementById('csv_file')?.addEventListener('change', function(e) {
@@ -1529,15 +1448,7 @@ if ($selectedTenantId) {
             const prodId = document.getElementById('product_id');
             if (prodId) prodId.value = '';
 
-            const priceDropdown = document.getElementById('selling_price_dropdown');
-            if (priceDropdown) {
-                priceDropdown.innerHTML = '<option value="">-- Select a product first --</option>';
-                priceDropdown.disabled = true;
-            }
-            const priceHidden = document.getElementById('selling_price');
-            if (priceHidden) priceHidden.value = '';
-            const priceHint = document.getElementById('selling_price_hint');
-            if (priceHint) priceHint.textContent = '';
+
             
             if (toggleBtn) {
                 toggleBtn.textContent = 'Select All';
@@ -1557,14 +1468,7 @@ if ($selectedTenantId) {
             return false;
         }
 
-        <?php if (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1): ?>
-        const sellingPriceHidden = document.getElementById('selling_price');
-        if (!sellingPriceHidden.value) {
-            e.preventDefault();
-            alert('Please select a selling price for this upload.');
-            return false;
-        }
-        <?php endif; ?>
+
 
         if (!fileInput.files.length) {
             e.preventDefault();
@@ -1579,7 +1483,7 @@ if ($selectedTenantId) {
         }
         
         // Disable submit button to prevent double submission
-        const submitBtn = document.getElementById('uploadBtn');
+        const submitBtn = document.getElementById('importBtn');
         submitBtn.disabled = true;
         submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Importing...';
         

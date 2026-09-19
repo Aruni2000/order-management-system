@@ -342,7 +342,7 @@ $result = $conn->query($sql);
                                 <th>Product Name</th>
                                 <th>Product Code</th>
                                 <th>Category</th>
-<th>Selling Price</th>
+<th>Price (LKR)</th>
                                  <?php if (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1): ?>
                                 <th>Stock</th>
                                 <?php endif; ?>
@@ -382,9 +382,9 @@ $result = $conn->query($sql);
                                             </span>
                                         </td>
                                         
-                                        <!-- Selling Price -->
+                                        <!-- Price -->
                                         <td>
-                                            <span style="font-weight: 600; color: #059669;">Rs. <?php echo number_format((float)$row['selling_price'], 2); ?></span>
+                                            <span style="font-weight: 600; color: #28a745;">LKR <?php echo number_format((float)$row['lkr_price'], 2); ?></span>
                                         </td>
                                         
                                         <!-- Stock -->
@@ -444,7 +444,7 @@ $result = $conn->query($sql);
                                                         data-product-category="<?= htmlspecialchars($row['category_name'] ?? 'Uncategorized') ?>"
                                                         data-product-code="<?= htmlspecialchars($row['product_code'] ?? '') ?>"
                                                         data-product-description="<?= htmlspecialchars($row['description'] ?? '') ?>"
-                                                        data-product-selling-price="<?= htmlspecialchars($row['selling_price'] ?? 0) ?>"
+                                                        data-product-price="<?= htmlspecialchars($row['lkr_price'] ?? 0) ?>"
                                                         <?php if (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1): ?>
                                                         data-product-stock="<?= htmlspecialchars($row['stock_quantity']) ?>"
                                                         data-product-threshold="<?= htmlspecialchars($row['low_stock_threshold']) ?>"
@@ -470,10 +470,10 @@ $result = $conn->query($sql);
                                                 <?php if (in_array((int)$_SESSION['role_id'], [1, 3])): ?>
                                                 <button type="button" class="action-btn" 
                                                         style="background: #6f42c1; color: white;"
-                                                        title="Update Selling Price (Admin & Store)"
+                                                        title="Update Price (Admin & Store)"
                                                         data-product-id="<?= $row['id'] ?>"
                                                         data-product-name="<?= htmlspecialchars($row['name']) ?>"
-                                                        data-product-selling-price="<?= htmlspecialchars($row['selling_price'] ?? 0) ?>"
+                                                        data-product-price="<?= htmlspecialchars($row['lkr_price'] ?? 0) ?>"
                                                         onclick="openPriceUpdateModal(this)">
                                                     <i class="fas fa-tag"></i>
                                                 </button>
@@ -577,8 +577,8 @@ $result = $conn->query($sql);
                     <span class="detail-value" id="modal-product-description"></span>
                 </div>
                 <div class="customer-detail-row">
-                    <span class="detail-label">Selling Price:</span>
-                    <span class="detail-value" id="modal-product-selling-price" style="font-weight: 600; color: #059669;"></span>
+                    <span class="detail-label">Price (LKR):</span>
+                    <span class="detail-value" id="modal-product-price" style="font-weight: 600; color: #28a745;"></span>
                 </div>
                 <?php if (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1): ?>
                 <div class="customer-detail-row">
@@ -631,7 +631,7 @@ $result = $conn->query($sql);
             const productThreshold = button.getAttribute('data-product-threshold');
             const productStatus = button.getAttribute('data-product-status');
             const productCreated = button.getAttribute('data-product-created');
-            const productSellingPrice = button.getAttribute('data-product-selling-price');
+            const productPrice = button.getAttribute('data-product-price');
 
             // Populate modal fields
             document.getElementById('modal-product-id').textContent = productId;
@@ -640,9 +640,9 @@ $result = $conn->query($sql);
             document.getElementById('modal-product-code').textContent = productCode || 'N/A';
             document.getElementById('modal-product-description').textContent = productDescription || 'N/A';
 
-            document.getElementById('modal-product-selling-price').textContent =
-                (productSellingPrice !== null && productSellingPrice !== undefined)
-                    ? 'Rs. ' + Number(productSellingPrice).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})
+            document.getElementById('modal-product-price').textContent =
+                (productPrice !== null && productPrice !== undefined)
+                    ? 'LKR ' + Number(productPrice).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})
                     : 'N/A';
 
             const stockEl = document.getElementById('modal-product-stock');
@@ -860,25 +860,25 @@ $result = $conn->query($sql);
         </div>
     </div>
 
-    <!-- Selling Price Update Modal -->
+    <!-- Price Update Modal -->
     <div id="priceUpdateModal" class="modal">
         <div class="modal-content" style="max-width: 560px;">
             <div class="modal-header">
-                <h4>Update Selling Price - <span id="price-modal-title-name"></span></h4>
+                <h4>Update Price - <span id="price-modal-title-name"></span></h4>
                 <span class="close" onclick="closePriceUpdateModal()">&times;</span>
             </div>
             <div class="modal-body">
                 <div class="form-group" style="margin-bottom: 15px;">
-                    <label style="display: block; margin-bottom: 8px; font-weight: 500;">Current Selling Price</label>
+                    <label style="display: block; margin-bottom: 8px; font-weight: 500;">Current Price (LKR)</label>
                     <strong id="price-modal-current-price"></strong>
                 </div>
 
                 <div class="form-group" style="margin-bottom: 20px;">
-                    <label style="display: block; margin-bottom: 8px; font-weight: 500;">New Selling Price (LKR) <span style="color: #e74c3c;">*</span></label>
-                    <input type="number" id="new_selling_price" class="form-control" min="0.01" step="0.01" placeholder="Enter new selling price" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
+                    <label style="display: block; margin-bottom: 8px; font-weight: 500;">New Price (LKR) <span style="color: #e74c3c;">*</span></label>
+                    <input type="number" id="new_price" class="form-control" min="0.01" step="0.01" placeholder="Enter new price" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
                     <div id="price-error" style="color: #e74c3c; font-size: 13px; margin-top: 4px; display: none;"></div>
                     <div style="font-size: 12px; color: #6c757d; margin-top: 5px;">
-                        <i class="fas fa-info-circle"></i> This will update the selling price of the product.
+                        <i class="fas fa-info-circle"></i> This will update the price of the product.
                     </div>
                 </div>
 
@@ -1031,24 +1031,23 @@ $result = $conn->query($sql);
         }
     </script>
 
-    <script>
-        // Selling Price Update Functionality
+    <script>                    // Price Update Functionality
         let currentPriceUpdateProductId = 0;
 
         function openPriceUpdateModal(button) {
             const productId = button.getAttribute('data-product-id');
             const productName = button.getAttribute('data-product-name');
-            const currentPrice = button.getAttribute('data-product-selling-price');
+            const currentPrice = button.getAttribute('data-product-price');
 
             currentPriceUpdateProductId = productId;
 
             document.getElementById('price-modal-title-name').textContent = productName;
             document.getElementById('price-modal-current-price').textContent =
                 (currentPrice !== null && currentPrice !== undefined)
-                    ? 'Rs. ' + Number(currentPrice).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})
+                    ? 'LKR ' + Number(currentPrice).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})
                     : 'N/A';
 
-            const priceInput = document.getElementById('new_selling_price');
+            const priceInput = document.getElementById('new_price');
             priceInput.value = '';
             document.getElementById('price-error').style.display = 'none';
 
@@ -1068,10 +1067,8 @@ $result = $conn->query($sql);
 
         function updateSellingPrice(productId, newPrice) {
             const priceErrorEl = document.getElementById('price-error');
-            if (newPrice === '' || isNaN(newPrice) || parseFloat(newPrice) <= 0) {
-                priceErrorEl.textContent = 'Please enter a valid selling price greater than 0.';
-                priceErrorEl.style.display = 'block';
-                toastManager.warning('Please enter a valid selling price.');
+            if (newPrice === '' || isNaN(newPrice) || parseFloat(newPrice) <= 0) {                    priceErrorEl.textContent = 'Please enter a valid price greater than 0.';
+                priceErrorEl.style.display = 'block';                    toastManager.warning('Please enter a valid price.');
                 return;
             }
             priceErrorEl.style.display = 'none';
@@ -1081,21 +1078,21 @@ $result = $conn->query($sql);
             btn.textContent = 'Updating...';
             btn.disabled = true;
 
-            fetch('/OMS/dist/products/update_selling_price.php', {
+            fetch('/OMS/dist/products/update_price.php', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
                     product_id: productId,
-                    new_selling_price: parseFloat(newPrice)
+                    new_lkr_price: parseFloat(newPrice)
                 })
             })
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
                     closePriceUpdateModal();
-                    toastManager.success('Selling price updated successfully!');
+                    toastManager.success('Price updated successfully!');
                     setTimeout(() => { location.reload(); }, 1500);
                 } else {
                     toastManager.error('Error updating price: ' + data.message);
@@ -1103,7 +1100,7 @@ $result = $conn->query($sql);
             })
             .catch(error => {
                 console.error('Error:', error);
-                toastManager.error('An error occurred while updating the selling price.');
+                toastManager.error('An error occurred while updating the price.');
             })
             .finally(() => {
                 btn.textContent = originalText;

@@ -160,7 +160,7 @@ while ($item = $itemsResult->fetch_assoc()) {
 $stmt->close();
 
 // Fetch necessary data for the form (filtered by order's tenant)
-$productSql = "SELECT id, name, description, stock_quantity, low_stock_threshold, selling_price FROM products WHERE status = 'active' AND tenant_id = ? ORDER BY name ASC";
+$productSql = "SELECT id, name, description, stock_quantity, low_stock_threshold, lkr_price FROM products WHERE status = 'active' AND tenant_id = ? ORDER BY name ASC";
 $productStmt = $conn->prepare($productSql);
 $productStmt->bind_param("i", $order_tenant_id);
 $productStmt->execute();
@@ -652,7 +652,7 @@ $deliveryFeeStmt->close();
                                                                     data-description="<?= htmlspecialchars($p['description']) ?>"
                                                                     data-base-name="<?= htmlspecialchars($p['name']) ?>"
                                                                     data-stock="<?= $allow_inventory ? ($stock + $orig_qty) : 999999 ?>"
-                                                                    data-price="<?= (float)($p['selling_price'] ?? 0) ?>"
+                                                                    data-price="<?= (float)($p['lkr_price'] ?? 0) ?>"
                                                                     class="<?= $is_out_of_stock ? 'out-of-stock-option' : '' ?>"
                                                                     <?= ($is_out_of_stock && $p['id'] != $item['product_id']) ? 'disabled' : '' ?>
                                                                     <?= $p['id'] == $item['product_id'] ? 'selected' : '' ?>>
@@ -708,7 +708,7 @@ $deliveryFeeStmt->close();
                                                                 data-description="<?= htmlspecialchars($p['description']) ?>"
                                                                 data-base-name="<?= htmlspecialchars($p['name']) ?>"
                                                                 data-stock="<?= $allow_inventory ? $stock : 999999 ?>"
-                                                                data-price="<?= (float)($p['selling_price'] ?? 0) ?>"
+                                                                data-price="<?= (float)($p['lkr_price'] ?? 0) ?>"
                                                                 class="<?= $is_out_of_stock ? 'out-of-stock-option' : '' ?>"
                                                                 <?= $is_out_of_stock ? 'disabled' : '' ?>>
                                                                 <?= htmlspecialchars($p['name']) . $stock_label ?>

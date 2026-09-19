@@ -208,11 +208,14 @@ $safe_company_name = htmlspecialchars($company_name, ENT_QUOTES, 'UTF-8');
             <li class="pc-item"><a class="pc-link" href="../orders/cancel_order_list.php">Cancel Orders</a></li>
             <li class="pc-item"><a class="pc-link" href="../orders/return_handover_order_list.php">Return Handover Orders</a></li>
             <li class="pc-item"><a class="pc-link" href="../orders/return_complete_order_list.php">Return Complete Orders</a></li>
-            <li class="pc-item"><a class="pc-link" href="../orders/return_csv_upload.php">Return CSV Upload</a></li>
+            <li class="pc-item"><a class="pc-link" href="../orders/return_scanner.php">Return Scanner</a></li>
             <li class="pc-item"><a class="pc-link" href="../orders/complete_mark_upload.php">Completed Mark Upload</a></li>
             <li class="pc-item"><a class="pc-link" href="../orders/label_print.php">Label Print</a></li>
             <?php if ($is_admin && $is_main_admin_tenant): ?>
             <li class="pc-item"><a class="pc-link" href="../orders/payment_report.php">Payment Report</a></li>
+            <?php endif; ?>
+            <?php if ($is_admin): ?>
+            <li class="pc-item"><a class="pc-link" href="../orders/sales_view.php">Sales View</a></li>
             <?php endif; ?>
           </ul>
         </li>        <?php if ($is_admin): ?>

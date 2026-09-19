@@ -98,7 +98,7 @@ try {
     $status = sanitizeInput($_POST['status'] ?? '');
     $product_code = sanitizeInput($_POST['product_code'] ?? '');
     $description = sanitizeInput($_POST['description'] ?? '');
-    $selling_price = (float)($_POST['selling_price'] ?? $originalProduct['selling_price']);
+    $lkr_price = (float)($_POST['lkr_price'] ?? $originalProduct['lkr_price']);
 
     // Stock is managed via stock adjustments, orders and returns; preserved here.
     
@@ -158,8 +158,8 @@ try {
     }
 
     // Validate prices
-    if ($selling_price <= 0) {
-        $errors['selling_price'] = 'Selling price must be greater than zero';
+    if ($lkr_price <= 0) {
+        $errors['lkr_price'] = 'Price must be greater than zero';
     }
 
     // Check for duplicate product code (excluding current product) per tenant
@@ -186,7 +186,7 @@ try {
 
     // Prepare update query
     $updateQuery = "UPDATE products 
-                    SET name = ?, description = ?, status = ?, product_code = ?, stock_quantity = ?, low_stock_threshold = ?, category_id = ?, tenant_id = ?, selling_price = ?
+                    SET name = ?, description = ?, status = ?, product_code = ?, stock_quantity = ?, low_stock_threshold = ?, category_id = ?, tenant_id = ?, lkr_price = ?
                     WHERE id = ?";
 
     $updateStmt = $conn->prepare($updateQuery);
@@ -196,7 +196,7 @@ try {
     }
 
     // Bind parameters
-    $updateStmt->bind_param("ssssiiiidi", $name, $description, $status, $product_code, $stock_quantity, $low_stock_threshold, $category_id, $tenant_id, $selling_price, $product_id);
+    $updateStmt->bind_param("ssssiiiidi", $name, $description, $status, $product_code, $stock_quantity, $low_stock_threshold, $category_id, $tenant_id, $lkr_price, $product_id);
 
     // Execute the update
     if ($updateStmt->execute()) {
@@ -228,8 +228,8 @@ try {
                 if (intval($originalProduct['low_stock_threshold'] ?? 10) !== $low_stock_threshold) {
                     $changes[] = "Threshold: {$originalProduct['low_stock_threshold']} to {$low_stock_threshold}";
                 }
-                if (floatval($originalProduct['selling_price'] ?? 0) !== $selling_price) {
-                    $changes[] = "Selling Price: {$originalProduct['selling_price']} to {$selling_price}";
+                if (floatval($originalProduct['lkr_price'] ?? 0) !== $lkr_price) {
+                    $changes[] = "Price: {$originalProduct['lkr_price']} to {$lkr_price}";
                 }
 
                 $details = "Updated Product '{$name}': " . implode(', ', $changes);

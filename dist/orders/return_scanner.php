@@ -571,13 +571,18 @@ $restricted_tenant_id = (count($tenants) === 1 && !($is_main_admin === 1 && $_SE
                                 <textarea id="trackingInput" rows="12" placeholder="Enter tracking numbers here (one per line or scan multiple)..."></textarea>
                             </div>
                             
-                            <div style="display: flex; gap: 15px; justify-content: flex-end;">
-                                <button class="scan-btn" id="processBtn" onclick="processTracking()">
+                            <div style="display: flex; gap: 15px; justify-content: space-between; align-items: center; flex-wrap: wrap;">
+                                <a href="return_csv_upload.php" class="clear-btn" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; text-decoration: none; width: auto; padding: 10px 21px;">
+                                    <i class="fas fa-file-csv"></i> CSV Upload
+                                </a>
+                                <div style="display: flex; gap: 15px; flex-wrap: wrap;">
+                                <button class="scan-btn" id="processBtn" style="width: auto;" onclick="processTracking()">
                                 Process Tracking Numbers
                                 </button>
-                                <button class="clear-btn" id="clearBtn" onclick="clearTracking()">
+                                <button class="clear-btn" id="clearBtn" style="width: auto;" onclick="clearTracking()">
                                 Clear
                                 </button>
+                                </div>
                             </div>
 
                             <div class="progress-bar" id="progressBar">

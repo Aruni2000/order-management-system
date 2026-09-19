@@ -108,7 +108,7 @@ function checkCourierStatus($conn, $tenant_id) {
 $courierStatus = checkCourierStatus($conn, $selected_tenant_id);
 
 // Fetch necessary data for the form - filter by selected tenant for proper isolation
-$productSql = "SELECT id, name, description, stock_quantity, low_stock_threshold, selling_price FROM products WHERE status = 'active' AND tenant_id = ? ORDER BY name ASC";
+$productSql = "SELECT id, name, description, stock_quantity, low_stock_threshold, lkr_price FROM products WHERE status = 'active' AND tenant_id = ? ORDER BY name ASC";
 $productStmt = $conn->prepare($productSql);
 $productStmt->bind_param("i", $selected_tenant_id);
 $productStmt->execute();
@@ -773,7 +773,7 @@ if ($is_main_admin === 1 && $_SESSION['role_id'] == 1) {
                                                         <option value="<?= $row['id'] ?>"
                                                             data-description="<?= htmlspecialchars($row['description']) ?>"
                                                             data-stock="<?= $allow_inventory ? $stock : 999999 ?>"
-                                                            data-price="<?= (float)($row['selling_price'] ?? 0) ?>"
+                                                            data-price="<?= (float)($row['lkr_price'] ?? 0) ?>"
                                                             class="<?= $is_out_of_stock ? 'out-of-stock-option' : '' ?>"
                                                             <?= $is_out_of_stock ? 'disabled' : '' ?>>
                                                             <?= htmlspecialchars($row['name']) . $stock_label ?>

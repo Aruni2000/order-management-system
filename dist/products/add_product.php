@@ -310,7 +310,7 @@ if ($is_main_admin && $_SESSION['role_id'] == 1) {
                                 </div>
                             </div>
 
-                            <!-- Row 3: Category, Selling Price -->
+                            <!-- Row 3: Category, Price (LKR) -->
                             <div class="form-row">
                                 <div class="product-form-group">
                                     <label for="category_id" class="form-label">
@@ -326,12 +326,12 @@ if ($is_main_admin && $_SESSION['role_id'] == 1) {
                                 </div>
 
                                 <div class="product-form-group">
-                                    <label for="selling_price" class="form-label">
-                                        <i class="fas fa-tag"></i> Selling Price<span class="required">*</span>
+                                    <label for="lkr_price" class="form-label">
+                                        <i class="fas fa-tag"></i> Price (LKR)<span class="required">*</span>
                                     </label>
-                                    <input type="number" class="form-control" id="selling_price" name="selling_price"
+                                    <input type="number" class="form-control" id="lkr_price" name="lkr_price"
                                         placeholder="0.00" required min="0.01" step="0.01" value="0">
-                                    <div class="error-feedback" id="selling_price-error"></div>
+                                    <div class="error-feedback" id="lkr_price-error"></div>
                                 </div>
                             </div>
 
@@ -651,12 +651,12 @@ if ($is_main_admin && $_SESSION['role_id'] == 1) {
                 }
             });
 
-            $('#selling_price').on('blur', function() {
+            $('#lkr_price').on('blur', function() {
                 const validation = validatePrice($(this).val());
                 if (!validation.valid) {
-                    showError('selling_price', validation.message);
+                    showError('lkr_price', validation.message);
                 } else {
-                    showSuccess('selling_price');
+                    showSuccess('lkr_price');
                 }
             });
         }
@@ -753,8 +753,7 @@ if ($is_main_admin && $_SESSION['role_id'] == 1) {
 
         function validatePrice(price) {
             const val = parseFloat(price);
-            if (isNaN(val) || val <= 0) {
-                return { valid: false, message: 'Selling price must be greater than zero' };
+            if (isNaN(val) || val <= 0) {                                        return { valid: false, message: 'Price must be greater than zero' };
             }
             return { valid: true, message: '' };
         }
@@ -805,7 +804,7 @@ if ($is_main_admin && $_SESSION['role_id'] == 1) {
                 { field: 'product_code', validator: validateProductCode, value: productCode },
                 { field: 'description', validator: validateDescription, value: description },
                 { field: 'category_id', validator: validateCategory, value: $('#category_id').val() },
-                { field: 'selling_price', validator: validatePrice, value: $('#selling_price').val() }
+                { field: 'lkr_price', validator: validatePrice, value: $('#lkr_price').val() }
             ];
             
             validations.forEach(function(validation) {

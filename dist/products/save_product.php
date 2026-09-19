@@ -62,7 +62,7 @@ try {
     $status = sanitizeInput($_POST['status'] ?? '');
     $product_code = sanitizeInput($_POST['product_code'] ?? '');
     $description = sanitizeInput($_POST['description'] ?? '');
-    $selling_price = (float)($_POST['selling_price'] ?? 0);
+    $lkr_price = (float)($_POST['lkr_price'] ?? 0);
     
     // Default values for stock if inventory management is disabled
     $allow_inventory = isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1;
@@ -125,8 +125,8 @@ try {
         exit();
     }
 
-    if ($selling_price <= 0) {
-        $response['errors']['selling_price'] = 'Selling price must be greater than zero';
+    if ($lkr_price <= 0) {
+        $response['errors']['lkr_price'] = 'Price must be greater than zero';
         $response['message'] = 'Please correct the errors below.';
         echo json_encode($response);
         exit();
@@ -158,7 +158,7 @@ try {
     }
 
     // Prepare insert query
-    $insertQuery = "INSERT INTO products (name, description, status, product_code, stock_quantity, low_stock_threshold, category_id, tenant_id, selling_price) 
+    $insertQuery = "INSERT INTO products (name, description, status, product_code, stock_quantity, low_stock_threshold, category_id, tenant_id, lkr_price) 
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
     $insertStmt = $conn->prepare($insertQuery);
 
@@ -167,7 +167,7 @@ try {
     }
 
     // Bind parameters
-    $insertStmt->bind_param("ssssiiiid", $name, $description, $status, $product_code, $stock_quantity, $low_stock_threshold, $category_id, $tenant_id, $selling_price);
+    $insertStmt->bind_param("ssssiiiid", $name, $description, $status, $product_code, $stock_quantity, $low_stock_threshold, $category_id, $tenant_id, $lkr_price);
 
     // Execute the query
     if ($insertStmt->execute()) {
@@ -189,7 +189,7 @@ try {
                 }
                 $catStmt->close();
             }
-            $details = "Created Product - Name: {$name}, Code: {$product_code}, Status: {$status}, Stock: {$stock_quantity}, Stock Warning Level: {$low_stock_threshold}, Selling Price: {$selling_price}, Category: '{$catName}'";
+            $details = "Created Product - Name: {$name}, Code: {$product_code}, Status: {$status}, Stock: {$stock_quantity}, Stock Warning Level: {$low_stock_threshold}, Price: {$lkr_price}, Category: '{$catName}'";
 
             $logQuery = "INSERT INTO user_logs (user_id, action_type, inquiry_id, details, created_at) 
                          VALUES (?, ?, ?, ?, NOW())";

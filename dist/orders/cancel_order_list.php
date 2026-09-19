@@ -277,7 +277,7 @@ if (!empty($searchConditions)) {
 
 
 // Add ordering and pagination
-$sql .= " ORDER BY i.order_id DESC LIMIT $limit OFFSET $offset";
+$sql .= " ORDER BY i.updated_at DESC, i.order_id DESC LIMIT $limit OFFSET $offset";
 
 
 // Execute queries
