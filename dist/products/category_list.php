@@ -405,8 +405,8 @@ $result = $conn->query($sql);
                                                 <small style="color: #6c757d;"><?php echo date('h:i:s A', strtotime($row['created_at'])); ?></small>
                                             </div>
                                         </td>
-                                        <td class="actions">
-                                            <div class="action-buttons-group">
+                                        <td style="text-align: left;">
+                                            <div class="action-buttons-group" style="justify-content: flex-start;">
                                                 <button type="button" class="action-btn view-btn view-category-btn"
                                                         data-category-id="<?= $row['id'] ?>"
                                                         data-category-name="<?= htmlspecialchars($row['name']) ?>"

@@ -385,8 +385,8 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                 </td>
 
                                 <!-- Action Buttons - ADDED phone_2 data attribute -->
-                                <td class="actions">
-                                    <div class="action-buttons-group">
+                                <td style="text-align: left;">
+                                    <div class="action-buttons-group" style="justify-content: flex-start;">
                                         <button type="button" class="action-btn view-btn view-customer-btn"
                                             data-customer-id="<?= $row['customer_id'] ?>"
                                             data-customer-name="<?= htmlspecialchars($row['name']) ?>"

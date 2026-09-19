@@ -397,8 +397,8 @@ if ($is_main_admin && $_SESSION['role_id'] == 1) {
                                         </td>
                                         
                                         <!-- Action Buttons -->
-                                        <td class="actions">
-                                            <div class="action-buttons-group">
+                                        <td style="text-align: left;">
+                                            <div class="action-buttons-group" style="justify-content: flex-start;">
                                                 <button type="button" class="action-btn view-btn view-user-btn"
                                                         data-user-id="<?= $row['user_id'] ?>"
                                                         data-username="<?= htmlspecialchars($row['username']) ?>"

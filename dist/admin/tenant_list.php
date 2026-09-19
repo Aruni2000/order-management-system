@@ -366,8 +366,8 @@ if (!$result) {
                                         </td>
                                         
                                         <!-- Action Buttons -->
-                                        <td class="actions">
-                                            <div class="action-buttons-group">
+                                        <td style="text-align: left;">
+                                            <div class="action-buttons-group" style="justify-content: flex-start;">
                                                 <button type="button" class="action-btn view-btn view-tenant-btn"
                                                         data-tenant-id="<?= $row['tenant_id'] ?>"
                                                         data-company-name="<?= htmlspecialchars($row['company_name']) ?>"

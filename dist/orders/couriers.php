@@ -382,7 +382,7 @@ function getStatusInfo($is_default) {
                                         </td>
                                         
                                         <!-- Actions -->
-                                        <td class="actions">
+                                        <td style="text-align: left;">
                                             <div class="action-dropdown-container">
                                                 <select class="courier-status-dropdown" 
                                                         data-co-id="<?= $row['co_id'] ?>" 

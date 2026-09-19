@@ -645,7 +645,8 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                 </td>
 
                                 <!-- Action Buttons -->
-                                <td class="actions">
+                                <td style="text-align: left;">
+                                    <div class="action-buttons-group" style="justify-content: flex-start;">
                                     <?php
                                             $payStatus = isset($row['pay_status']) ? $row['pay_status'] : 'unpaid';
                                             $orderId = isset($row['order_id']) ? htmlspecialchars($row['order_id']) : '';
@@ -692,7 +693,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                         <i class="fas fa-undo"></i>
                                     </button>
                                     <?php endif; ?>
-
+                                    </div>
                                 </td>
                             </tr>
                             <?php endwhile; ?>

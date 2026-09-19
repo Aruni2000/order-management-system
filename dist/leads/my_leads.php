@@ -623,7 +623,8 @@ $userInfo = $userInfoResult->fetch_assoc();
                                         </td>
                                         
                                         <!-- Action Buttons -->
-                                        <td class="actions">
+                                        <td style="text-align: left;">
+                                            <div class="action-buttons-group" style="justify-content: flex-start;">
                                             <button class="action-btn view-btn" title="View Lead Details" 
                                                     onclick="openLeadModal('<?php echo isset($row['order_id']) ? htmlspecialchars($row['order_id']) : ''; ?>')">
                                                 <i class="fas fa-eye"></i>
@@ -662,6 +663,7 @@ $userInfo = $userInfoResult->fetch_assoc();
                                                 <i class="fas fa-user-shield"></i>
                                             </button>
                                             <?php endif; ?>
+                                            </div>
                                         </td>
                                     </tr>
                                 <?php endwhile; ?>

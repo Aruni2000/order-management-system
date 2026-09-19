@@ -837,7 +837,8 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
 
 
                                 <!-- Action Buttons -->
-                                <td class="actions">
+                                <td style="text-align: left;">
+                                    <div class="action-buttons-group" style="justify-content: flex-start;">
                                     <button class="action-btn view-btn" title="View Order Details"
                                         onclick="openOrderModal('<?php echo isset($row['order_id']) ? htmlspecialchars($row['order_id']) : ''; ?>', '<?php echo isset($row['interface']) ? htmlspecialchars($row['interface']) : ''; ?>')">
                                         <i class="fas fa-eye"></i>
@@ -848,6 +849,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                         onclick="printOrder('<?php echo isset($row['order_id']) ? htmlspecialchars($row['order_id']) : ''; ?>')">
                                         <i class="fas fa-print"></i>
                                     </button>
+                                    </div>
                                 </td>
                             </tr>
                             <?php endwhile; ?>

@@ -534,7 +534,8 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                 </td>
 
                                 <!-- Action Buttons -->
-                                <td class="actions">
+                                <td style="text-align: left;">
+                                    <div class="action-buttons-group" style="justify-content: flex-start;">
                                     <?php
                                                 $orderId = isset($row['order_id']) ? htmlspecialchars($row['order_id']) : '';
                                                 $interface = isset($row['interface']) ? htmlspecialchars($row['interface']) : '';
@@ -543,7 +544,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                         onclick="openOrderModal('<?php echo $orderId; ?>', '<?php echo $interface; ?>')">
                                         <i class="fas fa-eye"></i>
                                     </button>
-
+                                    </div>
                                 </td>
                             </tr>
                             <?php endwhile; ?>

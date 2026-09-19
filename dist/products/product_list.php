@@ -436,8 +436,8 @@ $result = $conn->query($sql);
                                         </td>
                                         
                                         <!-- Action Buttons -->
-                                        <td class="actions">
-                                            <div class="action-buttons-group">
+                                        <td style="text-align: left;">
+                                            <div class="action-buttons-group" style="justify-content: flex-start;">
                                                 <button type="button" class="action-btn view-btn view-product-btn"
                                                         data-product-id="<?= $row['id'] ?>"
                                                         data-product-name="<?= htmlspecialchars($row['name']) ?>"
@@ -501,7 +501,7 @@ $result = $conn->query($sql);
                                 <?php endwhile; ?>
                             <?php else: ?>
                                 <tr>
-                                    <td colspan="<?= 9 + ($is_main_admin && $_SESSION['role_id'] == 1 ? 1 : 0) + (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1 ? 1 : 0) ?>" class="text-center" style="padding: 40px; text-align: center; color: #666;">
+                                    <td colspan="<?= 8 + ($is_main_admin && $_SESSION['role_id'] == 1 ? 1 : 0) + (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1 ? 1 : 0) ?>" class="text-center" style="padding: 40px; text-align: center; color: #666;">
                                         <i class="fas fa-box" style="font-size: 2rem; margin-bottom: 10px; display: block;"></i>
                                         No products found
                                     </td>
