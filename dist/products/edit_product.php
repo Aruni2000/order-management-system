@@ -43,15 +43,9 @@ $session_tenant_id = isset($_SESSION['tenant_id']) ? (int)$_SESSION['tenant_id']
 $is_main_admin = isset($_SESSION['is_main_admin']) ? (int)$_SESSION['is_main_admin'] : 0;
 
 try {
-    if ($is_main_admin && $_SESSION['role_id'] == 1) {
-        $query = "SELECT * FROM products WHERE id = ? LIMIT 1";
-        $stmt = $conn->prepare($query);
-        $stmt->bind_param("i", $product_id);
-    } else {
-        $query = "SELECT * FROM products WHERE id = ? AND tenant_id = ? LIMIT 1";
-        $stmt = $conn->prepare($query);
-        $stmt->bind_param("ii", $product_id, $session_tenant_id);
-    }
+    $query = "SELECT * FROM products WHERE id = ? LIMIT 1";
+    $stmt = $conn->prepare($query);
+    $stmt->bind_param("i", $product_id);
     
     $stmt->execute();
     $result = $stmt->get_result();
@@ -75,22 +69,11 @@ $categories = [];
 $prodCatId = intval($product['category_id']);
 
 try {
-    if ($is_main_admin && $_SESSION['role_id'] == 1) {
-        $catQuery = "SELECT id, name, tenant_id FROM categories 
-                     WHERE tenant_id = ? 
-                     AND (status = 'active' OR id = ?)
-                     ORDER BY name ASC";
-        $catStmt = $conn->prepare($catQuery);
-        $prodTenantId = (int)$product['tenant_id'];
-        $catStmt->bind_param("ii", $prodTenantId, $prodCatId);
-    } else {
-        $catQuery = "SELECT id, name, tenant_id FROM categories 
-                     WHERE tenant_id = ? 
-                     AND (status = 'active' OR id = ?)
-                     ORDER BY name ASC";
-        $catStmt = $conn->prepare($catQuery);
-        $catStmt->bind_param("ii", $session_tenant_id, $prodCatId);
-    }
+    $catQuery = "SELECT id, name FROM categories 
+                 WHERE (status = 'active' OR id = ?)
+                 ORDER BY name ASC";
+    $catStmt = $conn->prepare($catQuery);
+    $catStmt->bind_param("i", $prodCatId);
     $catStmt->execute();
     $catRes = $catStmt->get_result();
     
@@ -344,10 +327,7 @@ try {
                                 </div>
                             </div>
 
-                            <!-- Tenant  -->
-                            <?php if ($is_main_admin && $_SESSION['role_id'] == 1): ?>
-                            <input type="hidden" name="tenant_id" value="<?php echo (int)$product['tenant_id']; ?>">
-                            <?php endif; ?>
+
 
                             <!-- Category and Product Code -->
                             <div class="form-row">
@@ -358,7 +338,7 @@ try {
                                     <select class="form-select" id="category_id" name="category_id" data-placeholder="Search category..." required>
                                         <option value=""></option>
                                         <?php foreach ($categories as $cat): ?>
-                                            <option value="<?php echo $cat['id']; ?>" data-tenant="<?php echo $cat['tenant_id']; ?>" <?php echo $prodCatId == $cat['id'] ? 'selected' : ''; ?>>
+                                            <option value="<?php echo $cat['id']; ?>" <?php echo $prodCatId == $cat['id'] ? 'selected' : ''; ?>>
                                                 <?php echo htmlspecialchars($cat['name']); ?>
                                             </option>
                                         <?php endforeach; ?>

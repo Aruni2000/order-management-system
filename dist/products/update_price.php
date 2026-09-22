@@ -52,26 +52,14 @@ try {
         exit();
     }
 
-    $session_tenant_id = isset($_SESSION['tenant_id']) ? (int)$_SESSION['tenant_id'] : 0;
-    $is_main_admin = isset($_SESSION['is_main_admin']) ? (int)$_SESSION['is_main_admin'] : 0;
-
-    if ($is_main_admin && $_SESSION['role_id'] == 1) {
-        $checkSql = "SELECT id, name, lkr_price FROM products WHERE id = ?";
-        $checkStmt = $conn->prepare($checkSql);
-        if (!$checkStmt) {
-            echo json_encode(['success' => false, 'message' => 'Database prepare error: ' . $conn->error]);
-            exit();
-        }
-        $checkStmt->bind_param("i", $product_id);
-    } else {
-        $checkSql = "SELECT id, name, lkr_price FROM products WHERE id = ? AND tenant_id = ?";
-        $checkStmt = $conn->prepare($checkSql);
-        if (!$checkStmt) {
-            echo json_encode(['success' => false, 'message' => 'Database prepare error: ' . $conn->error]);
-            exit();
-        }
-        $checkStmt->bind_param("ii", $product_id, $session_tenant_id);
+    // Check if product exists (no tenant isolation - products are global)
+    $checkSql = "SELECT id, name, lkr_price FROM products WHERE id = ?";
+    $checkStmt = $conn->prepare($checkSql);
+    if (!$checkStmt) {
+        echo json_encode(['success' => false, 'message' => 'Database prepare error: ' . $conn->error]);
+        exit();
     }
+    $checkStmt->bind_param("i", $product_id);
     $checkStmt->execute();
     $result = $checkStmt->get_result();
     if ($result->num_rows === 0) {
@@ -87,21 +75,12 @@ try {
     $conn->autocommit(FALSE);
 
     try {
-        if ($is_main_admin && $_SESSION['role_id'] == 1) {
-            $updateSql = "UPDATE products SET lkr_price = ? WHERE id = ?";
-            $updateStmt = $conn->prepare($updateSql);
+        $updateSql = "UPDATE products SET lkr_price = ? WHERE id = ?";
+        $updateStmt = $conn->prepare($updateSql);
             if (!$updateStmt) {
                 throw new Exception('Product update prepare error: ' . $conn->error);
             }
             $updateStmt->bind_param("di", $new_lkr_price, $product_id);
-        } else {
-            $updateSql = "UPDATE products SET lkr_price = ? WHERE id = ? AND tenant_id = ?";
-            $updateStmt = $conn->prepare($updateSql);
-            if (!$updateStmt) {
-                throw new Exception('Product update prepare error: ' . $conn->error);
-            }
-            $updateStmt->bind_param("dii", $new_lkr_price, $product_id, $session_tenant_id);
-        }
         if (!$updateStmt->execute()) {
             throw new Exception('Failed to update price: ' . $updateStmt->error);
         }

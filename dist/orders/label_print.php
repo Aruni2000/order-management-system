@@ -265,10 +265,6 @@ if ($is_main_admin === 1 && $_SESSION['role_id'] == 1) {
                         <i class="fas fa-print"></i>
                        Print 4×6 Labels
                     </button>
-                    <button class="print-btn" onclick="printLabels('4label')">
-                        <i class="fas fa-print"></i>
-                        Print 4-Label A4
-                    </button>
                 </div>
             </div>
         </div>

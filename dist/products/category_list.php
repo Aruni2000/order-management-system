@@ -25,32 +25,11 @@ function generateCSRFToken() {
 $csrf_token = generateCSRFToken();
 
 $is_user = (int)($_SESSION['role_id'] ?? 0) == 2;
-$is_main_admin = isset($_SESSION['is_main_admin']) && (int)$_SESSION['is_main_admin'] === 1;
-$session_tenant_id = (int)($_SESSION['tenant_id'] ?? 0);
-$canManageAllTenants = $is_main_admin && (int)($_SESSION['role_id'] ?? 0) === 1;
-
-// Fetch tenants for main admin (company filter + add-modal selector)
-$tenants = [];
-if ($canManageAllTenants) {
-    $tRes = $conn->query("SELECT tenant_id, company_name FROM tenants WHERE status = 'active' ORDER BY company_name ASC");
-    if ($tRes) {
-        while ($row = $tRes->fetch_assoc()) {
-            $tenants[] = $row;
-        }
-    }
-}
 
 // Handle search and filter parameters
 $search = isset($_GET['search']) ? trim($_GET['search']) : '';
-$tenant_filter = isset($_GET['tenant_filter']) ? intval($_GET['tenant_filter']) : 0;
 
-// Tenant scoping: sub-company users see only their own tenant; main admin sees all (or a selected one)
 $where = [];
-if (!$canManageAllTenants) {
-    $where[] = "c.tenant_id = $session_tenant_id";
-} elseif ($tenant_filter > 0) {
-    $where[] = "c.tenant_id = $tenant_filter";
-}
 if (!empty($search)) {
     $searchTerm = $conn->real_escape_string($search);
     $where[] = "(c.id LIKE '%$searchTerm%' OR c.name LIKE '%$searchTerm%')";
@@ -61,9 +40,8 @@ $whereSql = $where ? " WHERE " . implode(' AND ', $where) : '';
 $countSql = "SELECT COUNT(*) as total FROM categories c" . $whereSql;
 
 // Main query
-$sql = "SELECT c.id, c.name, c.created_at, c.status, t.company_name
-        FROM categories c 
-        LEFT JOIN tenants t ON c.tenant_id = t.tenant_id" . $whereSql . "
+$sql = "SELECT c.id, c.name, c.created_at, c.status
+        FROM categories c" . $whereSql . "
         ORDER BY c.id DESC";
 
 // Execute queries
@@ -320,19 +298,6 @@ $result = $conn->query($sql);
                                    value="<?php echo htmlspecialchars($search); ?>">
                         </div>
 
-                        <?php if ($canManageAllTenants): ?>
-                        <div class="form-group">
-                            <label for="tenant_filter">Tenant</label>
-                            <select id="tenant_filter" name="tenant_filter">
-                                <option value="">All Companies</option>
-                                <?php foreach ($tenants as $t): ?>
-                                    <option value="<?= $t['tenant_id']; ?>" <?php echo ($tenant_filter == $t['tenant_id']) ? 'selected' : ''; ?>>
-                                        <?php echo htmlspecialchars($t['company_name']); ?>
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
-                        <?php endif; ?>
                         
                         <div class="form-group">
                             <div class="button-group">
@@ -369,9 +334,6 @@ $result = $conn->query($sql);
                                 <th>ID</th>
                                 <th>Category Name</th>
                                 <th>Status</th>
-                                <?php if ($canManageAllTenants): ?>
-                                <th>Tenant</th>
-                                <?php endif; ?>
                                 <th>Created</th>
                                 <th>Actions</th>
                             </tr>
@@ -389,15 +351,6 @@ $result = $conn->query($sql);
                                                 <span class="status-badge pay-status-unpaid">Inactive</span>
                                             <?php endif; ?>
                                         </td>
-                                        <?php if ($canManageAllTenants): ?>
-                                        <td class="customer-name">
-                                            <div class="customer-info">
-                                                <h6 style="margin: 0; font-size: 14px;">
-                                                    <?php echo htmlspecialchars($row['company_name'] ?? 'N/A'); ?>
-                                                </h6>
-                                            </div>
-                                        </td>
-                                        <?php endif; ?>
                                         <td>
                                             <div style="font-size: 13px;">
                                                 <?php echo date('Y-m-d', strtotime($row['created_at'])); ?>
@@ -437,7 +390,7 @@ $result = $conn->query($sql);
                                 <?php endwhile; ?>
                             <?php else: ?>
                                 <tr>
-                                    <td colspan="<?= $canManageAllTenants ? 6 : 5 ?>" class="text-center" style="padding: 40px; text-align: center; color: #666;">
+                                    <td colspan="5" class="text-center" style="padding: 40px; text-align: center; color: #666;">
                                         <i class="fas fa-tags" style="font-size: 2rem; margin-bottom: 10px; display: block;"></i>
                                         No categories found
                                     </td>
@@ -617,13 +570,6 @@ $result = $conn->query($sql);
                     return;
                 }
 
-                const $addTenant = $('#addTenantId');
-                if ($addTenant.length && $addTenant.val() === '') {
-                    $('#addTenantId').addClass('is-invalid');
-                    $('#addTenant-error').text('Please select a Target Company').show();
-                    return;
-                }
-                
                 const $btn = $('#addCategoryForm .modal-btn-primary');
                 $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Adding...');
                 
@@ -797,20 +743,6 @@ $result = $conn->query($sql);
                                placeholder="Enter category name" required maxlength="255">
                         <div class="error-feedback" id="name-error"></div>
                     </div>
-                    <?php if ($canManageAllTenants): ?>
-                    <div class="form-group-modal">
-                        <label class="form-label">
-                            <i class="fas fa-building"></i> Target Company<span class="required">*</span>
-                        </label>
-                        <select class="form-control" id="addTenantId" name="tenant_id" required>
-                            <option value="">Select Company</option>
-                            <?php foreach ($tenants as $t): ?>
-                                <option value="<?= $t['tenant_id']; ?>"><?php echo htmlspecialchars($t['company_name']); ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                        <div class="error-feedback" id="addTenant-error"></div>
-                    </div>
-                    <?php endif; ?>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="modal-btn-secondary" onclick="closeAddCategoryModal()">Cancel</button>

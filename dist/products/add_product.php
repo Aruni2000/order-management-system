@@ -35,15 +35,10 @@ function generateCSRFToken() {
 $is_main_admin = isset($_SESSION['is_main_admin']) ? (int)$_SESSION['is_main_admin'] : 0;
 $session_tenant_id = isset($_SESSION['tenant_id']) ? (int)$_SESSION['tenant_id'] : 0;
 
-// Fetch all categories for the single Category dropdown
-// Main admin sees all (filtered live by selected target tenant); others only their own tenant
+// Fetch all categories for the Category dropdown
 $categories = [];
 try {
-    if ($is_main_admin && $_SESSION['role_id'] == 1) {
-        $catRes = $conn->query("SELECT id, name, tenant_id FROM categories WHERE status = 'active' ORDER BY name ASC");
-    } else {
-        $catRes = $conn->query("SELECT id, name, tenant_id FROM categories WHERE status = 'active' AND tenant_id = $session_tenant_id ORDER BY name ASC");
-    }
+    $catRes = $conn->query("SELECT id, name FROM categories WHERE status = 'active' ORDER BY name ASC");
     if ($catRes) {
         while ($row = $catRes->fetch_assoc()) {
             $categories[] = $row;
@@ -270,26 +265,7 @@ if ($is_main_admin && $_SESSION['role_id'] == 1) {
                     <!-- Product Details Section -->
                     <div class="form-section">
                         <div class="section-content">
-                            <!-- Row 1: Tenant (Main Admin Only) -->
-                            <?php if ($is_main_admin && $_SESSION['role_id'] == 1): ?>
-                            <div class="form-row">
-                                <div class="product-form-group full-width">
-                                    <label for="tenant_id" class="form-label">
-                                        <i class="fas fa-building"></i> Tenant<span class="required">*</span>
-                                    </label>
-                                    <select class="form-select" id="tenant_id" name="tenant_id" required>
-                                        <?php foreach ($tenants as $t): ?>
-                                            <option value="<?php echo $t['tenant_id']; ?>" <?php echo ($t['tenant_id'] == $session_tenant_id) ? 'selected' : ''; ?>>
-                                                <?php echo htmlspecialchars($t['company_name']); ?>
-                                            </option>
-                                        <?php endforeach; ?>
-                                    </select>
-                                    <div class="error-feedback" id="tenant_id-error"></div>
-                                </div>
-                            </div>
-                            <?php endif; ?>
-
-                            <!-- Row 2: Product Name, Product Code -->
+                            <!-- Row 1: Product Name, Product Code -->
                             <div class="form-row">
                                 <div class="product-form-group">
                                     <label for="name" class="form-label">
@@ -319,7 +295,7 @@ if ($is_main_admin && $_SESSION['role_id'] == 1) {
                                     <select class="form-select" id="category_id" name="category_id" data-placeholder="Search category..." required>
                                         <option value=""></option>
                                         <?php foreach ($categories as $cat): ?>
-                                            <option value="<?php echo $cat['id']; ?>" data-tenant="<?php echo $cat['tenant_id']; ?>"><?php echo htmlspecialchars($cat['name']); ?></option>
+                                            <option value="<?php echo $cat['id']; ?>"><?php echo htmlspecialchars($cat['name']); ?></option>
                                         <?php endforeach; ?>
                                     </select>
                                     <div class="error-feedback" id="category_id-error"></div>
@@ -439,25 +415,6 @@ if ($is_main_admin && $_SESSION['role_id'] == 1) {
                     searchField.focus();
                 }
             });
-
-            // Main admin: filter category dropdown live by selected Target Company
-            const allCategories = <?php echo json_encode($categories, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?>;
-            const tenantSelect = $('#tenant_id');
-            if (tenantSelect.length) {
-                tenantSelect.on('change', function() {
-                    const selectedTenant = parseInt($(this).val(), 10) || 0;
-                    const filtered = allCategories.filter(function(c) {
-                        return parseInt(c.tenant_id, 10) === selectedTenant;
-                    });
-                    const $cat = $('#category_id');
-                    $cat.empty().append('<option value=""></option>');
-                    filtered.forEach(function(c) {
-                        $cat.append($('<option>', { value: c.id, text: c.name }));
-                    });
-                    $cat.val('').trigger('change');
-                });
-                tenantSelect.trigger('change');
-            }
 
             // Initialize form
             initializeForm();

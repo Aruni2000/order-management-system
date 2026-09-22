@@ -67,19 +67,10 @@ try {
         exit();
     }
 
-    // Check if product exists and enforce tenant isolation
-    $is_main_admin = isset($_SESSION['is_main_admin']) ? (int)$_SESSION['is_main_admin'] : 0;
-    $session_tenant_id = isset($_SESSION['tenant_id']) ? (int)$_SESSION['tenant_id'] : 0;
-
-    if ($is_main_admin && $_SESSION['role_id'] == 1) {
-        $checkQuery = "SELECT * FROM products WHERE id = ? LIMIT 1";
-        $checkStmt = $conn->prepare($checkQuery);
-        $checkStmt->bind_param("i", $product_id);
-    } else {
-        $checkQuery = "SELECT * FROM products WHERE id = ? AND tenant_id = ? LIMIT 1";
-        $checkStmt = $conn->prepare($checkQuery);
-        $checkStmt->bind_param("ii", $product_id, $session_tenant_id);
-    }
+    // Check if product exists (no tenant isolation - products are global)
+    $checkQuery = "SELECT * FROM products WHERE id = ? LIMIT 1";
+    $checkStmt = $conn->prepare($checkQuery);
+    $checkStmt->bind_param("i", $product_id);
     
     $checkStmt->execute();
     $checkResult = $checkStmt->get_result();
@@ -107,12 +98,6 @@ try {
     $stock_quantity = intval($originalProduct['stock_quantity']);
     $low_stock_threshold = $allow_inventory ? intval($_POST['low_stock_threshold'] ?? $originalProduct['low_stock_threshold']) : intval($originalProduct['low_stock_threshold']);
     $category_id = intval($_POST['category_id'] ?? $originalProduct['category_id']);
-    
-    if ($is_main_admin && $_SESSION['role_id'] == 1) {
-        $tenant_id = intval($_POST['tenant_id'] ?? $originalProduct['tenant_id']);
-    } else {
-        $tenant_id = intval($originalProduct['tenant_id']);
-    }
 
     // Server-side validation
     $errors = [];
@@ -162,11 +147,11 @@ try {
         $errors['lkr_price'] = 'Price must be greater than zero';
     }
 
-    // Check for duplicate product code (excluding current product) per tenant
+    // Check for duplicate product code (excluding current product)
     if (empty($errors['product_code'])) {
-        $checkCodeQuery = "SELECT id FROM products WHERE product_code = ? AND tenant_id = ? AND id != ? LIMIT 1";
+        $checkCodeQuery = "SELECT id FROM products WHERE product_code = ? AND id != ? LIMIT 1";
         $checkCodeStmt = $conn->prepare($checkCodeQuery);
-        $checkCodeStmt->bind_param("sii", $product_code, $tenant_id, $product_id);
+        $checkCodeStmt->bind_param("si", $product_code, $product_id);
         $checkCodeStmt->execute();
         $codeResult = $checkCodeStmt->get_result();
 
@@ -186,7 +171,7 @@ try {
 
     // Prepare update query
     $updateQuery = "UPDATE products 
-                    SET name = ?, description = ?, status = ?, product_code = ?, stock_quantity = ?, low_stock_threshold = ?, category_id = ?, tenant_id = ?, lkr_price = ?
+                    SET name = ?, description = ?, status = ?, product_code = ?, stock_quantity = ?, low_stock_threshold = ?, category_id = ?, lkr_price = ?
                     WHERE id = ?";
 
     $updateStmt = $conn->prepare($updateQuery);
@@ -196,7 +181,7 @@ try {
     }
 
     // Bind parameters
-    $updateStmt->bind_param("ssssiiiidi", $name, $description, $status, $product_code, $stock_quantity, $low_stock_threshold, $category_id, $tenant_id, $lkr_price, $product_id);
+    $updateStmt->bind_param("ssssiiidi", $name, $description, $status, $product_code, $stock_quantity, $low_stock_threshold, $category_id, $lkr_price, $product_id);
 
     // Execute the update
     if ($updateStmt->execute()) {

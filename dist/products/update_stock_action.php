@@ -80,19 +80,10 @@ try {
         exit();
     }
 
-    // Check if product exists
-    $session_tenant_id = isset($_SESSION['tenant_id']) ? (int)$_SESSION['tenant_id'] : 0;
-    $is_main_admin = isset($_SESSION['is_main_admin']) ? (int)$_SESSION['is_main_admin'] : 0;
-
-    if ($is_main_admin && $_SESSION['role_id'] == 1) {
-        $checkSql = "SELECT id, name, stock_quantity, tenant_id FROM products WHERE id = ?";
-        $checkStmt = $conn->prepare($checkSql);
-        $checkStmt->bind_param("i", $product_id);
-    } else {
-        $checkSql = "SELECT id, name, stock_quantity, tenant_id FROM products WHERE id = ? AND tenant_id = ?";
-        $checkStmt = $conn->prepare($checkSql);
-        $checkStmt->bind_param("ii", $product_id, $session_tenant_id);
-    }
+    // Check if product exists (no tenant isolation - products are global)
+    $checkSql = "SELECT id, name, stock_quantity FROM products WHERE id = ?";
+    $checkStmt = $conn->prepare($checkSql);
+    $checkStmt->bind_param("i", $product_id);
 
     if (!$checkStmt) {
         echo json_encode(['success' => false, 'message' => 'Database prepare error: ' . $conn->error]);
@@ -131,16 +122,10 @@ try {
     $conn->autocommit(FALSE);
 
     try {
-        // Update product stock (with tenant isolation)
-        if ($is_main_admin && $_SESSION['role_id'] == 1) {
-            $updateSql = "UPDATE products SET stock_quantity = ? WHERE id = ?";
-            $updateStmt = $conn->prepare($updateSql);
-            $updateStmt->bind_param("ii", $new_stock, $product_id);
-        } else {
-            $updateSql = "UPDATE products SET stock_quantity = ? WHERE id = ? AND tenant_id = ?";
-            $updateStmt = $conn->prepare($updateSql);
-            $updateStmt->bind_param("iii", $new_stock, $product_id, $session_tenant_id);
-        }
+        // Update product stock
+        $updateSql = "UPDATE products SET stock_quantity = ? WHERE id = ?";
+        $updateStmt = $conn->prepare($updateSql);
+        $updateStmt->bind_param("ii", $new_stock, $product_id);
 
         if (!$updateStmt) {
             throw new Exception('Database prepare error: ' . $conn->error);

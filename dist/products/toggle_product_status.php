@@ -64,16 +64,10 @@ try {
         exit();
     }
     
-    // Check if product exists (with tenant isolation)
-    if ($is_main_admin && $_SESSION['role_id'] == 1) {
-        $checkSql = "SELECT id, name, status FROM products WHERE id = ?";
-        $checkStmt = $conn->prepare($checkSql);
-        $checkStmt->bind_param("i", $product_id);
-    } else {
-        $checkSql = "SELECT id, name, status FROM products WHERE id = ? AND tenant_id = ?";
-        $checkStmt = $conn->prepare($checkSql);
-        $checkStmt->bind_param("ii", $product_id, $session_tenant_id);
-    }
+    // Check if product exists (no tenant isolation - products are global)
+    $checkSql = "SELECT id, name, status FROM products WHERE id = ?";
+    $checkStmt = $conn->prepare($checkSql);
+    $checkStmt->bind_param("i", $product_id);
     
     if (!$checkStmt) {
         echo json_encode(['success' => false, 'message' => 'Database prepare error: ' . $conn->error]);

@@ -35,10 +35,6 @@ switch ($format) {
         $printPage = 'four_thirteen_bulk_print.php';
         break;
     
-    case '4label':
-        $printPage = 'four_label_bulk_print.php';
-        break;
-    
     case 'regular':
     default:
         $printPage = 'ten_fourteen_bulk_print.php';

@@ -77,36 +77,6 @@ try {
         exit();
     }
     
-    // Handle tenant_id based on role
-    $is_main_admin = isset($_SESSION['is_main_admin']) ? (int)$_SESSION['is_main_admin'] : 0;
-    if ($is_main_admin && $_SESSION['role_id'] == 1) {
-        $tenant_id = isset($_POST['tenant_id']) ? intval($_POST['tenant_id']) : 0;
-        if ($tenant_id <= 0) {
-            $response['errors']['tenant_id'] = 'Tenant is required';
-            $response['message'] = 'Required fields are missing';
-            echo json_encode($response);
-            exit();
-        }
-    } else {
-        $tenant_id = isset($_SESSION['tenant_id']) ? (int)$_SESSION['tenant_id'] : 0;
-    }
-
-    // -------------------------------------------------------------------------
-    // CATEGORY TENANT VALIDATION
-    // -------------------------------------------------------------------------
-    if ($category_id > 0) {
-        $catTenantStmt = $conn->prepare("SELECT id FROM categories WHERE id = ? AND tenant_id = ?");
-        $catTenantStmt->bind_param("ii", $category_id, $tenant_id);
-        $catTenantStmt->execute();
-        if ($catTenantStmt->get_result()->num_rows === 0) {
-            $response['errors']['category_id'] = 'Selected category is not available for the target company';
-            $response['message'] = 'Please correct the errors below.';
-            echo json_encode($response);
-            exit();
-        }
-        $catTenantStmt->close();
-    }
-
     // -------------------------------------------------------------------------
     // REQUIRED FIELDS VALIDATION
     // -------------------------------------------------------------------------
@@ -140,11 +110,11 @@ try {
         exit();
     }
 
-    // Check for duplicate product code per tenant
+    // Check for duplicate product code
     if (!empty($product_code)) {
-        $checkCodeQuery = "SELECT id FROM products WHERE product_code = ? AND tenant_id = ? LIMIT 1";
+        $checkCodeQuery = "SELECT id FROM products WHERE product_code = ? LIMIT 1";
         $checkCodeStmt = $conn->prepare($checkCodeQuery);
-        $checkCodeStmt->bind_param("si", $product_code, $tenant_id);
+        $checkCodeStmt->bind_param("s", $product_code);
         $checkCodeStmt->execute();
         $codeResult = $checkCodeStmt->get_result();
 
@@ -158,8 +128,8 @@ try {
     }
 
     // Prepare insert query
-    $insertQuery = "INSERT INTO products (name, description, status, product_code, stock_quantity, low_stock_threshold, category_id, tenant_id, lkr_price) 
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
+    $insertQuery = "INSERT INTO products (name, description, status, product_code, stock_quantity, low_stock_threshold, category_id, lkr_price) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
     $insertStmt = $conn->prepare($insertQuery);
 
     if (!$insertStmt) {
@@ -167,7 +137,7 @@ try {
     }
 
     // Bind parameters
-    $insertStmt->bind_param("ssssiiiid", $name, $description, $status, $product_code, $stock_quantity, $low_stock_threshold, $category_id, $tenant_id, $lkr_price);
+    $insertStmt->bind_param("ssssiiid", $name, $description, $status, $product_code, $stock_quantity, $low_stock_threshold, $category_id, $lkr_price);
 
     // Execute the query
     if ($insertStmt->execute()) {

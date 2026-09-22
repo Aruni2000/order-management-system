@@ -16,20 +16,16 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
 include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
 
-// Multi-tenant permissions
+// Permissions
 $is_main_admin = isset($_SESSION['is_main_admin']) && $_SESSION['is_main_admin'] == 1;
 $is_user = isset($_SESSION['role_id']) && (int)$_SESSION['role_id'] == 2;
-$session_tenant_id = isset($_SESSION['tenant_id']) ? (int)$_SESSION['tenant_id'] : 0;
-$tenant_filter = isset($_GET['tenant_filter']) ? intval($_GET['tenant_filter']) : 0;
 
-// Fetch tenants for main admin filter
-$tenants = [];
-if ($is_main_admin && $_SESSION['role_id'] == 1) {
-    $tRes = $conn->query("SELECT tenant_id, company_name FROM tenants WHERE status = 'active' ORDER BY is_main_admin DESC, company_name ASC");
-    if ($tRes) {
-        while ($row = $tRes->fetch_assoc()) {
-            $tenants[] = $row;
-        }
+// Fetch categories for filter (global, no tenant isolation)
+$categories = [];
+$catRes = $conn->query("SELECT id, name FROM categories ORDER BY name ASC");
+if ($catRes) {
+    while ($crow = $catRes->fetch_assoc()) {
+        $categories[] = $crow;
     }
 }
 
@@ -44,22 +40,7 @@ $date_to = isset($_GET['date_to']) ? trim($_GET['date_to']) : '';
 $category_filter = isset($_GET['category_filter']) ? trim($_GET['category_filter']) : '';
 $low_stock_filter = isset($_GET['low_stock_filter']) ? trim($_GET['low_stock_filter']) : '';
 
-// Fetch categories for filter (scoped to effective tenant)
-$categories = [];
-if ($is_main_admin && $_SESSION['role_id'] == 1) {
-    if ($tenant_filter > 0) {
-        $catRes = $conn->query("SELECT id, name, tenant_id FROM categories WHERE tenant_id = $tenant_filter ORDER BY name ASC");
-    } else {
-        $catRes = $conn->query("SELECT id, name, tenant_id FROM categories ORDER BY name ASC");
-    }
-} else {
-    $catRes = $conn->query("SELECT id, name, tenant_id FROM categories WHERE tenant_id = $session_tenant_id ORDER BY name ASC");
-}
-if ($catRes) {
-    while ($crow = $catRes->fetch_assoc()) {
-        $categories[] = $crow;
-    }
-}
+
 
 // Pagination settings
 $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 10;
@@ -67,25 +48,17 @@ $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
 $offset = ($page - 1) * $limit;
 
 // Base SQL for counting total records
-$countSql = "SELECT COUNT(*) as total FROM products p LEFT JOIN categories c ON p.category_id = c.id LEFT JOIN tenants t ON p.tenant_id = t.tenant_id";
+$countSql = "SELECT COUNT(*) as total FROM products p LEFT JOIN categories c ON p.category_id = c.id";
 
-// Main query - Updated to include product_code, category name, and tenant Tenant Name
-$sql = "SELECT p.*, c.name as category_name, t.company_name
+// Main query - products are global (no tenant isolation)
+$sql = "SELECT p.*, c.name as category_name
         FROM products p 
-        LEFT JOIN categories c ON p.category_id = c.id
-        LEFT JOIN tenants t ON p.tenant_id = t.tenant_id";
+        LEFT JOIN categories c ON p.category_id = c.id";
 
 // Build search conditions
 $searchConditions = [];
 
-// Enforce tenant isolation for sub-tenants vs main admin filter
-if ($is_main_admin && $_SESSION['role_id'] == 1) {
-    if ($tenant_filter > 0) {
-        $searchConditions[] = "p.tenant_id = $tenant_filter";
-    }
-} else {
-    $searchConditions[] = "p.tenant_id = $session_tenant_id";
-}
+// No tenant isolation - products are global
 
 // General search condition - Updated to include product_code, id, and tenant Tenant Name
 if (!empty($search)) {
@@ -95,7 +68,6 @@ if (!empty($search)) {
                         p.name LIKE '%$searchTerm%' OR 
                         p.product_code LIKE '%$searchTerm%' OR 
                         p.description LIKE '%$searchTerm%' OR
-                        t.company_name LIKE '%$searchTerm%' OR
                         c.name LIKE '%$searchTerm%')";
 }
 
@@ -275,19 +247,7 @@ $result = $conn->query($sql);
                                 <?php endforeach; ?>
                             </select>
                         </div>
-                        <?php if ($is_main_admin && $_SESSION['role_id'] == 1): ?>
-                        <div class="form-group">
-                            <label for="tenant_filter">Tenant</label>
-                            <select id="tenant_filter" name="tenant_filter">
-                                <option value="">All Companies</option>
-                                <?php foreach ($tenants as $t): ?>
-                                    <option value="<?php echo $t['tenant_id']; ?>" <?php echo ($tenant_filter == $t['tenant_id']) ? 'selected' : ''; ?>>
-                                        <?php echo htmlspecialchars($t['company_name']); ?>
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
-                        <?php endif; ?>
+
 
                         <?php if (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1): ?>
                         <div class="form-group">
@@ -347,9 +307,6 @@ $result = $conn->query($sql);
                                 <th>Stock</th>
                                 <?php endif; ?>
                                 <th>Status</th>
-                                <?php if ($is_main_admin && $_SESSION['role_id'] == 1): ?>
-                                <th>Tenant</th>
-                                <?php endif; ?>
                                 <th>Created</th>
                                 <th>Actions</th>
                             </tr>
@@ -414,17 +371,6 @@ $result = $conn->query($sql);
                                                 <span class="status-badge pay-status-unpaid">Inactive</span>
                                             <?php endif; ?>
                                         </td>
-
-                                        <?php if ($is_main_admin && $_SESSION['role_id'] == 1): ?>
-                                        <!-- Tenant -->
-                                        <td class="customer-name">
-                                            <div class="customer-info">
-                                                <h6 style="margin: 0; font-size: 14px;">
-                                                    <?php echo htmlspecialchars($row['company_name'] ?? 'N/A'); ?>
-                                                </h6>
-                                            </div>
-                                        </td>
-                                        <?php endif; ?>
 
                                         <!-- Created Date -->
                                         <td>
@@ -501,7 +447,7 @@ $result = $conn->query($sql);
                                 <?php endwhile; ?>
                             <?php else: ?>
                                 <tr>
-                                    <td colspan="<?= 8 + ($is_main_admin && $_SESSION['role_id'] == 1 ? 1 : 0) + (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1 ? 1 : 0) ?>" class="text-center" style="padding: 40px; text-align: center; color: #666;">
+                                    <td colspan="<?= 7 + (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1 ? 1 : 0) ?>" class="text-center" style="padding: 40px; text-align: center; color: #666;">
                                         <i class="fas fa-box" style="font-size: 2rem; margin-bottom: 10px; display: block;"></i>
                                         No products found
                                     </td>

@@ -127,10 +127,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             $order = $result->fetch_assoc();
             
             // Check if order is eligible for return_handover status
-            if ($order['status'] !== 'return complete') {
+            $eligible_statuses = ['return complete', 'return pending'];
+            if (!in_array($order['status'], $eligible_statuses, true)) {
                 echo json_encode([
                     'success' => false,
-                    'message' => 'Order status must be "return complete" to update to "return_handover". Current status: ' . $order['status'],
+                    'message' => 'Order status must be "return complete" or "return pending" to update to "return_handover". Current status: ' . $order['status'],
                     'tracking_number' => $tracking_number
                 ]);
                 exit();
@@ -141,7 +142,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             
             try {
                 // Update order_header status to return_handover (scoped to the found order)
-                $updateHeaderSql = "UPDATE order_header SET status = 'return_handover', updated_at = NOW() WHERE order_id = ? AND status = 'return complete'";
+                $updateHeaderSql = "UPDATE order_header SET status = 'return_handover', updated_at = NOW() WHERE order_id = ? AND status IN ('return complete', 'return pending')";
                 $updateHeaderStmt = $conn->prepare($updateHeaderSql);
                 $updateHeaderStmt->bind_param("i", $order['order_id']);
                 
@@ -198,7 +199,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 $inquiry_id = $order['order_id']; // Using order_id as inquiry_id
                 $details = json_encode([
                     'tracking_number' => $tracking_number,
-                    'previous_status' => 'return complete',
+                    'previous_status' => $order['status'],
                     'new_status' => 'return_handover',
                     'items_updated' => $itemsUpdated,
                     'inventory_updated_count' => $inventoryUpdatedCount,
