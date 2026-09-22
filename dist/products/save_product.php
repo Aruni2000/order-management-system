@@ -59,7 +59,8 @@ function sanitizeInput($input) {
 try {
     // Get and sanitize form data
     $name = sanitizeInput($_POST['name'] ?? '');
-    $status = sanitizeInput($_POST['status'] ?? '');
+    // New products are always created with active status (no status field on the add form)
+    $status = 'active';
     $product_code = sanitizeInput($_POST['product_code'] ?? '');
     $description = sanitizeInput($_POST['description'] ?? '');
     $lkr_price = (float)($_POST['lkr_price'] ?? 0);
@@ -80,7 +81,7 @@ try {
     // -------------------------------------------------------------------------
     // REQUIRED FIELDS VALIDATION
     // -------------------------------------------------------------------------
-    if (empty($name) || empty($status) || empty($product_code) || empty($description) || $category_id <= 0) {
+    if (empty($name) || empty($product_code) || empty($description) || $category_id <= 0) {
         $response['message'] = 'Required fields are missing';
 
         if (empty($description)) {

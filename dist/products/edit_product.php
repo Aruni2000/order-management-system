@@ -301,7 +301,7 @@ try {
                     <!-- Product Details Section -->
                     <div class="form-section">
                         <div class="section-content">
-                            <!-- First Row: Name and Status -->
+                            <!-- Product Name (status is managed via the toggle on the product list) -->
                             <div class="form-row">
                                 <div class="product-form-group">
                                     <label for="name" class="form-label">
@@ -311,17 +311,6 @@ try {
                                         placeholder="Enter product name" required maxlength="255"
                                         value="<?php echo htmlspecialchars($product['name']); ?>">
                                     <div class="error-feedback" id="name-error"></div>
-                                </div>
-
-                                <div class="product-form-group">
-                                    <label for="status" class="form-label">
-                                        <i class="fas fa-toggle-on"></i> Status<span class="required">*</span>
-                                    </label>
-                                    <select class="form-select" id="status" name="status" required>
-                                        <option value="active" <?php echo $product['status'] === 'active' ? 'selected' : ''; ?>>Active</option>
-                                        <option value="inactive" <?php echo $product['status'] === 'inactive' ? 'selected' : ''; ?>>Inactive</option>
-                                    </select>
-                                    <div class="error-feedback" id="status-error"></div>
                                 </div>
                             </div>
 
@@ -450,7 +439,6 @@ try {
         // Store original values for reset functionality
         const originalValues = {
             name: '<?php echo addslashes($product['name']); ?>',
-            status: '<?php echo $product['status']; ?>',
             product_code: '<?php echo addslashes($product['product_code']); ?>',
             description: '<?php echo addslashes($product['description'] ?? ''); ?>',
             category_id: '<?php echo $product['category_id']; ?>',
@@ -576,7 +564,6 @@ try {
         // Update original values after successful update
         function updateOriginalValues() {
             originalValues.name = $('#name').val();
-            originalValues.status = $('#status').val();
             originalValues.product_code = $('#product_code').val();
             originalValues.description = $('#description').val();
             originalValues.category_id = $('#category_id').val();
@@ -606,14 +593,13 @@ try {
         // Form reset function - restore original values
         function resetForm() {
             $('#name').val(originalValues.name);
-            $('#status').val(originalValues.status);
             $('#product_code').val(originalValues.product_code);
             $('#description').val(originalValues.description);
             $('#category_id').val(originalValues.category_id);
             $('#lkr_price').val(originalValues.lkr_price);
             
             // Refresh Select2
-            $('#category_id, #status').trigger('change');
+            $('#category_id').trigger('change');
             
             clearAllValidations();
             updateCharCount();

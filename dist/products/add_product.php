@@ -294,7 +294,7 @@ try {
                                 </div>
                             </div>
 
-                            <!-- Row 4: Initial Stock, Stock Warning Level, Status -->
+                            <!-- Row 4: Initial Stock, Stock Warning Level (new products are always Active) -->
                             <div class="form-row">
                                 <?php if (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1): ?>
                                 <div class="product-form-group">
@@ -318,17 +318,6 @@ try {
                                 <input type="hidden" name="stock_quantity" value="0">
                                 <input type="hidden" name="low_stock_threshold" value="0">
                                 <?php endif; ?>
-
-                                <div class="product-form-group">
-                                    <label for="status" class="form-label">
-                                        <i class="fas fa-toggle-on"></i> Status<span class="required">*</span>
-                                    </label>
-                                    <select class="form-select" id="status" name="status" required>
-                                        <option value="active" selected>Active</option>
-                                        <option value="inactive">Inactive</option>
-                                    </select>
-                                    <div class="error-feedback" id="status-error"></div>
-                                </div>
                             </div>
 
                             <!-- Row 5: Description -->
@@ -521,7 +510,7 @@ try {
             $('#addProductForm')[0].reset();
             
             // Refresh Select2
-            $('#category_id, #status').trigger('change');
+            $('#category_id').trigger('change');
             
             clearAllValidations();
             updateCharCount();

@@ -86,7 +86,9 @@ try {
 
     // Get and sanitize form data
     $name = sanitizeInput($_POST['name'] ?? '');
-    $status = sanitizeInput($_POST['status'] ?? '');
+    // Status is not editable on this form - it is managed via the toggle on the
+    // product list, so keep the product's existing status
+    $status = $originalProduct['status'];
     $product_code = sanitizeInput($_POST['product_code'] ?? '');
     $description = sanitizeInput($_POST['description'] ?? '');
     $lkr_price = (float)($_POST['lkr_price'] ?? $originalProduct['lkr_price']);
@@ -109,11 +111,6 @@ try {
         $errors['name'] = 'Product name must be at least 2 characters long';
     } elseif (strlen($name) > 255) {
         $errors['name'] = 'Product name is too long (maximum 255 characters)';
-    }
-
-    // Validate status
-    if (empty($status) || !in_array($status, ['active', 'inactive'])) {
-        $errors['status'] = 'Please select a valid status';
     }
 
     // Validate product code
