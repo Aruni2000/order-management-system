@@ -123,7 +123,7 @@ $sql = "
  LEFT JOIN couriers cr ON o.co_id = cr.co_id
  LEFT JOIN city_table ct ON o.city_id = ct.city_id
  WHERE $whereClause
- ORDER BY o.$date_filter DESC
+ ORDER BY o.updated_at DESC, o.order_id DESC
  LIMIT $limit
 ";
 
