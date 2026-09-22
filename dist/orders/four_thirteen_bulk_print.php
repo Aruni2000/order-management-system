@@ -32,10 +32,6 @@ $time_to = isset($_GET['time_to']) ? trim($_GET['time_to']) : '';
 $status_filter = isset($_GET['status_filter']) ? trim($_GET['status_filter']) : 'all';
 $tenant_filter = isset($_GET['tenant_filter']) ? trim($_GET['tenant_filter']) : '';
 
-// NEW: Tracking filter parameters
-$tracking_filter = isset($_GET['tracking_filter']) ? trim($_GET['tracking_filter']) : 'all';
-$tracking_number = isset($_GET['tracking_number']) ? trim($_GET['tracking_number']) : '';
-
 $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 50;
 $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
 $offset = ($page - 1) * $limit;
@@ -112,24 +108,6 @@ if ($is_main_admin === 1 && $role_id === 1) {
     $searchConditions[] = "o.tenant_id = $session_tenant_id";
 }
 
-// NEW: Tracking filter conditions
-if (!empty($tracking_filter) && $tracking_filter !== 'all') {
-    switch ($tracking_filter) {
-        case 'with_tracking':
-            $searchConditions[] = "o.tracking_number IS NOT NULL AND o.tracking_number != '' AND TRIM(o.tracking_number) != ''";
-            break;
-        case 'without_tracking':
-            $searchConditions[] = "(o.tracking_number IS NULL OR o.tracking_number = '' OR TRIM(o.tracking_number) = '')";
-            break;
-        case 'specific_tracking':
-            if (!empty($tracking_number)) {
-                $trackingTerm = $conn->real_escape_string($tracking_number);
-                $searchConditions[] = "o.tracking_number LIKE '%$trackingTerm%'";
-            }
-            break;
-    }
-}
-
 // Apply search conditions
 if (!empty($searchConditions)) {
     $sql .= " AND " . implode(' AND ', $searchConditions);
@@ -204,20 +182,6 @@ function getBarcodeUrl($data) {
 // NEW: Function to check if tracking number exists
 function hasTracking($tracking_number) {
     return !empty($tracking_number) && trim($tracking_number) !== '';
-}
-
-// NEW: Function to get tracking filter display text
-function getTrackingFilterText($tracking_filter, $tracking_number = '') {
-    switch ($tracking_filter) {
-        case 'with_tracking':
-            return 'Orders WITH tracking numbers';
-        case 'without_tracking':
-            return 'Orders WITHOUT tracking numbers';
-        case 'specific_tracking':
-            return !empty($tracking_number) ? "Tracking contains: '{$tracking_number}'" : 'Specific tracking (no number provided)';
-        default:
-            return 'All orders (no tracking filter)';
-    }
 }
 
 // NEW: Count orders by tracking status for summary
@@ -560,14 +524,6 @@ foreach ($orders as $order) {
             <?php if ($time_to): ?><li>Time To: <?php echo htmlspecialchars($time_to); ?></li><?php endif; ?>
             <?php if ($status_filter !== 'all'): ?><li>Status: <?php echo htmlspecialchars($status_filter); ?></li><?php endif; ?> -->
             
-            <!-- NEW: Tracking filter display -->
-            <!-- <?php if ($tracking_filter !== 'all'): ?>
-                <li><strong>Tracking Filter:</strong> <?php echo htmlspecialchars(getTrackingFilterText($tracking_filter, $tracking_number)); ?></li>
-            <?php endif; ?>
-        </ul>
-        <button class="print-button" onclick="window.print()">🖨️ Print Labels</button>
-        <button class="print-button" onclick="window.close()" style="background: #6c757d;">❌ Close</button>
-    </div> -->
 
     <!-- Labels Container -->
     <div class="labels-container">
@@ -575,9 +531,6 @@ foreach ($orders as $order) {
             <div class="no-orders">
                 <h3>No Orders Found</h3>
                 <p>No orders match the selected filters.</p>
-                <?php if ($tracking_filter !== 'all'): ?>
-                    <p><em>Try adjusting your tracking filter: <?php echo htmlspecialchars(getTrackingFilterText($tracking_filter, $tracking_number)); ?></em></p>
-                <?php endif; ?>
             </div>
         <?php else: ?>
             <?php 
@@ -801,13 +754,8 @@ foreach ($orders as $order) {
         // Log loaded orders for debugging
         console.log('Simple bulk print loaded: <?php echo count($orders); ?> orders');
         console.log('UPDATED: Barcode now displays tracking number instead of order ID');
-        console.log('NEW: Tracking filter implemented');
         console.log('Orders with tracking: <?php echo $tracking_stats['with_tracking']; ?>');
         console.log('Orders without tracking: <?php echo $tracking_stats['without_tracking']; ?>');
-        console.log('Tracking filter: <?php echo $tracking_filter; ?>');
-        <?php if ($tracking_filter === 'specific_tracking' && !empty($tracking_number)): ?>
-        console.log('Tracking search term: <?php echo addslashes($tracking_number); ?>');
-        <?php endif; ?>
     </script>
 </body>
 </html>

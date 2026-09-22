@@ -32,7 +32,6 @@ if ((int)($_SESSION['role_id'] ?? 0) === 3 && (int)($_SESSION['is_main_admin'] ?
 /**
  * SEARCH AND PAGINATION PARAMETERS
  */
-$search = isset($_GET['search']) ? trim($_GET['search']) : '';
 $city_name_filter = isset($_GET['city_name_filter']) ? trim($_GET['city_name_filter']) : '';
 $city_id_filter = isset($_GET['city_id_filter']) ? trim($_GET['city_id_filter']) : '';
 $zone_type_filter = isset($_GET['zone_type_filter']) ? trim($_GET['zone_type_filter']) : '';
@@ -71,17 +70,6 @@ $searchConditions = [];
 $params = [];
 $types = '';
 
-// General search condition
-if (!empty($search)) {
-    $searchConditions[] = "(c.city_name LIKE ? OR 
-                           c.city_id LIKE ? OR 
-                           d.district_name LIKE ? OR 
-                           z.zone_name LIKE ? OR
-                           c.postal_code LIKE ?)";
-    $searchTerm = '%' . $search . '%';
-    $params = array_merge($params, [$searchTerm, $searchTerm, $searchTerm, $searchTerm, $searchTerm]);
-    $types .= 'sssss';
-}
 
 // Specific City Name filter
 if (!empty($city_name_filter)) {
@@ -363,7 +351,7 @@ $result = $stmt->get_result();
                             <?php else: ?>
                                 <tr>
                                     <td colspan="7" class="text-center" style="padding: 40px; text-align: center; color: #666;">
-                                        <?php if (!empty($search) || !empty($city_name_filter) || !empty($city_id_filter) || !empty($zone_type_filter) || !empty($zone_filter) || !empty($district_filter)): ?>
+                                        <?php if (!empty($city_name_filter) || !empty($city_id_filter) || !empty($zone_type_filter) || !empty($zone_filter) || !empty($district_filter)): ?>
                                             No cities found matching your search criteria.
                                         <?php else: ?>
                                             No cities found in the database.

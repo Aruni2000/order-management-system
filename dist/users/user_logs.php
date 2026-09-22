@@ -41,7 +41,6 @@ if ($user_role['role_id'] != 1) {
 }
 
 // Handle search and filter parameters
-$search = isset($_GET['search']) ? trim($_GET['search']) : '';
 $user_name_filter = isset($_GET['user_name_filter']) ? trim($_GET['user_name_filter']) : '';
 $action_type_filter = isset($_GET['action_type_filter']) ? trim($_GET['action_type_filter']) : '';
 $inquiry_id_filter = isset($_GET['inquiry_id_filter']) ? trim($_GET['inquiry_id_filter']) : '';
@@ -81,15 +80,6 @@ if (!$is_main_admin && $session_tenant_id !== null) {
 }
 
 
-// General search condition
-if (!empty($search)) {
-    $searchTerm = $conn->real_escape_string($search);
-    $searchConditions[] = "(
-                        u.name LIKE '%$searchTerm%' OR 
-                        ul.action_type LIKE '%$searchTerm%' OR 
-                        ul.details LIKE '%$searchTerm%' OR
-                        ul.inquiry_id LIKE '%$searchTerm%')";
-}
 
 // Specific User Name filter
 if (!empty($user_name_filter)) {
@@ -480,20 +470,20 @@ function formatLogDetails($details) {
                     </div>
                     <div class="pagination-controls">
                         <?php if ($page > 1): ?>
-                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page - 1; ?>&limit=<?php echo $limit; ?>&user_name_filter=<?php echo urlencode($user_name_filter); ?>&action_type_filter=<?php echo urlencode($action_type_filter); ?>&inquiry_id_filter=<?php echo urlencode($inquiry_id_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&search=<?php echo urlencode($search); ?>&tenant_filter=<?php echo urlencode($tenant_filter); ?>'">
+                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page - 1; ?>&limit=<?php echo $limit; ?>&user_name_filter=<?php echo urlencode($user_name_filter); ?>&action_type_filter=<?php echo urlencode($action_type_filter); ?>&inquiry_id_filter=<?php echo urlencode($inquiry_id_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&tenant_filter=<?php echo urlencode($tenant_filter); ?>'">
                                 <i class="fas fa-chevron-left"></i>
                             </button>
                         <?php endif; ?>
                         
                         <?php for ($i = max(1, $page - 2); $i <= min($totalPages, $page + 2); $i++): ?>
                             <button class="page-btn <?php echo ($i == $page) ? 'active' : ''; ?>" 
-                                    onclick="window.location.href='?page=<?php echo $i; ?>&limit=<?php echo $limit; ?>&user_name_filter=<?php echo urlencode($user_name_filter); ?>&action_type_filter=<?php echo urlencode($action_type_filter); ?>&inquiry_id_filter=<?php echo urlencode($inquiry_id_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&search=<?php echo urlencode($search); ?>&tenant_filter=<?php echo urlencode($tenant_filter); ?>'">
+                                    onclick="window.location.href='?page=<?php echo $i; ?>&limit=<?php echo $limit; ?>&user_name_filter=<?php echo urlencode($user_name_filter); ?>&action_type_filter=<?php echo urlencode($action_type_filter); ?>&inquiry_id_filter=<?php echo urlencode($inquiry_id_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&tenant_filter=<?php echo urlencode($tenant_filter); ?>'">
                                 <?php echo $i; ?>
                             </button>
                         <?php endfor; ?>
                         
                         <?php if ($page < $totalPages): ?>
-                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page + 1; ?>&limit=<?php echo $limit; ?>&user_name_filter=<?php echo urlencode($user_name_filter); ?>&action_type_filter=<?php echo urlencode($action_type_filter); ?>&inquiry_id_filter=<?php echo urlencode($inquiry_id_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&search=<?php echo urlencode($search); ?>&tenant_filter=<?php echo urlencode($tenant_filter); ?>'">
+                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page + 1; ?>&limit=<?php echo $limit; ?>&user_name_filter=<?php echo urlencode($user_name_filter); ?>&action_type_filter=<?php echo urlencode($action_type_filter); ?>&inquiry_id_filter=<?php echo urlencode($inquiry_id_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&tenant_filter=<?php echo urlencode($tenant_filter); ?>'">
                                 <i class="fas fa-chevron-right"></i>
                             </button>
                         <?php endif; ?>

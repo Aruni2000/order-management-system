@@ -29,7 +29,6 @@ if ($catRes) {
 }
 
 // Handle search and filter parameters
-$search = isset($_GET['search']) ? trim($_GET['search']) : '';
 $product_id_filter = isset($_GET['product_id_filter']) ? trim($_GET['product_id_filter']) : '';
 $product_name_filter = isset($_GET['product_name_filter']) ? trim($_GET['product_name_filter']) : '';
 $product_code_filter = isset($_GET['product_code_filter']) ? trim($_GET['product_code_filter']) : '';
@@ -59,16 +58,6 @@ $searchConditions = [];
 
 // No tenant isolation - products are global
 
-// General search condition - Updated to include product_code, id, and category name
-if (!empty($search)) {
-    $searchTerm = $conn->real_escape_string($search);
-    $searchConditions[] = "(
-                        p.id LIKE '%$searchTerm%' OR
-                        p.name LIKE '%$searchTerm%' OR 
-                        p.product_code LIKE '%$searchTerm%' OR 
-                        p.description LIKE '%$searchTerm%' OR
-                        c.name LIKE '%$searchTerm%')";
-}
 
 // Specific Product ID filter
 if (!empty($product_id_filter)) {
@@ -85,7 +74,7 @@ if (!empty($product_name_filter)) {
 // Specific Product Code filter
 if (!empty($product_code_filter)) {
     $productCodeTerm = $conn->real_escape_string($product_code_filter);
-    $searchConditions[] = "p.product_code LIKE '%$productCodeTerm%'";
+    $searchConditions[] = "p.product_code = '$productCodeTerm'";
 }
 
 // Status filter
@@ -204,27 +193,6 @@ $result = $conn->query($sql);
                                    placeholder="Enter product code" 
                                    value="<?php echo htmlspecialchars($product_code_filter); ?>">
                         </div>
-                        
-                        <!-- <div class="form-group">
-                            <label for="description_filter">Description</label>
-                            <input type="text" id="description_filter" name="description_filter" 
-                                   placeholder="Enter description" 
-                                   value="<?php echo htmlspecialchars($description_filter); ?>">
-                        </div> -->
-                        
-                        <!-- <div class="form-group">
-                            <label for="price_from">Price From (LKR)</label>
-                            <input type="number" id="price_from" name="price_from" 
-                                   placeholder="Min price" step="0.01" min="0"
-                                   value="<?php echo htmlspecialchars($price_from); ?>">
-                        </div>
-                        
-                        <div class="form-group">
-                            <label for="price_to">Price To (LKR)</label>
-                            <input type="number" id="price_to" name="price_to" 
-                                   placeholder="Max price" step="0.01" min="0"
-                                   value="<?php echo htmlspecialchars($price_to); ?>">
-                        </div> -->
                         
                         <div class="form-group">
                             <label for="status_filter">Status</label>
@@ -714,27 +682,6 @@ $result = $conn->query($sql);
             });
         }
 
-        // Price range filter validation
-        document.addEventListener('DOMContentLoaded', function() {
-            const priceFromInput = document.getElementById('price_from');
-            const priceToInput = document.getElementById('price_to');
-            
-            if (priceFromInput && priceToInput) {
-                priceFromInput.addEventListener('change', function() {
-                    if (this.value && priceToInput.value && parseFloat(this.value) > parseFloat(priceToInput.value)) {
-                        alert('From price cannot be greater than To price');
-                        this.value = '';
-                    }
-                });
-                
-                priceToInput.addEventListener('change', function() {
-                    if (this.value && priceFromInput.value && parseFloat(this.value) < parseFloat(priceFromInput.value)) {
-                        alert('To price cannot be less than From price');
-                        this.value = '';
-                    }
-                });
-            }
-        });
 
         // Date range filter validation
         document.addEventListener('DOMContentLoaded', function() {

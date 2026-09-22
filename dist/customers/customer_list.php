@@ -30,15 +30,12 @@ $tenant_id = $_SESSION['tenant_id'];
 $is_admin = $_SESSION['role_id'];
 
 // Handle search and filter parameters
-$search = isset($_GET['search']) ? trim($_GET['search']) : '';
 $customer_id_filter = isset($_GET['customer_id_filter']) ? trim($_GET['customer_id_filter']) : '';
 $customer_name_filter = isset($_GET['customer_name_filter']) ? trim($_GET['customer_name_filter']) : '';
 $email_filter = isset($_GET['email_filter']) ? trim($_GET['email_filter']) : '';
 $phone_filter = isset($_GET['phone_filter']) ? trim($_GET['phone_filter']) : '';
 $status_filter = isset($_GET['status_filter']) ? trim($_GET['status_filter']) : '';
 $city_filter = isset($_GET['city_filter']) ? trim($_GET['city_filter']) : '';
-$date_from = isset($_GET['date_from']) ? trim($_GET['date_from']) : '';
-$date_to = isset($_GET['date_to']) ? trim($_GET['date_to']) : '';
 $tenant_id_filter = isset($_GET['tenant_id_filter']) ? trim($_GET['tenant_id_filter']) : '';
 
 
@@ -60,20 +57,6 @@ $offset = ($page - 1) * $limit;
 // Build search conditions
 $searchConditions = [];
 
-// General search condition - ADDED phone_2 to search
-if (!empty($search)) {
-    $searchTerm = $conn->real_escape_string($search);
-    $searchConditions[] = "(
-                        c.customer_id LIKE '%$searchTerm%' OR
-                        c.name LIKE '%$searchTerm%' OR 
-                        c.email LIKE '%$searchTerm%' OR 
-                        c.phone LIKE '%$searchTerm%' OR
-                        c.phone_2 LIKE '%$searchTerm%' OR
-                        c.address_line1 LIKE '%$searchTerm%' OR
-                        c.address_line2 LIKE '%$searchTerm%' OR
-                        ct.city_name LIKE '%$searchTerm%' OR
-                        t.tenant_name LIKE '%$searchTerm%')";
-}
 
 // Specific Customer ID filter
 if (!empty($customer_id_filter)) {
@@ -84,19 +67,19 @@ if (!empty($customer_id_filter)) {
 // Specific Customer Name filter
 if (!empty($customer_name_filter)) {
     $customerNameTerm = $conn->real_escape_string($customer_name_filter);
-    $searchConditions[] = "c.name LIKE '%$customerNameTerm%'";
+    $searchConditions[] = "c.name = '$customerNameTerm'";
 }
 
 // Specific Email filter
 if (!empty($email_filter)) {
     $emailTerm = $conn->real_escape_string($email_filter);
-    $searchConditions[] = "c.email LIKE '%$emailTerm%'";
+    $searchConditions[] = "c.email = '$emailTerm'";
 }
 
 // Specific Phone filter - UPDATED to search both phone and phone_2
 if (!empty($phone_filter)) {
     $phoneTerm = $conn->real_escape_string($phone_filter);
-    $searchConditions[] = "(c.phone LIKE '%$phoneTerm%' OR c.phone_2 LIKE '%$phoneTerm%')";
+    $searchConditions[] = "(c.phone = '$phoneTerm' OR c.phone_2 = '$phoneTerm')";
 }
 
 // Status filter
@@ -109,17 +92,6 @@ if (!empty($status_filter)) {
 if (!empty($city_filter)) {
     $cityTerm = $conn->real_escape_string($city_filter);
     $searchConditions[] = "c.city_id = '$cityTerm'";
-}
-
-// Date range filter
-if (!empty($date_from)) {
-    $dateFromTerm = $conn->real_escape_string($date_from);
-    $searchConditions[] = "DATE(c.created_at) >= '$dateFromTerm'";
-}
-
-if (!empty($date_to)) {
-    $dateToTerm = $conn->real_escape_string($date_to);
-    $searchConditions[] = "DATE(c.created_at) <= '$dateToTerm'";
 }
 
 // Specific tenant ID filter
@@ -446,21 +418,21 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                     <div class="pagination-controls">
                         <?php if ($page > 1): ?>
                         <button class="page-btn"
-                            onclick="window.location.href='?page=<?php echo $page - 1; ?>&limit=<?php echo $limit; ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&email_filter=<?php echo urlencode($email_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&status_filter=<?php echo urlencode($status_filter); ?>&city_filter=<?php echo urlencode($city_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&search=<?php echo urlencode($search); ?>'">
+                            onclick="window.location.href='?page=<?php echo $page - 1; ?>&limit=<?php echo $limit; ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&email_filter=<?php echo urlencode($email_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&status_filter=<?php echo urlencode($status_filter); ?>&city_filter=<?php echo urlencode($city_filter); ?>'">
                             <i class="fas fa-chevron-left"></i>
                         </button>
                         <?php endif; ?>
 
                         <?php for ($i = max(1, $page - 2); $i <= min($totalPages, $page + 2); $i++): ?>
                         <button class="page-btn <?php echo ($i == $page) ? 'active' : ''; ?>"
-                            onclick="window.location.href='?page=<?php echo $i; ?>&limit=<?php echo $limit; ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&email_filter=<?php echo urlencode($email_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&status_filter=<?php echo urlencode($status_filter); ?>&city_filter=<?php echo urlencode($city_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&search=<?php echo urlencode($search); ?>'">
+                            onclick="window.location.href='?page=<?php echo $i; ?>&limit=<?php echo $limit; ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&email_filter=<?php echo urlencode($email_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&status_filter=<?php echo urlencode($status_filter); ?>&city_filter=<?php echo urlencode($city_filter); ?>'">
                             <?php echo $i; ?>
                         </button>
                         <?php endfor; ?>
 
                         <?php if ($page < $totalPages): ?>
                         <button class="page-btn"
-                            onclick="window.location.href='?page=<?php echo $page + 1; ?>&limit=<?php echo $limit; ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&email_filter=<?php echo urlencode($email_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&status_filter=<?php echo urlencode($status_filter); ?>&city_filter=<?php echo urlencode($city_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&search=<?php echo urlencode($search); ?>'">
+                            onclick="window.location.href='?page=<?php echo $page + 1; ?>&limit=<?php echo $limit; ?>&customer_name_filter=<?php echo urlencode($customer_name_filter); ?>&email_filter=<?php echo urlencode($email_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&status_filter=<?php echo urlencode($status_filter); ?>&city_filter=<?php echo urlencode($city_filter); ?>'">
                             <i class="fas fa-chevron-right"></i>
                         </button>
                         <?php endif; ?>

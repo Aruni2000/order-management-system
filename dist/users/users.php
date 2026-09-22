@@ -52,15 +52,12 @@ if ($user_role['role_id'] != 1) {
 
 
 // Handle search and filter parameters
-$search = isset($_GET['search']) ? trim($_GET['search']) : '';
 $user_name_filter = isset($_GET['user_name_filter']) ? trim($_GET['user_name_filter']) : '';
 $email_filter = isset($_GET['email_filter']) ? trim($_GET['email_filter']) : '';
 $phone_filter = isset($_GET['phone_filter']) ? trim($_GET['phone_filter']) : '';
 $nic_filter = isset($_GET['nic_filter']) ? trim($_GET['nic_filter']) : '';
 $role_filter = isset($_GET['role_filter']) ? trim($_GET['role_filter']) : '';
 $status_filter = isset($_GET['status_filter']) ? trim($_GET['status_filter']) : '';
-$date_from = isset($_GET['date_from']) ? trim($_GET['date_from']) : '';
-$date_to = isset($_GET['date_to']) ? trim($_GET['date_to']) : '';
 $tenant_filter = isset($_GET['tenant_filter']) ? trim($_GET['tenant_filter']) : '';
 
 $is_main_admin = isset($_SESSION['is_main_admin']) && $_SESSION['is_main_admin'] == 1;
@@ -92,16 +89,6 @@ if (!$is_main_admin && $session_tenant_id !== null) {
 }
 
 
-// General search condition
-if (!empty($search)) {
-    $searchTerm = $conn->real_escape_string($search);
-    $searchConditions[] = "(
-                        u.name LIKE '%$searchTerm%' OR 
-                        u.email LIKE '%$searchTerm%' OR 
-                        u.mobile LIKE '%$searchTerm%' OR 
-                        u.nic LIKE '%$searchTerm%' OR
-                        r.name LIKE '%$searchTerm%')";
-}
 
 // Specific User Name filter
 if (!empty($user_name_filter)) {
@@ -112,19 +99,19 @@ if (!empty($user_name_filter)) {
 // Specific Email filter
 if (!empty($email_filter)) {
     $emailTerm = $conn->real_escape_string($email_filter);
-    $searchConditions[] = "u.email LIKE '%$emailTerm%'";
+    $searchConditions[] = "u.email = '$emailTerm'";
 }
 
 // Specific Phone filter
 if (!empty($phone_filter)) {
     $phoneTerm = $conn->real_escape_string($phone_filter);
-    $searchConditions[] = "u.mobile LIKE '%$phoneTerm%'";
+    $searchConditions[] = "u.mobile = '$phoneTerm'";
 }
 
 // Specific NIC filter
 if (!empty($nic_filter)) {
     $nicTerm = $conn->real_escape_string($nic_filter);
-    $searchConditions[] = "u.nic LIKE '%$nicTerm%'";
+    $searchConditions[] = "u.nic = '$nicTerm'";
 }
 
 // Role filter
@@ -137,17 +124,6 @@ if (!empty($role_filter)) {
 if (!empty($status_filter)) {
     $statusTerm = $conn->real_escape_string($status_filter);
     $searchConditions[] = "u.status = '$statusTerm'";
-}
-
-// Date range filter
-if (!empty($date_from)) {
-    $dateFromTerm = $conn->real_escape_string($date_from);
-    $searchConditions[] = "DATE(u.created_at) >= '$dateFromTerm'";
-}
-
-if (!empty($date_to)) {
-    $dateToTerm = $conn->real_escape_string($date_to);
-    $searchConditions[] = "DATE(u.created_at) <= '$dateToTerm'";
 }
 
 // Apply all search conditions

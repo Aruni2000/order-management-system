@@ -34,7 +34,6 @@ if ($current_user_id == 0) {
 }
 
 // Get filter parameters (EXACTLY same as main page)
-$search = isset($_GET['search']) ? trim($_GET['search']) : '';
 $order_id_filter = isset($_GET['order_id_filter']) ? trim($_GET['order_id_filter']) : '';
 $customer_name_filter = isset($_GET['customer_name_filter']) ? trim($_GET['customer_name_filter']) : '';
 $user_id_filter = isset($_GET['user_id_filter']) ? trim($_GET['user_id_filter']) : '';
@@ -101,21 +100,6 @@ $sql = "SELECT i.order_id,
 // Build search conditions (EXACTLY same logic as main page)
 $searchConditions = [];
 
-// General search condition - UPDATED to use order_header fields
-if (!empty($search)) {
-    $searchTerm = $conn->real_escape_string($search);
-    $searchConditions[] = "(
-                        i.order_id LIKE '%$searchTerm%' OR 
-                        i.full_name LIKE '%$searchTerm%' OR 
-                        i.issue_date LIKE '%$searchTerm%' OR 
-                        i.due_date LIKE '%$searchTerm%' OR 
-                        i.total_amount LIKE '%$searchTerm%' OR
-                        i.status LIKE '%$searchTerm%' OR 
-                        i.tracking_number LIKE '%$searchTerm%' OR
-                        i.pay_status LIKE '%$searchTerm%' OR
-                        i.created_at LIKE '%$searchTerm%' OR
-                        u2.name LIKE '%$searchTerm%')";
-}
 
 // Specific Order ID filter
 if (!empty($order_id_filter)) {

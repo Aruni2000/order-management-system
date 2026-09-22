@@ -32,10 +32,6 @@ $time_to = isset($_GET['time_to']) ? trim($_GET['time_to']) : '';
 $status_filter = isset($_GET['status_filter']) ? trim($_GET['status_filter']) : 'all';
 $tenant_filter = isset($_GET['tenant_filter']) ? trim($_GET['tenant_filter']) : '';
 
-// Tracking filter parameters - DEFAULT to 'with_tracking'
-$tracking_filter = isset($_GET['tracking_filter']) ? trim($_GET['tracking_filter']) : 'with_tracking';
-$tracking_number = isset($_GET['tracking_number']) ? trim($_GET['tracking_number']) : '';
-
 $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 50;
 $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
 $offset = ($page - 1) * $limit;
@@ -121,23 +117,8 @@ if ($is_main_admin === 1 && $role_id === 1) {
     $searchConditions[] = "o.tenant_id = $session_tenant_id";
 }
 
-// Tracking filter conditions
-if (!empty($tracking_filter) && $tracking_filter !== 'all') {
-    switch ($tracking_filter) {
-        case 'with_tracking':
-            $searchConditions[] = "o.tracking_number IS NOT NULL AND o.tracking_number != '' AND TRIM(o.tracking_number) != ''";
-            break;
-        case 'without_tracking':
-            $searchConditions[] = "(o.tracking_number IS NULL OR o.tracking_number = '' OR TRIM(o.tracking_number) = '')";
-            break;
-        case 'specific_tracking':
-            if (!empty($tracking_number)) {
-                $trackingTerm = $conn->real_escape_string($tracking_number);
-                $searchConditions[] = "o.tracking_number LIKE '%$trackingTerm%'";
-            }
-            break;
-    }
-}
+// Only orders WITH tracking numbers are printed (URL filter param removed; behavior = old 'with_tracking' default)
+$searchConditions[] = "o.tracking_number IS NOT NULL AND o.tracking_number != '' AND TRIM(o.tracking_number) != ''";
 
 // Apply search conditions
 if (!empty($searchConditions)) {
@@ -225,19 +206,6 @@ function calculateSubtotal($total, $delivery, $discount) {
 function hasTracking($tracking_number) {
     return !empty($tracking_number) && trim($tracking_number) !== '';
 }
-
-function getTrackingFilterText($tracking_filter, $tracking_number = '') {
-    switch ($tracking_filter) {
-        case 'with_tracking':
-            return 'Orders WITH tracking numbers';
-        case 'without_tracking':
-            return 'Orders WITHOUT tracking numbers';
-        case 'specific_tracking':
-            return !empty($tracking_number) ? "Tracking contains: '{$tracking_number}'" : 'Specific tracking (no number provided)';
-        default:
-            return 'All orders (no tracking filter)';
-    }
-}
 ?>
 
 <!DOCTYPE html>
@@ -294,9 +262,6 @@ function getTrackingFilterText($tracking_filter, $tracking_number = '') {
                 <h3>No Trackable Orders Found</h3>
                 <p>No trackable orders found matching the selected filters.</p>
                 <p><em>Six by Four Bulk Print shows only orders with tracking numbers assigned.</em></p>
-                <?php if (isset($_GET['tracking_filter']) && $_GET['tracking_filter'] !== 'with_tracking'): ?>
-                    <p><em>Current filter: <?php echo htmlspecialchars(getTrackingFilterText($tracking_filter, $tracking_number)); ?></em></p>
-                <?php endif; ?>
             </div>
         <?php else: ?>
             

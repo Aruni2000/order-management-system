@@ -17,8 +17,7 @@ if ($is_main_admin !== 1 || $role_id !== 1) {
 }
 
 $tenant_id = $_SESSION['tenant_id'] ?? 0;
-$co_id = $_POST['co_id'] ?? 0;
-
+ 
 //function for tenant name
 function TenantName($tenant_id) {
     global $conn;
@@ -40,10 +39,6 @@ $current_user_id = $_SESSION['user_id'] ?? 0;
 $current_user_role = $_SESSION['role_id'] ?? 0;
 
 // Filters with proper sanitization
-$search = trim($_GET['search'] ?? '');
-$order_id_filter = trim($_GET['order_id_filter'] ?? '');
-$customer_name_filter = trim($_GET['customer_name_filter'] ?? '');
-$tracking_id = trim($_GET['tracking_id'] ?? '');
 $courier_id_filter = trim($_GET['courier_id_filter'] ?? '');
 $status_filter = trim($_GET['status_filter'] ?? '');
 $date_from = trim($_GET['date_from'] ?? '');
@@ -107,19 +102,6 @@ if (!$hasActiveFilters) {
     } else {
         $searchConditions[] = "i.status = '" . $conn->real_escape_string($status_filter) . "'";
     }
-}
-if (!empty($search)) {
-    $escapedSearch = $conn->real_escape_string($search);
-    $searchConditions[] = "(i.order_id LIKE '%$escapedSearch%' OR i.full_name LIKE '%$escapedSearch%' OR i.tracking_number LIKE '%$escapedSearch%')";
-}
-if (!empty($order_id_filter)) {
-    $searchConditions[] = "i.order_id = '" . $conn->real_escape_string($order_id_filter) . "'";
-}
-if (!empty($customer_name_filter)) {
-    $searchConditions[] = "i.full_name LIKE '%" . $conn->real_escape_string($customer_name_filter) . "%'";
-}
-if (!empty($tracking_id)) {
-    $searchConditions[] = "i.tracking_number = '" . $conn->real_escape_string($tracking_id) . "'";
 }
 if (!empty($courier_id_filter)) {
     $searchConditions[] = "i.courier_id = '" . $conn->real_escape_string($courier_id_filter) . "'";

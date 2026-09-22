@@ -56,7 +56,6 @@ if (!$current_is_main_admin) {
 }
 
 // Handle search and filter parameters
-$search = isset($_GET['search']) ? trim($_GET['search']) : '';
 $tenant_name_filter = isset($_GET['tenant_name_filter']) ? trim($_GET['tenant_name_filter']) : '';
 $email_filter = isset($_GET['email_filter']) ? trim($_GET['email_filter']) : '';
 $phone_filter = isset($_GET['phone_filter']) ? trim($_GET['phone_filter']) : '';
@@ -65,8 +64,6 @@ $address_filter = isset($_GET['address_filter']) ? trim($_GET['address_filter'])
 
 $status_filter = isset($_GET['status_filter']) ? trim($_GET['status_filter']) : '';
 $is_main_admin_filter = isset($_GET['is_main_admin_filter']) ? trim($_GET['is_main_admin_filter']) : '';
-$date_from = isset($_GET['date_from']) ? trim($_GET['date_from']) : '';
-$date_to = isset($_GET['date_to']) ? trim($_GET['date_to']) : '';
 
 // Pagination settings
 $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 10;
@@ -84,15 +81,6 @@ $sql = "SELECT tenant_id, tenant_name, contact_person, email, phone, address, st
 // Build search conditions
 $searchConditions = [];
 
-// General search condition
-if (!empty($search)) {
-    $searchTerm = $conn->real_escape_string($search);
-    $searchConditions[] = "(
-                        tenant_name LIKE '%$searchTerm%' OR 
-                        contact_person LIKE '%$searchTerm%' OR 
-                        email LIKE '%$searchTerm%' OR 
-                        phone LIKE '%$searchTerm%')";
-}
 
 // Specific Tenant Name filter
 if (!empty($tenant_name_filter)) {
@@ -103,13 +91,13 @@ if (!empty($tenant_name_filter)) {
 // Specific Email filter
 if (!empty($email_filter)) {
     $emailTerm = $conn->real_escape_string($email_filter);
-    $searchConditions[] = "email LIKE '%$emailTerm%'";
+    $searchConditions[] = "email = '$emailTerm'";
 }
 
 // Specific Phone filter
 if (!empty($phone_filter)) {
     $phoneTerm = $conn->real_escape_string($phone_filter);
-    $searchConditions[] = "phone LIKE '%$phoneTerm%'";
+    $searchConditions[] = "phone = '$phoneTerm'";
 }
 
 // Specific Contact Person filter
@@ -134,17 +122,6 @@ if (!empty($status_filter)) {
 if ($is_main_admin_filter !== '') {
     $mainAdminTerm = $conn->real_escape_string($is_main_admin_filter);
     $searchConditions[] = "is_main_admin = '$mainAdminTerm'";
-}
-
-// Date range filter
-if (!empty($date_from)) {
-    $dateFromTerm = $conn->real_escape_string($date_from);
-    $searchConditions[] = "DATE(created_at) >= '$dateFromTerm'";
-}
-
-if (!empty($date_to)) {
-    $dateToTerm = $conn->real_escape_string($date_to);
-    $searchConditions[] = "DATE(created_at) <= '$dateToTerm'";
 }
 
 // Apply all search conditions
@@ -426,20 +403,20 @@ if (!$result) {
                     </div>
                     <div class="pagination-controls">
                         <?php if ($page > 1): ?>
-                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page - 1; ?>&limit=<?php echo $limit; ?>&tenant_name_filter=<?php echo urlencode($tenant_name_filter); ?>&contact_person_filter=<?php echo urlencode($contact_person_filter); ?>&email_filter=<?php echo urlencode($email_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&address_filter=<?php echo urlencode($address_filter); ?>&status_filter=<?php echo urlencode($status_filter); ?>&is_main_admin_filter=<?php echo urlencode($is_main_admin_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&search=<?php echo urlencode($search); ?>'">
+                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page - 1; ?>&limit=<?php echo $limit; ?>&tenant_name_filter=<?php echo urlencode($tenant_name_filter); ?>&contact_person_filter=<?php echo urlencode($contact_person_filter); ?>&email_filter=<?php echo urlencode($email_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&address_filter=<?php echo urlencode($address_filter); ?>&status_filter=<?php echo urlencode($status_filter); ?>&is_main_admin_filter=<?php echo urlencode($is_main_admin_filter); ?>'">
                                 <i class="fas fa-chevron-left"></i>
                             </button>
                         <?php endif; ?>
                         
                         <?php for ($i = max(1, $page - 2); $i <= min($totalPages, $page + 2); $i++): ?>
                             <button class="page-btn <?php echo ($i == $page) ? 'active' : ''; ?>" 
-                                    onclick="window.location.href='?page=<?php echo $i; ?>&limit=<?php echo $limit; ?>&tenant_name_filter=<?php echo urlencode($tenant_name_filter); ?>&contact_person_filter=<?php echo urlencode($contact_person_filter); ?>&email_filter=<?php echo urlencode($email_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&address_filter=<?php echo urlencode($address_filter); ?>&status_filter=<?php echo urlencode($status_filter); ?>&is_main_admin_filter=<?php echo urlencode($is_main_admin_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&search=<?php echo urlencode($search); ?>'">
+                                    onclick="window.location.href='?page=<?php echo $i; ?>&limit=<?php echo $limit; ?>&tenant_name_filter=<?php echo urlencode($tenant_name_filter); ?>&contact_person_filter=<?php echo urlencode($contact_person_filter); ?>&email_filter=<?php echo urlencode($email_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&address_filter=<?php echo urlencode($address_filter); ?>&status_filter=<?php echo urlencode($status_filter); ?>&is_main_admin_filter=<?php echo urlencode($is_main_admin_filter); ?>'">
                                 <?php echo $i; ?>
                             </button>
                         <?php endfor; ?>
                         
                         <?php if ($page < $totalPages): ?>
-                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page + 1; ?>&limit=<?php echo $limit; ?>&tenant_name_filter=<?php echo urlencode($tenant_name_filter); ?>&contact_person_filter=<?php echo urlencode($contact_person_filter); ?>&email_filter=<?php echo urlencode($email_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&address_filter=<?php echo urlencode($address_filter); ?>&status_filter=<?php echo urlencode($status_filter); ?>&is_main_admin_filter=<?php echo urlencode($is_main_admin_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&search=<?php echo urlencode($search); ?>'">
+                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page + 1; ?>&limit=<?php echo $limit; ?>&tenant_name_filter=<?php echo urlencode($tenant_name_filter); ?>&contact_person_filter=<?php echo urlencode($contact_person_filter); ?>&email_filter=<?php echo urlencode($email_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&address_filter=<?php echo urlencode($address_filter); ?>&status_filter=<?php echo urlencode($status_filter); ?>&is_main_admin_filter=<?php echo urlencode($is_main_admin_filter); ?>'">
                                 <i class="fas fa-chevron-right"></i>
                             </button>
                         <?php endif; ?>

@@ -17,13 +17,7 @@ include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
 
 // Handle search and filter parameters
-$search = isset($_GET['search']) ? trim($_GET['search']) : '';
 $courier_name_filter = isset($_GET['courier_name_filter']) ? trim($_GET['courier_name_filter']) : '';
-$phone_filter = isset($_GET['phone_filter']) ? trim($_GET['phone_filter']) : '';
-$email_filter = isset($_GET['email_filter']) ? trim($_GET['email_filter']) : '';
-$address_filter = isset($_GET['address_filter']) ? trim($_GET['address_filter']) : '';
-$date_from = isset($_GET['date_from']) ? trim($_GET['date_from']) : '';
-$date_to = isset($_GET['date_to']) ? trim($_GET['date_to']) : '';
 $tenant_filter = isset($_GET['tenant_filter']) ? trim($_GET['tenant_filter']) : '';
 
 // Pagination settings
@@ -80,13 +74,6 @@ $sql = "SELECT c.co_id, c.courier_id, c.courier_name, c.phone_number, c.email,
 // Build search conditions
 $searchConditions = [];
 
-// General search condition
-if (!empty($search)) {
-    $searchTerm = $conn->real_escape_string($search);
-    $searchConditions[] = "(
-                        c.courier_name LIKE '%$searchTerm%' OR 
-                        t.tenant_name LIKE '%$searchTerm%')";
-}
 
 // Specific Courier Name filter - now using exact match for dropdown
 if (!empty($courier_name_filter)) {
@@ -466,20 +453,20 @@ function getStatusInfo($is_default) {
                     </div>
                     <div class="pagination-controls">
                         <?php if ($page > 1): ?>
-                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page - 1; ?>&limit=<?php echo $limit; ?>&courier_name_filter=<?php echo urlencode($courier_name_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&email_filter=<?php echo urlencode($email_filter); ?>&address_filter=<?php echo urlencode($address_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&tenant_filter=<?php echo urlencode($tenant_filter); ?>&search=<?php echo urlencode($search); ?>'">
+                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page - 1; ?>&limit=<?php echo $limit; ?>&courier_name_filter=<?php echo urlencode($courier_name_filter); ?>&tenant_filter=<?php echo urlencode($tenant_filter); ?>'">
                                 <i class="fas fa-chevron-left"></i>
                             </button>
                         <?php endif; ?>
                         
                         <?php for ($i = max(1, $page - 2); $i <= min($totalPages, $page + 2); $i++): ?>
                             <button class="page-btn <?php echo ($i == $page) ? 'active' : ''; ?>" 
-                                    onclick="window.location.href='?page=<?php echo $i; ?>&limit=<?php echo $limit; ?>&courier_name_filter=<?php echo urlencode($courier_name_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&email_filter=<?php echo urlencode($email_filter); ?>&address_filter=<?php echo urlencode($address_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&tenant_filter=<?php echo urlencode($tenant_filter); ?>&search=<?php echo urlencode($search); ?>'">
+                                    onclick="window.location.href='?page=<?php echo $i; ?>&limit=<?php echo $limit; ?>&courier_name_filter=<?php echo urlencode($courier_name_filter); ?>&tenant_filter=<?php echo urlencode($tenant_filter); ?>'">
                                 <?php echo $i; ?>
                             </button>
                         <?php endfor; ?>
                         
                         <?php if ($page < $totalPages): ?>
-                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page + 1; ?>&limit=<?php echo $limit; ?>&courier_name_filter=<?php echo urlencode($courier_name_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&email_filter=<?php echo urlencode($email_filter); ?>&address_filter=<?php echo urlencode($address_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&tenant_filter=<?php echo urlencode($tenant_filter); ?>&search=<?php echo urlencode($search); ?>'">
+                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page + 1; ?>&limit=<?php echo $limit; ?>&courier_name_filter=<?php echo urlencode($courier_name_filter); ?>&tenant_filter=<?php echo urlencode($tenant_filter); ?>'">
                                 <i class="fas fa-chevron-right"></i>
                             </button>
                         <?php endif; ?>
