@@ -109,7 +109,7 @@ $sql = "SELECT i.order_id,
                u.name as user_name,
                u.email as user_email,
                u.status as user_status,
-               t.company_name as tenant_name,
+               t.tenant_name as tenant_name,
                p.payment_method,
                u1.name as paid_by_name
         FROM order_header i 
@@ -228,7 +228,7 @@ $result = $conn->query($sql);
 <html lang="en" data-pc-preset="preset-1" data-pc-sidebar-caption="true" data-pc-direction="ltr" dir="ltr" data-pc-theme="light">
 
 <head>
-    <title>Leads Management - All Leads | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
+    <title>Leads Management - All Leads | <?= htmlspecialchars($_SESSION['tenant_name'] ?? '') ?></title>
     
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
     
@@ -325,7 +325,7 @@ $result = $conn->query($sql);
                         // Fetch tenants for superadmin filter - only show for main admin
                         $tenants = [];
                         if ($is_main_admin_tenant == 1) {
-                            $tenantsQuery = "SELECT tenant_id, company_name FROM tenants WHERE status = 'active' ORDER BY company_name ASC";
+                            $tenantsQuery = "SELECT tenant_id, tenant_name FROM tenants WHERE status = 'active' ORDER BY tenant_name ASC";
                             $tenantsResult = $conn->query($tenantsQuery);
                             if ($tenantsResult && $tenantsResult->num_rows > 0) {
                                 while ($t = $tenantsResult->fetch_assoc()) {
@@ -413,7 +413,7 @@ $result = $conn->query($sql);
                                 <option value="">All Companies</option>
                                 <?php foreach ($tenants as $t): ?>
                                     <option value="<?php echo $t['tenant_id']; ?>" <?php echo ($tenant_filter == $t['tenant_id']) ? 'selected' : ''; ?>>
-                                        <?php echo htmlspecialchars($t['company_name']); ?>
+                                        <?php echo htmlspecialchars($t['tenant_name']); ?>
                                     </option>
                                 <?php endforeach; ?>
                             </select>

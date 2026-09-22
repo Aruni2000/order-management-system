@@ -17,7 +17,6 @@ include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/connection/db_connection.php');
 
 
 // Permissions
-$is_main_admin = isset($_SESSION['is_main_admin']) && $_SESSION['is_main_admin'] == 1;
 $is_user = isset($_SESSION['role_id']) && (int)$_SESSION['role_id'] == 2;
 
 // Fetch categories for filter (global, no tenant isolation)
@@ -60,7 +59,7 @@ $searchConditions = [];
 
 // No tenant isolation - products are global
 
-// General search condition - Updated to include product_code, id, and tenant Tenant Name
+// General search condition - Updated to include product_code, id, and category name
 if (!empty($search)) {
     $searchTerm = $conn->real_escape_string($search);
     $searchConditions[] = "(
@@ -141,7 +140,7 @@ $result = $conn->query($sql);
 <html lang="en" data-pc-preset="preset-1" data-pc-sidebar-caption="true" data-pc-direction="ltr" dir="ltr" data-pc-theme="light">
 
 <head>
-    <title>Product Management | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
+    <title>Product Management | <?= htmlspecialchars($_SESSION['tenant_name'] ?? '') ?></title>
     
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
     

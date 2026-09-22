@@ -22,14 +22,14 @@ $co_id = $_POST['co_id'] ?? 0;
 //function for tenant name
 function TenantName($tenant_id) {
     global $conn;
-    $sql = "SELECT company_name FROM tenants WHERE tenant_id = ?";
+    $sql = "SELECT tenant_name FROM tenants WHERE tenant_id = ?";
     $stmt = $conn->prepare($sql);
     $stmt->bind_param("i", $tenant_id);
     $stmt->execute();
     $result = $stmt->get_result();
     if ($result && $result->num_rows > 0) {
         $row = $result->fetch_assoc();
-        return $row['company_name'];
+        return $row['tenant_name'];
     }
     return "Unknown Tenant";
 }
@@ -151,7 +151,7 @@ $totalRows = (int)$conn->query($countSql)->fetch_assoc()['total'];
 
 
 // Get unique tenants for filter dropdown
-$tenant_sql = "SELECT DISTINCT tenant_id, company_name 
+$tenant_sql = "SELECT DISTINCT tenant_id, tenant_name 
                FROM tenants";
 $tenant_result = $conn->query($tenant_sql);
 $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
@@ -188,7 +188,7 @@ $courierDisabled = ($is_main_admin == 1) && empty($tenant_id_filter);
     data-pc-theme="light">
 
 <head>
-    <title>Payment Report | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
+    <title>Payment Report | <?= htmlspecialchars($_SESSION['tenant_name'] ?? '') ?></title>
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
     <link rel="stylesheet" href="../assets/css/orders.css" />
     <style>
@@ -436,7 +436,7 @@ $courierDisabled = ($is_main_admin == 1) && empty($tenant_id_filter);
                             <?php foreach ($tenants as $tenant): ?>
                             <option value="<?php echo htmlspecialchars($tenant['tenant_id']); ?>"
                                 <?php echo $tenant_id_filter == $tenant['tenant_id'] ? 'selected' : ''; ?>>
-                                <?php echo htmlspecialchars($tenant['company_name'] ? $tenant['company_name'] : 'Company ' . $tenant['tenant_id']); ?>
+                                <?php echo htmlspecialchars($tenant['tenant_name'] ? $tenant['tenant_name'] : 'Company ' . $tenant['tenant_id']); ?>
                             </option>
                             <?php endforeach; ?>
                         </select>
@@ -582,7 +582,7 @@ $courierDisabled = ($is_main_admin == 1) && empty($tenant_id_filter);
                             <td class="customer-name">
                                 <div class="customer-info">
                                     <h6 style="margin: 0; font-size: 14px;">
-                                        <?php echo htmlspecialchars($tenant['company_name']); ?></h6>
+                                        <?php echo htmlspecialchars($tenant['tenant_name']); ?></h6>
                                 </div>
                             </td>
                             <?php } ?>

@@ -283,13 +283,13 @@ function cs_condition($conn, $customer_id, $tenant_id) {
     if (($rate > 75)) return 3;                  // Bad
 }
 
-        // Fetch product data once for all rows (filtered by tenant)
-        $productSql = "SELECT id, product_code, description, lkr_price FROM products WHERE id = ? AND status = 'active' AND tenant_id = ?";
+        // Fetch product data once for all rows (products are global - no tenant isolation)
+        $productSql = "SELECT id, product_code, description, lkr_price FROM products WHERE id = ? AND status = 'active'";
         $productStmt = $conn->prepare($productSql);
         if (!$productStmt) {
             throw new Exception("Failed to prepare product query: " . $conn->error);
         }
-        $productStmt->bind_param("ii", $selectedProductId, $tenant_id);
+        $productStmt->bind_param("i", $selectedProductId);
         $productStmt->execute();
         $productResult = $productStmt->get_result();
         
@@ -569,14 +569,14 @@ function cs_condition($conn, $customer_id, $tenant_id) {
                 
                 $itemStmt->close();
                 
-                // Check and deduct product stock (with tenant isolation)
+                // Check and deduct product stock (products are global - no tenant isolation)
                 if (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1) {
-                    $updateStockSql = "UPDATE products SET stock_quantity = stock_quantity - ? WHERE id = ? AND stock_quantity >= ? AND tenant_id = ?";
+                    $updateStockSql = "UPDATE products SET stock_quantity = stock_quantity - ? WHERE id = ? AND stock_quantity >= ?";
                     $stockUpdateStmt = $conn->prepare($updateStockSql);
                     if (!$stockUpdateStmt) {
                         throw new Exception("Failed to prepare stock update query: " . $conn->error);
                     }
-                    $stockUpdateStmt->bind_param("iiii", $quantityInt, $productId, $quantityInt, $tenant_id);
+                    $stockUpdateStmt->bind_param("iii", $quantityInt, $productId, $quantityInt);
                     
                     if (!$stockUpdateStmt->execute()) {
                         throw new Exception("Failed to update stock for product code: " . $productCode);
@@ -676,7 +676,7 @@ function cs_condition($conn, $customer_id, $tenant_id) {
 // Fetch tenants for main admin
 $tenants = [];
 if ($isMainAdmin == 1 && $role_id === 1) {
-    $tenantsSql = "SELECT tenant_id, company_name FROM tenants WHERE status = 'active' ORDER BY company_name ASC";
+    $tenantsSql = "SELECT tenant_id, tenant_name FROM tenants WHERE status = 'active' ORDER BY tenant_name ASC";
     $tenantsStmt = $conn->prepare($tenantsSql);
     if ($tenantsStmt) {
         $tenantsStmt->execute();
@@ -704,20 +704,17 @@ if ($selectedTenantId) {
     }
 }
 
-// Fetch active products for dropdown based on selected tenant
+// Fetch active products for dropdown (products are global - no tenant isolation)
 $products = [];
-if ($selectedTenantId) {
-    $productsSql = "SELECT id, name, product_code, lkr_price, stock_quantity FROM products WHERE status = 'active' AND tenant_id = ? ORDER BY name ASC";
-    $productsStmt = $conn->prepare($productsSql);
-    if ($productsStmt) {
-        $productsStmt->bind_param("i", $selectedTenantId);
-        $productsStmt->execute();
-        $productsResult = $productsStmt->get_result();
-        while ($row = $productsResult->fetch_assoc()) {
-            $products[] = $row;
-        }
-        $productsStmt->close();
+$productsSql = "SELECT id, name, product_code, lkr_price, stock_quantity FROM products WHERE status = 'active' ORDER BY name ASC";
+$productsStmt = $conn->prepare($productsSql);
+if ($productsStmt) {
+    $productsStmt->execute();
+    $productsResult = $productsStmt->get_result();
+    while ($row = $productsResult->fetch_assoc()) {
+        $products[] = $row;
     }
+    $productsStmt->close();
 }
 
 
@@ -727,7 +724,7 @@ if ($selectedTenantId) {
 <html lang="en" data-pc-preset="preset-1" data-pc-sidebar-caption="true" data-pc-direction="ltr" dir="ltr" data-pc-theme="light">
 
 <head>
-    <title>Lead Upload | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
+    <title>Lead Upload | <?= htmlspecialchars($_SESSION['tenant_name'] ?? '') ?></title>
     
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
     
@@ -1141,7 +1138,7 @@ if ($selectedTenantId) {
                                         <?php foreach ($tenants as $tenant): ?>
                                             <option value="<?php echo $tenant['tenant_id']; ?>" 
                                                 <?php echo ($selectedTenantId == $tenant['tenant_id']) ? 'selected' : ''; ?>>
-                                                <?php echo htmlspecialchars($tenant['company_name']); ?>
+                                                <?php echo htmlspecialchars($tenant['tenant_name']); ?>
                                             </option>
                                         <?php endforeach; ?>
                                     </select>

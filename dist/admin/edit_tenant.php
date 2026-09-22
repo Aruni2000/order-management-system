@@ -111,7 +111,7 @@ if ($stmt) {
 
 <head>
     <!-- TITLE -->
-    <title>Edit Tenant | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
+    <title>Edit Tenant | <?= htmlspecialchars($_SESSION['tenant_name'] ?? '') ?></title>
 
     <?php
     include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php');
@@ -272,10 +272,10 @@ if ($stmt) {
                                 <div class="form-row">
                                     <div class="form-column">
                                         <div class="form-group">
-                                            <label for="company_name" class="form-label">Tenant Name *</label>
-                                            <input type="text" class="form-control" id="company_name" name="company_name" 
-                                                   placeholder="Enter Tenant Name" value="<?php echo htmlspecialchars($tenant_data['company_name'] ?? ''); ?>" required>
-                                            <div class="error-feedback" id="company_name-error"></div>
+                                            <label for="tenant_name" class="form-label">Tenant Name *</label>
+                                            <input type="text" class="form-control" id="tenant_name" name="tenant_name" 
+                                                   placeholder="Enter Tenant Name" value="<?php echo htmlspecialchars($tenant_data['tenant_name'] ?? ''); ?>" required>
+                                            <div class="error-feedback" id="tenant_name-error"></div>
                                         </div>
                                     </div>
                                     <!-- Contact Person -->
@@ -435,7 +435,7 @@ if ($stmt) {
     <script>
         // Store original values for change detection
         const originalValues = {
-            company_name: '<?php echo addslashes($tenant_data['company_name'] ?? ''); ?>',
+            tenant_name: '<?php echo addslashes($tenant_data['tenant_name'] ?? ''); ?>',
             contact_person: '<?php echo addslashes($tenant_data['contact_person'] ?? ''); ?>',
             email: '<?php echo addslashes($tenant_data['email'] ?? ''); ?>',
             phone: '<?php echo addslashes($tenant_data['phone'] ?? ''); ?>',
@@ -553,7 +553,7 @@ if ($stmt) {
         // Change detection functions
         function hasFormChanged() {
             var changed = (
-                $('#company_name').val() !== originalValues.company_name ||
+                $('#tenant_name').val() !== originalValues.tenant_name ||
                 $('#contact_person').val() !== originalValues.contact_person ||
                 $('#email').val() !== originalValues.email ||
                 $('#phone').val() !== originalValues.phone ||
@@ -578,7 +578,7 @@ if ($stmt) {
         }
         
         function updateOriginalValues() {
-            originalValues.company_name = $('#company_name').val();
+            originalValues.tenant_name = $('#tenant_name').val();
             originalValues.contact_person = $('#contact_person').val();
             originalValues.email = $('#email').val();
             originalValues.phone = $('#phone').val();
@@ -618,7 +618,7 @@ if ($stmt) {
         
         // Initialize form
         function initializeForm() {
-            $('#company_name').focus();
+            $('#tenant_name').focus();
             
             // Auto-format phone number
             $('#phone').on('input', function() {
@@ -638,12 +638,12 @@ if ($stmt) {
         
         // Setup real-time validation
         function setupRealTimeValidation() {
-            $('#company_name').on('blur', function() {
+            $('#tenant_name').on('blur', function() {
                 const validation = validateCompanyName($(this).val());
                 if (!validation.valid) {
-                    showError('company_name', validation.message);
+                    showError('tenant_name', validation.message);
                 } else {
-                    showSuccess('company_name');
+                    showSuccess('tenant_name');
                 }
             });
             
@@ -841,14 +841,14 @@ if ($stmt) {
             let isValid = true;
             
             // Get all field values
-            const companyName = $('#company_name').val();
+            const companyName = $('#tenant_name').val();
             const contactPerson = $('#contact_person').val();
             const email = $('#email').val();
             const phone = $('#phone').val();
             
             // Validate required fields
             const validations = [
-                { field: 'company_name', validator: validateCompanyName, value: companyName },
+                { field: 'tenant_name', validator: validateCompanyName, value: companyName },
                 { field: 'contact_person', validator: validateContactPerson, value: contactPerson },
                 { field: 'phone', validator: validatePhone, value: phone },
                 { field: 'address', validator: validateAddress, value: $('#address').val() }

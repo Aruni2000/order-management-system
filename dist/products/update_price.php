@@ -13,7 +13,7 @@ if (!isset($_SESSION['user_id'])) {
     exit();
 }
 
-// Check if user is admin or store role (Admin & Store access); non-main-admins are tenant-scoped below
+// Check if user is admin or store role (Admin & Store access)
 $role_id = isset($_SESSION['role_id']) ? (int)$_SESSION['role_id'] : 0;
 if (!in_array($role_id, [1, 3], true)) {
     http_response_code(403);

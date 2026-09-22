@@ -181,8 +181,8 @@ if (isset($order['order_pay_status']) && !empty($order['order_pay_status'])) {
 // Fetch company info from tenants table
 $order_tenant_id = isset($order['tenant_id']) ? (int)$order['tenant_id'] : 0;
 
-// Get tenant info (company_name, address, phone/email, logo_url)
-$tenant_query = "SELECT company_name, address, phone, email, logo_url FROM tenants WHERE tenant_id = ? AND status = 'active' LIMIT 1";
+// Get tenant info (tenant_name, address, phone/email, logo_url)
+$tenant_query = "SELECT tenant_name, address, phone, email, logo_url FROM tenants WHERE tenant_id = ? AND status = 'active' LIMIT 1";
 $stmt = $conn->prepare($tenant_query);
 $stmt->bind_param("i", $order_tenant_id);
 $stmt->execute();
@@ -266,7 +266,7 @@ $conditionLabel = $conditionLabels[$conditionVal] ?? 'New';
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Order #<?php echo $order_id; ?> | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
+    <title>Order #<?php echo $order_id; ?> | <?= htmlspecialchars($_SESSION['tenant_name'] ?? '') ?></title>
     <link rel="stylesheet" href="../assets/css/orders.css" />
     <?php
     $favicon_url = '';

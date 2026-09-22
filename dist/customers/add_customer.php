@@ -47,7 +47,7 @@ $role_id = $_SESSION['role_id'];
     data-pc-theme="light">
 
 <head>
-    <title>Add New Customer | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
+    <title>Add New Customer | <?= htmlspecialchars($_SESSION['tenant_name'] ?? '') ?></title>
 
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
 
@@ -311,7 +311,7 @@ $role_id = $_SESSION['role_id'];
                                     </label>
                                     <?php 
                                         // Fetch and store tenant details in session
-                                            $sql_tenant = "SELECT tenant_id,company_name FROM tenants WHERE status = 'Active'";
+                                            $sql_tenant = "SELECT tenant_id,tenant_name FROM tenants WHERE status = 'Active'";
                                             $stmt_tenant = $conn->prepare($sql_tenant);
                                             $stmt_tenant->execute();
                                             $result_tenant = $stmt_tenant->get_result();
@@ -320,7 +320,7 @@ $role_id = $_SESSION['role_id'];
                                         <option value="0">Select Tenant</option>
                                         <?php while ($row = $result_tenant->fetch_assoc()) {?>
                                         <option value="<?php echo $row['tenant_id']; ?>">
-                                            <?php echo $row['company_name']; ?>
+                                            <?php echo $row['tenant_name']; ?>
                                         </option>
                                         <?php } ?>
                                     </select>

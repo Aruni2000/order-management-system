@@ -75,7 +75,7 @@ $countSql = "SELECT COUNT(*) as total FROM users";
 
 // Main query - updated to match your actual database schema
 $sql = "SELECT u.id as user_id, u.name as username, u.name as full_name, u.email, u.mobile as phone, 
-               u.nic, r.name as role, u.role_id, u.status, u.created_at, u.updated_at, t.company_name as tenant_name, t.is_main_admin
+               u.nic, r.name as role, u.role_id, u.status, u.created_at, u.updated_at, t.tenant_name as tenant_name, t.is_main_admin
         FROM users u 
         LEFT JOIN roles r ON u.role_id = r.id
         LEFT JOIN tenants t ON u.tenant_id = t.tenant_id";
@@ -187,7 +187,7 @@ if ($role_result && $role_result->num_rows > 0) {
 // Get active tenants for filter dropdown (if main admin)
 $tenants_list = [];
 if ($is_main_admin && $_SESSION['role_id'] == 1) {
-    $tenants_sql = "SELECT tenant_id, company_name FROM tenants WHERE status = 'active' ORDER BY company_name";
+    $tenants_sql = "SELECT tenant_id, tenant_name FROM tenants WHERE status = 'active' ORDER BY tenant_name";
     $tenants_result = $conn->query($tenants_sql);
     if ($tenants_result && $tenants_result->num_rows > 0) {
         $tenants_list = $tenants_result->fetch_all(MYSQLI_ASSOC);
@@ -199,7 +199,7 @@ if ($is_main_admin && $_SESSION['role_id'] == 1) {
 <html lang="en" data-pc-preset="preset-1" data-pc-sidebar-caption="true" data-pc-direction="ltr" dir="ltr" data-pc-theme="light">
 
 <head>
-    <title>User Management | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
+    <title>User Management | <?= htmlspecialchars($_SESSION['tenant_name'] ?? '') ?></title>
     
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
     
@@ -291,7 +291,7 @@ if ($is_main_admin && $_SESSION['role_id'] == 1) {
                                 <?php foreach ($tenants_list as $tenant): ?>
                                     <option value="<?php echo $tenant['tenant_id']; ?>" 
                                             <?php echo ($tenant_filter == $tenant['tenant_id']) ? 'selected' : ''; ?>>
-                                        <?php echo htmlspecialchars($tenant['company_name']); ?>
+                                        <?php echo htmlspecialchars($tenant['tenant_name']); ?>
                                     </option>
                                 <?php endforeach; ?>
                             </select>

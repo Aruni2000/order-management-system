@@ -185,22 +185,16 @@ if ($rbac->isAdmin()) {
 
 $tableExists = $conn->query("SHOW TABLES LIKE 'products'");
 if ($tableExists && $tableExists->num_rows > 0) {
-    if ($is_super_admin) {
-        $stats['total_products'] = safeQuery($conn, "SELECT COUNT(*) as count FROM products");
-    } else {
-        $stats['total_products'] = safeQuery($conn, "SELECT COUNT(*) as count FROM products WHERE tenant_id = $tenant_id");
-    }
+    // Products are global (no tenant isolation)
+    $stats['total_products'] = safeQuery($conn, "SELECT COUNT(*) as count FROM products");
 }
 
 // Check for low stock products count
 $low_stock_count = 0;
 $allow_inventory = isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1;
 if ($allow_inventory) {
-    if ($is_super_admin) {
-        $low_stock_query = "SELECT COUNT(*) as count FROM products WHERE status = 'active' AND stock_quantity <= low_stock_threshold";
-    } else {
-        $low_stock_query = "SELECT COUNT(*) as count FROM products WHERE status = 'active' AND stock_quantity <= low_stock_threshold AND tenant_id = $tenant_id";
-    }
+    // Products are global (no tenant isolation)
+    $low_stock_query = "SELECT COUNT(*) as count FROM products WHERE status = 'active' AND stock_quantity <= low_stock_threshold";
     $low_stock_result = $conn->query($low_stock_query);
     if ($low_stock_result) {
         $row = $low_stock_result->fetch_assoc();
@@ -346,7 +340,7 @@ if (isset($_SESSION['customer_id'])) {
 
 <head>
     <!-- TITLE -->
-    <title>Dashboard | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
+    <title>Dashboard | <?= htmlspecialchars($_SESSION['tenant_name'] ?? '') ?></title>
     <?php
     include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php');
     ?>

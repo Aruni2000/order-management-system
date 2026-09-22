@@ -66,7 +66,7 @@ $sql = "SELECT i.*, c.name as customer_name,
                p.payment_id, p.amount_paid, p.payment_method, p.payment_date, p.pay_by,
                u1.name as paid_by_name,
                u2.name as creator_name,
-               t.company_name,
+               t.tenant_name,
                (SELECT courier_name FROM couriers WHERE courier_id = i.courier_id LIMIT 1) as courier_name
         FROM order_header i 
         LEFT JOIN customers c ON i.customer_id = c.customer_id
@@ -202,7 +202,7 @@ $usersResult = $conn->query($usersQuery);
 
 
 // Get unique tenants for filter dropdown
-$tenant_sql = "SELECT DISTINCT tenant_id, company_name FROM tenants WHERE status = 'active'";
+$tenant_sql = "SELECT DISTINCT tenant_id, tenant_name FROM tenants WHERE status = 'active'";
 $tenant_result = $conn->query($tenant_sql);
 $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
 
@@ -212,7 +212,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
 <html lang="en" data-pc-preset="preset-1" data-pc-sidebar-caption="true" data-pc-direction="ltr" dir="ltr" data-pc-theme="light">
 
 <head>
-    <title>Courier Orders | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
+    <title>Courier Orders | <?= htmlspecialchars($_SESSION['tenant_name'] ?? '') ?></title>
     
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
     
@@ -307,7 +307,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                 <option value="">All Tenants</option>
                                 <?php foreach ($tenants as $tenant): ?>
                                     <option value="<?php echo $tenant['tenant_id']; ?>" <?php echo ($tenant_id_filter == $tenant['tenant_id']) ? 'selected' : ''; ?>>
-                                        <?php echo htmlspecialchars($tenant['company_name']); ?>
+                                        <?php echo htmlspecialchars($tenant['tenant_name']); ?>
                                     </option>
                                 <?php endforeach; ?>
                             </select>
@@ -530,7 +530,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                         <td class="customer-name">
                                             <div class="customer-info">
                                                 <h6 style="margin: 0; font-size: 14px;">
-                                                    <?php echo isset($row['company_name']) && $row['company_name'] !== '' ? htmlspecialchars($row['company_name']) : 'N/A'; ?>
+                                                    <?php echo isset($row['tenant_name']) && $row['tenant_name'] !== '' ? htmlspecialchars($row['tenant_name']) : 'N/A'; ?>
                                                 </h6>
                                             </div>
                                         </td>

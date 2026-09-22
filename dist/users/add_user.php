@@ -50,7 +50,7 @@ $roleResult = mysqli_query($conn, $roleQuery);
 $tenants = [];
 $is_main_admin = isset($_SESSION['is_main_admin']) && $_SESSION['is_main_admin'] == 1;
 if ($is_main_admin && $_SESSION['role_id'] == 1) {
-    $tenantQuery = "SELECT tenant_id, company_name FROM tenants WHERE status = 'active' ORDER BY company_name";
+    $tenantQuery = "SELECT tenant_id, tenant_name FROM tenants WHERE status = 'active' ORDER BY tenant_name";
     $tenantResult = mysqli_query($conn, $tenantQuery);
     if ($tenantResult) {
         while ($row = mysqli_fetch_assoc($tenantResult)) {
@@ -68,7 +68,7 @@ if ($is_main_admin && $_SESSION['role_id'] == 1) {
 
 <head>
     <!-- TITLE -->
-    <title>Add New User | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
+    <title>Add New User | <?= htmlspecialchars($_SESSION['tenant_name'] ?? '') ?></title>
 
     <?php
     include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php');
@@ -357,7 +357,7 @@ input[type="password"] {
                                         <option value="">Select Tenant...</option>
                                         <?php foreach ($tenants as $tenant): ?>
                                             <option value="<?php echo $tenant['tenant_id']; ?>">
-                                                <?php echo htmlspecialchars($tenant['company_name']); ?>
+                                                <?php echo htmlspecialchars($tenant['tenant_name']); ?>
                                             </option>
                                         <?php endforeach; ?>
                                     </select>

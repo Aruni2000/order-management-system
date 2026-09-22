@@ -87,7 +87,7 @@ $customerStmt->close();
 <html lang="en" data-pc-preset="preset-1" data-pc-sidebar-caption="true" data-pc-direction="ltr" dir="ltr" data-pc-theme="light">
 
 <head>
-    <title>Edit Customer | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
+    <title>Edit Customer | <?= htmlspecialchars($_SESSION['tenant_name'] ?? '') ?></title>
 
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
     

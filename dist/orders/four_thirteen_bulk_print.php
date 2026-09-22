@@ -171,7 +171,7 @@ function getOrderProducts($conn, $order_id) {
 
 // Multi-tenant Tenant Fetch
 $tenants = [];
-$tenant_result = $conn->query("SELECT tenant_id, company_name, address AS tenant_address, phone, email AS tenant_email, logo_url FROM tenants WHERE status = 'active'");
+$tenant_result = $conn->query("SELECT tenant_id, tenant_name, address AS tenant_address, phone, email AS tenant_email, logo_url FROM tenants WHERE status = 'active'");
 if ($tenant_result) {
     while ($t = $tenant_result->fetch_assoc()) {
         $tenants[$t['tenant_id']] = $t;
@@ -185,7 +185,7 @@ function getTenantData($tId, $tenants_list) {
     // Tenant not found (inactive/missing): return neutral placeholder
     // instead of falling back to the first active tenant's branding
     return [
-        'company_name' => 'Tenant Name', 'tenant_address' => 'Address not set', 'tenant_email' => '', 'phone' => '', 'logo_url' => ''
+        'tenant_name' => 'Tenant Name', 'tenant_address' => 'Address not set', 'tenant_email' => '', 'phone' => '', 'logo_url' => ''
     ];
 }
 
@@ -241,7 +241,7 @@ foreach ($orders as $order) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Simple Bulk Print Labels (<?php echo count($orders); ?> orders) - A4 Landscape 6 Labels | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
+    <title>Simple Bulk Print Labels (<?php echo count($orders); ?> orders) - A4 Landscape 6 Labels | <?= htmlspecialchars($_SESSION['tenant_name'] ?? '') ?></title>
     <?php
     $favicon_url = '';
     if (isset($conn) && $conn) {
@@ -592,7 +592,7 @@ foreach ($orders as $order) {
                 $tId = isset($order['tenant_id']) ? $order['tenant_id'] : 0;
                 $bData = getTenantData($tId, $tenants);
                 $company = [
-                    'name'     => $bData['company_name'] ?? 'Tenant Name',
+                    'name'     => $bData['tenant_name'] ?? 'Tenant Name',
                     'address'  => $bData['tenant_address'] ?? 'Address not set',
                     'email'    => $bData['tenant_email'] ?? '',
                     'phone'    => $bData['phone'] ?? '',

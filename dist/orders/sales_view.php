@@ -91,7 +91,7 @@ $filterSql = !empty($searchConditions) ? " AND " . implode(' AND ', $searchCondi
 // Fetch tenants for filter dropdown (main admin only)
 $tenants = [];
 if ($is_main_admin == 1 && $current_user_role == 1) {
-    $tenantsQuery = "SELECT tenant_id, company_name FROM tenants WHERE status = 'active' ORDER BY company_name ASC";
+    $tenantsQuery = "SELECT tenant_id, tenant_name FROM tenants WHERE status = 'active' ORDER BY tenant_name ASC";
     $tenantsResult = $conn->query($tenantsQuery);
     if ($tenantsResult && $tenantsResult->num_rows > 0) {
         while ($t = $tenantsResult->fetch_assoc()) {
@@ -129,7 +129,7 @@ $summary = $summaryResult ? $summaryResult->fetch_assoc() : [
 <html lang="en" data-pc-preset="preset-1" data-pc-sidebar-caption="true" data-pc-direction="ltr" dir="ltr" data-pc-theme="light">
 
 <head>
-    <title>Sales View | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
+    <title>Sales View | <?= htmlspecialchars($_SESSION['tenant_name'] ?? '') ?></title>
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
     <link rel="stylesheet" href="../assets/css/orders.css" />
     <style>
@@ -180,7 +180,7 @@ include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/sidebar.php');
                             <option value="">All Tenants</option>
                             <?php foreach ($tenants as $t): ?>
                                 <option value="<?= $t['tenant_id'] ?>" <?= ($tenant_id_filter == $t['tenant_id']) ? 'selected' : '' ?>>
-                                    <?= htmlspecialchars($t['company_name'] ?? 'Tenant ' . $t['tenant_id']) ?>
+                                    <?= htmlspecialchars($t['tenant_name'] ?? 'Tenant ' . $t['tenant_id']) ?>
                                 </option>
                             <?php endforeach; ?>
                         </select>

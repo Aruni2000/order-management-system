@@ -52,7 +52,7 @@ $offset = ($page - 1) * $limit;
 
         // Main query with city join - ADDED phone_2
         $sql = "SELECT c.customer_id, c.name, c.email, c.phone, c.phone_2, c.address_line1, c.address_line2, 
-                c.city_id, ct.city_name, c.status, c.created_at, c.updated_at, t.company_name
+                c.city_id, ct.city_name, c.status, c.created_at, c.updated_at, t.tenant_name
                 FROM customers c
                 LEFT JOIN city_table ct ON c.city_id = ct.city_id
                 LEFT JOIN tenants t ON c.tenant_id = t.tenant_id";
@@ -72,7 +72,7 @@ if (!empty($search)) {
                         c.address_line1 LIKE '%$searchTerm%' OR
                         c.address_line2 LIKE '%$searchTerm%' OR
                         ct.city_name LIKE '%$searchTerm%' OR
-                        t.company_name LIKE '%$searchTerm%')";
+                        t.tenant_name LIKE '%$searchTerm%')";
 }
 
 // Specific Customer ID filter
@@ -164,7 +164,7 @@ $city_result = $conn->query($city_sql);
 $cities = $city_result->fetch_all(MYSQLI_ASSOC);
 
 // Get unique tenants for filter dropdown
-$tenant_sql = "SELECT DISTINCT tenant_id, company_name 
+$tenant_sql = "SELECT DISTINCT tenant_id, tenant_name 
                FROM tenants";
 $tenant_result = $conn->query($tenant_sql);
 $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
@@ -177,7 +177,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
     data-pc-theme="light">
 
 <head>
-    <title>Customer Management | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
+    <title>Customer Management | <?= htmlspecialchars($_SESSION['tenant_name'] ?? '') ?></title>
 
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
 
@@ -269,7 +269,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                 <?php foreach ($tenants as $tenant): ?>
                                 <option value="<?php echo htmlspecialchars($tenant['tenant_id']); ?>"
                                     <?php echo $tenant_id_filter == $tenant['tenant_id'] ? 'selected' : ''; ?>>
-                                    <?php echo htmlspecialchars($tenant['company_name'] ? $tenant['company_name'] : 'Company ' . $tenant['tenant_id']); ?>
+                                    <?php echo htmlspecialchars($tenant['tenant_name'] ? $tenant['tenant_name'] : 'Company ' . $tenant['tenant_id']); ?>
                                 </option>
                                 <?php endforeach; ?>
                             </select>
@@ -369,7 +369,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                 <td class="customer-name">
                                     <div class="customer-info">
                                         <h6 style="margin: 0; font-size: 14px;">
-                                            <?php echo htmlspecialchars($row['company_name']); ?></h6>
+                                            <?php echo htmlspecialchars($row['tenant_name']); ?></h6>
                                     </div>
                                 </td>
                                 <?php } else { ?>

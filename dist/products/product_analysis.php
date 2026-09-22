@@ -63,14 +63,11 @@ if ($current_user_id == 0) {
 }
 
 // Access control – Admin-role and User-role users may view product analysis:
-//  - main admin (is_main_admin=1, role=1): sees all tenants
-//  - sub-company admin (is_main_admin=0, role=1): sees their own company only
+//  - admin (role=1): sees all data
 //  - user (role=2): sees only the orders they placed
-$is_main_admin = (int)($_SESSION['is_main_admin'] ?? 0) === 1;
+// Products, categories and their analysis are global (no tenant isolation)
 $is_admin = $current_user_role == 1;
 $is_user = $current_user_role == 2;
-$is_super_admin = ($is_main_admin && $is_admin);
-$session_tenant_id = (int)($_SESSION['tenant_id'] ?? 0);
 if (!$is_admin && !$is_user) {
     header("Location: /OMS/dist/pages/access_denied.php");
     exit();
@@ -80,37 +77,14 @@ $date_from = isset($_GET['date_from']) && !empty($_GET['date_from']) ? $_GET['da
 $date_to = isset($_GET['date_to']) && !empty($_GET['date_to']) ? $_GET['date_to'] : date('Y-m-d');
 $product_search = isset($_GET['product_search']) ? trim($_GET['product_search']) : '';
 $category_filter = isset($_GET['category_filter']) ? intval($_GET['category_filter']) : 0;
-// Tenant filter: only meaningful for the Super Admin (who sees all tenants)
-$tenant_filter = $is_super_admin ? (isset($_GET['tenant_filter']) ? intval($_GET['tenant_filter']) : 0) : 0;
 
 $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 20;
 $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
 $offset = ($page - 1) * $limit;
 
-// Tenant list for the tenant dropdown (Super Admin only)
-$tenants = [];
-if ($is_super_admin) {
-    $tRes = $conn->query("SELECT tenant_id, company_name FROM tenants WHERE status = 'active' ORDER BY company_name ASC");
-    if ($tRes) {
-        while ($trow = $tRes->fetch_assoc()) {
-            $tenants[] = $trow;
-        }
-    }
-}
-
-// Category filter options scoped to the selected tenant (Super Admin with a
-// tenant picked), the accessing user's own tenant, or all tenants for a Super
-// Admin with no tenant selected
+// Category filter options (categories are global - no tenant isolation)
 $categories = [];
-if ($is_super_admin) {
-    $catSql = "SELECT id, name, tenant_id FROM categories WHERE status = 'active'";
-    if ($tenant_filter > 0) {
-        $catSql .= " AND tenant_id = $tenant_filter";
-    }
-    $catRes = $conn->query($catSql . " ORDER BY name ASC");
-} else {
-    $catRes = $conn->query("SELECT id, name, tenant_id FROM categories WHERE status = 'active' AND tenant_id = $session_tenant_id ORDER BY name ASC");
-}
+$catRes = $conn->query("SELECT id, name FROM categories WHERE status = 'active' ORDER BY name ASC");
 if ($catRes) {
     while ($crow = $catRes->fetch_assoc()) {
         $categories[] = $crow;
@@ -118,15 +92,9 @@ if ($catRes) {
 }
 
 $roleCondition = "";
-if ($is_admin) {
-    // Admins: Super Admin sees all tenants, or one tenant when picked in the
-    // tenant filter; sub-company admin sees own company
-    $roleCondition = $is_super_admin
-        ? ($tenant_filter > 0 ? " AND oh.tenant_id = $tenant_filter" : "")
-        : " AND oh.tenant_id = $session_tenant_id";
-} else {
-    // Users (role 2): see only orders they placed in their tenant
-    $roleCondition = " AND oh.user_id = $current_user_id AND oh.tenant_id = $session_tenant_id";
+if ($is_user) {
+    // Users (role 2): see only the orders they placed (no tenant isolation)
+    $roleCondition = " AND oh.user_id = $current_user_id";
 }
 
 $safe_from = $conn->real_escape_string($date_from);
@@ -219,7 +187,7 @@ $summary['avg_success_rate'] = $summaryDecided > 0 ? $summaryCompleted * 100 / $
 <html lang="en" data-pc-preset="preset-1" data-pc-sidebar-caption="true" data-pc-direction="ltr" dir="ltr" data-pc-theme="light">
 
 <head>
-    <title>Product Analysis | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
+    <title>Product Analysis | <?= htmlspecialchars($_SESSION['tenant_name'] ?? '') ?></title>
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
     <link rel="stylesheet" href="../assets/css/tailwind-utilities.css" />
     <link rel="stylesheet" href="../assets/css/orders.css" />
@@ -254,20 +222,6 @@ $summary['avg_success_rate'] = $summaryDecided > 0 ? $summaryCompleted * 100 / $
             <div class="main-content-wrapper">
                 <div class="tracking-container">
                     <form class="tracking-form" method="GET" action="">
-                        <?php if ($is_super_admin && !empty($tenants)): ?>
-                        <div class="form-group">
-                            <label for="tenant_filter">Tenant</label>
-                            <select id="tenant_filter" name="tenant_filter">
-                                <option value="">All Tenants</option>
-                                <?php foreach ($tenants as $t): ?>
-                                    <option value="<?php echo $t['tenant_id']; ?>" <?php echo ($tenant_filter == $t['tenant_id']) ? 'selected' : ''; ?>>
-                                        <?php echo htmlspecialchars($t['company_name']); ?>
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
-                        <?php endif; ?>
-
                         <div class="form-group">
                             <label for="date_from">Date From</label>
                             <input type="date" id="date_from" name="date_from" value="<?php echo htmlspecialchars($date_from); ?>">

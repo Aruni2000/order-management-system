@@ -173,7 +173,7 @@ if (!empty($order_ids)) {
 // Fetch All Tenants (Multi-Tenant Support)
 // -------------------------
 $tenants = [];
-$tenant_result = $conn->query("SELECT tenant_id, company_name, address AS tenant_address, phone, email AS tenant_email, logo_url FROM tenants WHERE status = 'active'");
+$tenant_result = $conn->query("SELECT tenant_id, tenant_name, address AS tenant_address, phone, email AS tenant_email, logo_url FROM tenants WHERE status = 'active'");
 if ($tenant_result) {
     while ($t = $tenant_result->fetch_assoc()) {
         $tenants[$t['tenant_id']] = $t;
@@ -188,7 +188,7 @@ function getTenantData($tId, $tenants_list) {
     // Tenant not found (inactive/missing): return neutral placeholder
     // instead of falling back to the first active tenant's branding
     return [
-        'company_name' => 'Tenant Name', 'tenant_address' => 'Address not set', 'tenant_email' => '', 'phone' => '', 'logo_url' => ''
+        'tenant_name' => 'Tenant Name', 'tenant_address' => 'Address not set', 'tenant_email' => '', 'phone' => '', 'logo_url' => ''
     ];
 }
 
@@ -224,7 +224,7 @@ function formatProducts($order_id, $products_by_order)
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Bulk Print - <?php echo count($orders); ?> Labels | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
+<title>Bulk Print - <?php echo count($orders); ?> Labels | <?= htmlspecialchars($_SESSION['tenant_name'] ?? '') ?></title>
 <?php
 $favicon_url = '';
 if (isset($conn) && $conn) {
@@ -354,7 +354,7 @@ window.onload = function() {
 
         <!-- Billing From Details -->
         <div style="font-size:10px; margin-top:5px;">
-            <b><?php echo htmlspecialchars($bData['company_name']); ?></b><br>
+            <b><?php echo htmlspecialchars($bData['tenant_name']); ?></b><br>
             <?php echo nl2br(htmlspecialchars($bData['tenant_address'] ?? '')); ?><br>
             <?php echo htmlspecialchars($bData['phone'] ?? ''); ?> 
             <?php if (!empty($bData['tenant_email'])): ?>| <?php echo htmlspecialchars($bData['tenant_email'] ?? ''); ?> <?php endif; ?>

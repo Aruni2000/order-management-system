@@ -12,7 +12,7 @@ if (!function_exists('get_logo_with_fallback')) {
 
         $result = [
             'logo_url' => null,
-            'company_name' => null,
+            'tenant_name' => null,
             'debug' => []
         ];
         
@@ -22,7 +22,7 @@ if (!function_exists('get_logo_with_fallback')) {
                 return $result;
             }
             
-            $query = "SELECT logo_url, company_name FROM tenants WHERE status = 'active'";
+            $query = "SELECT logo_url, tenant_name FROM tenants WHERE status = 'active'";
             if ($tenant_id) {
                 $query .= " AND tenant_id = " . (int)$tenant_id;
             }
@@ -40,9 +40,9 @@ if (!function_exists('get_logo_with_fallback')) {
             
             if ($data) {
                 // Set Tenant Name
-                if (!empty($data['company_name'])) {
-                    $result['company_name'] = trim($data['company_name']);
-                    $result['debug'][] = "DB Tenant Name set: " . $result['company_name'];
+                if (!empty($data['tenant_name'])) {
+                    $result['tenant_name'] = trim($data['tenant_name']);
+                    $result['debug'][] = "DB Tenant Name set: " . $result['tenant_name'];
                 } else {
                     $result['debug'][] = "Tenant Name is empty in database.";
                 }
@@ -131,9 +131,9 @@ $sidebar_tenant_id = $_SESSION['tenant_id'] ?? null;
 
 $tenant_logo_info = get_logo_with_fallback(isset($conn) ? $conn : null, $sidebar_tenant_id);
 $logo_url = $tenant_logo_info['logo_url'];
-$company_name = $tenant_logo_info['company_name'] ?? 'Company';
+$tenant_name = $tenant_logo_info['tenant_name'] ?? 'Company';
 $fallback_svg = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCA0MCA0MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjQwIiBoZWlnaHQ9IjQwIiBmaWxsPSIjMDA3YmZmIi8+Cjx0ZXh0IHg9IjIwIiB5PSIyNSIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjE0IiBmaWxsPSJ3aGl0ZSIgdGV4dC1hbmNob3I9Im1pZGRsZSI+TE9HTzwvdGV4dD4KPC9zdmc+';
-$safe_company_name = htmlspecialchars($company_name, ENT_QUOTES, 'UTF-8');
+$safe_tenant_name = htmlspecialchars($tenant_name, ENT_QUOTES, 'UTF-8');
 ?>
 
 <style>
@@ -181,10 +181,10 @@ $safe_company_name = htmlspecialchars($company_name, ENT_QUOTES, 'UTF-8');
       <a href="../dashboard/index.php" class="b-brand tenant-link">
         <?php if ($logo_url): ?>
           <img src="<?php echo htmlspecialchars($logo_url, ENT_QUOTES, 'UTF-8'); ?>" 
-            alt="<?php echo $safe_company_name; ?> logo" class="brand-logo-img" 
+            alt="<?php echo $safe_tenant_name; ?> logo" class="brand-logo-img" 
             onerror="this.onerror=null; this.src='<?php echo $fallback_svg; ?>';" />
         <?php else: ?>
-          <span class="brand-company-name"><?php echo $safe_company_name; ?></span>
+          <span class="brand-company-name"><?php echo $safe_tenant_name; ?></span>
         <?php endif; ?>
       </a>
     </div>

@@ -72,7 +72,7 @@ $sql = "SELECT c.co_id, c.courier_id, c.courier_name, c.phone_number, c.email,
                c.address_line1, c.address_line2, c.city, c.is_default, c.has_api_new, 
                c.has_api_existing, c.created_at, c.updated_at, 
                c.return_fee_value, c.tenant_id,
-               t.company_name as tenant_name
+               t.tenant_name as tenant_name
         FROM couriers c
         LEFT JOIN tenants t ON c.tenant_id = t.tenant_id
         WHERE 1=1 $accessFilter AND c.status = 'active'";
@@ -85,7 +85,7 @@ if (!empty($search)) {
     $searchTerm = $conn->real_escape_string($search);
     $searchConditions[] = "(
                         c.courier_name LIKE '%$searchTerm%' OR 
-                        t.company_name LIKE '%$searchTerm%')";
+                        t.tenant_name LIKE '%$searchTerm%')";
 }
 
 // Specific Courier Name filter - now using exact match for dropdown
@@ -121,7 +121,7 @@ if (!$result) {
 // Fetch tenants for filter if main admin
 $tenants = [];
 if ($is_main_admin === 1 && $_SESSION['role_id'] == 1) {
-    $tenantsQuery = "SELECT tenant_id, company_name FROM tenants WHERE status = 'active' ORDER BY company_name ASC";
+    $tenantsQuery = "SELECT tenant_id, tenant_name FROM tenants WHERE status = 'active' ORDER BY tenant_name ASC";
     $tenantsResult = $conn->query($tenantsQuery);
     if ($tenantsResult && $tenantsResult->num_rows > 0) {
         while ($t = $tenantsResult->fetch_assoc()) {
@@ -164,7 +164,7 @@ function getStatusInfo($is_default) {
 <html lang="en" data-pc-preset="preset-1" data-pc-sidebar-caption="true" data-pc-direction="ltr" dir="ltr" data-pc-theme="light">
 
 <head>
-    <title>Courier Management | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
+    <title>Courier Management | <?= htmlspecialchars($_SESSION['tenant_name'] ?? '') ?></title>
     
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
     
@@ -238,7 +238,7 @@ function getStatusInfo($is_default) {
                                 <option value="">All Tenants</option>
                                 <?php foreach ($tenants as $t): ?>
                                     <option value="<?php echo $t['tenant_id']; ?>" <?php echo ($tenant_filter == $t['tenant_id']) ? 'selected' : ''; ?>>
-                                        <?php echo htmlspecialchars($t['company_name']); ?>
+                                        <?php echo htmlspecialchars($t['tenant_name']); ?>
                                     </option>
                                 <?php endforeach; ?>
                             </select>

@@ -66,7 +66,7 @@ if (isset($_GET['export']) && $_GET['export'] == 'success_report') {
     
     // Build export query with same filters as main query
     $export_sql = "SELECT u.id as user_id, u.name as username, u.email, u.mobile as phone, 
-                   u.nic, r.name as role, u.status, u.created_at, t.company_name as tenant_name,
+                   u.nic, r.name as role, u.status, u.created_at, t.tenant_name as tenant_name,
                    (SELECT COUNT(*) FROM order_header WHERE user_id = u.id AND status NOT IN ('pending', 'cancel', 'dispatch','waiting')) as dispatched_orders,
                    (SELECT COUNT(*) FROM order_header WHERE user_id = u.id AND status IN ('done', 'delivered')) as delivered_orders,
                    (SELECT COUNT(*) FROM order_header WHERE user_id = u.id AND status = 'cancel') as cancelled_orders,
@@ -241,7 +241,7 @@ $countSql = "SELECT COUNT(*) as total FROM users u LEFT JOIN tenants t ON u.tena
 
 // Main query with success rate calculation
 $sql = "SELECT u.id as user_id, u.name as username, u.email, u.mobile as phone, 
-               u.nic, r.name as role, u.role_id, u.status, u.created_at, t.company_name as tenant_name, t.is_main_admin,
+               u.nic, r.name as role, u.role_id, u.status, u.created_at, t.tenant_name as tenant_name, t.is_main_admin,
                (SELECT COUNT(*) FROM order_header WHERE user_id = u.id AND status NOT IN ('pending', 'cancel', 'dispatch','waiting')) as dispatched_orders,
                (SELECT COUNT(*) FROM order_header WHERE user_id = u.id AND status IN ('done', 'delivered')) as delivered_orders,
                (SELECT COUNT(*) FROM order_header WHERE user_id = u.id AND status IN ('return_handover', 'return', 'return pending', 'return transfer', 'return complete')) as return_orders
@@ -330,7 +330,7 @@ if ($role_result && $role_result->num_rows > 0) {
 
 // Get active tenants for filter dropdown
 $tenants_list = [];
-$tenants_sql = "SELECT tenant_id, company_name FROM tenants WHERE status = 'active' ORDER BY company_name";
+$tenants_sql = "SELECT tenant_id, tenant_name FROM tenants WHERE status = 'active' ORDER BY tenant_name";
 $tenants_result = $conn->query($tenants_sql);
 if ($tenants_result && $tenants_result->num_rows > 0) {
     $tenants_list = $tenants_result->fetch_all(MYSQLI_ASSOC);
@@ -394,7 +394,7 @@ function getSuccessRateBadgeClass($rate) {
 <html lang="en" data-pc-preset="preset-1" data-pc-sidebar-caption="true" data-pc-direction="ltr" dir="ltr" data-pc-theme="light">
 
 <head>
-    <title>User Management | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
+    <title>User Management | <?= htmlspecialchars($_SESSION['tenant_name'] ?? '') ?></title>
     
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
     
@@ -602,7 +602,7 @@ function getSuccessRateBadgeClass($rate) {
                                 <?php foreach ($tenants_list as $tenant): ?>
                                     <option value="<?php echo $tenant['tenant_id']; ?>" 
                                             <?php echo ($tenant_filter == $tenant['tenant_id']) ? 'selected' : ''; ?>>
-                                        <?php echo htmlspecialchars($tenant['company_name']); ?>
+                                        <?php echo htmlspecialchars($tenant['tenant_name']); ?>
                                     </option>
                                 <?php endforeach; ?>
                             </select>

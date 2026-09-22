@@ -107,13 +107,9 @@ function checkCourierStatus($conn, $tenant_id) {
 // Check courier status for selected tenant
 $courierStatus = checkCourierStatus($conn, $selected_tenant_id);
 
-// Fetch necessary data for the form - filter by selected tenant for proper isolation
-$productSql = "SELECT id, name, description, stock_quantity, low_stock_threshold, lkr_price FROM products WHERE status = 'active' AND tenant_id = ? ORDER BY name ASC";
-$productStmt = $conn->prepare($productSql);
-$productStmt->bind_param("i", $selected_tenant_id);
-$productStmt->execute();
-$result = $productStmt->get_result();
-$productStmt->close();
+// Fetch necessary data for the form - products are global (no tenant isolation)
+$productSql = "SELECT id, name, description, stock_quantity, low_stock_threshold, lkr_price FROM products WHERE status = 'active' ORDER BY name ASC";
+$result = $conn->query($productSql);
 
 
 // Fetch cities for dropdown
@@ -136,7 +132,7 @@ $deliveryFeeStmt->close();
 // Fetch tenants for dropdown if main admin
 $tenants = [];
 if ($is_main_admin === 1 && $_SESSION['role_id'] == 1) {
-    $tenantsQuery = "SELECT tenant_id, company_name FROM tenants WHERE status = 'active' ORDER BY company_name ASC";
+    $tenantsQuery = "SELECT tenant_id, tenant_name FROM tenants WHERE status = 'active' ORDER BY tenant_name ASC";
     $tenantsResult = $conn->query($tenantsQuery);
     if ($tenantsResult && $tenantsResult->num_rows > 0) {
         while ($t = $tenantsResult->fetch_assoc()) {
@@ -150,19 +146,19 @@ $selectedTenantName = '';
 if ($is_main_admin === 1 && $_SESSION['role_id'] == 1) {
     foreach ($tenants as $tenant) {
         if ($tenant['tenant_id'] == $selected_tenant_id) {
-            $selectedTenantName = $tenant['company_name'];
+            $selectedTenantName = $tenant['tenant_name'];
             break;
         }
     }
 } else {
-    $tenantNameSql = "SELECT company_name FROM tenants WHERE tenant_id = ?";
+    $tenantNameSql = "SELECT tenant_name FROM tenants WHERE tenant_id = ?";
     $tenantNameStmt = $conn->prepare($tenantNameSql);
     $tenantNameStmt->bind_param("i", $selected_tenant_id);
     $tenantNameStmt->execute();
     $tenantNameResult = $tenantNameStmt->get_result();
     if ($tenantNameResult && $tenantNameResult->num_rows > 0) {
         $tenantNameData = $tenantNameResult->fetch_assoc();
-        $selectedTenantName = $tenantNameData['company_name'];
+        $selectedTenantName = $tenantNameData['tenant_name'];
     }
 }
 ?>
@@ -171,7 +167,7 @@ if ($is_main_admin === 1 && $_SESSION['role_id'] == 1) {
 
 <head>
     <!-- TITLE -->
-    <title>Create Order | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
+    <title>Create Order | <?= htmlspecialchars($_SESSION['tenant_name'] ?? '') ?></title>
 
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
     
@@ -619,7 +615,7 @@ if ($is_main_admin === 1 && $_SESSION['role_id'] == 1) {
                 <?php foreach ($tenants as $tenant): ?>
                     <option value="<?php echo $tenant['tenant_id']; ?>" 
                             <?php echo ($tenant['tenant_id'] == $selected_tenant_id) ? 'selected' : ''; ?>>
-                        <?php echo htmlspecialchars($tenant['company_name']); ?>
+                        <?php echo htmlspecialchars($tenant['tenant_name']); ?>
                     </option>
                 <?php endforeach; ?>
             </select>

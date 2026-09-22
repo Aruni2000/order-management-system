@@ -57,7 +57,7 @@ if (!$current_is_main_admin) {
 
 // Handle search and filter parameters
 $search = isset($_GET['search']) ? trim($_GET['search']) : '';
-$company_name_filter = isset($_GET['company_name_filter']) ? trim($_GET['company_name_filter']) : '';
+$tenant_name_filter = isset($_GET['tenant_name_filter']) ? trim($_GET['tenant_name_filter']) : '';
 $email_filter = isset($_GET['email_filter']) ? trim($_GET['email_filter']) : '';
 $phone_filter = isset($_GET['phone_filter']) ? trim($_GET['phone_filter']) : '';
 $contact_person_filter = isset($_GET['contact_person_filter']) ? trim($_GET['contact_person_filter']) : '';
@@ -77,7 +77,7 @@ $offset = ($page - 1) * $limit;
 $countSql = "SELECT COUNT(*) as total FROM tenants";
 
 // Main query
-$sql = "SELECT tenant_id, company_name, contact_person, email, phone, address, status, is_main_admin, 
+$sql = "SELECT tenant_id, tenant_name, contact_person, email, phone, address, status, is_main_admin, 
                created_at, updated_at 
         FROM tenants";
 
@@ -88,16 +88,16 @@ $searchConditions = [];
 if (!empty($search)) {
     $searchTerm = $conn->real_escape_string($search);
     $searchConditions[] = "(
-                        company_name LIKE '%$searchTerm%' OR 
+                        tenant_name LIKE '%$searchTerm%' OR 
                         contact_person LIKE '%$searchTerm%' OR 
                         email LIKE '%$searchTerm%' OR 
                         phone LIKE '%$searchTerm%')";
 }
 
 // Specific Tenant Name filter
-if (!empty($company_name_filter)) {
-    $companyTerm = $conn->real_escape_string($company_name_filter);
-    $searchConditions[] = "company_name LIKE '%$companyTerm%'";
+if (!empty($tenant_name_filter)) {
+    $companyTerm = $conn->real_escape_string($tenant_name_filter);
+    $searchConditions[] = "tenant_name LIKE '%$companyTerm%'";
 }
 
 // Specific Email filter
@@ -176,7 +176,7 @@ if (!$result) {
 <html lang="en" data-pc-preset="preset-1" data-pc-sidebar-caption="true" data-pc-direction="ltr" dir="ltr" data-pc-theme="light">
 
 <head>
-    <title>Tenant Management | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
+    <title>Tenant Management | <?= htmlspecialchars($_SESSION['tenant_name'] ?? '') ?></title>
     
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
     
@@ -217,10 +217,10 @@ if (!$result) {
                 <div class="tracking-container">
                     <form class="tracking-form" method="GET" action="">
                         <div class="form-group">
-                            <label for="company_name_filter">Tenant Name</label>
-                            <input type="text" id="company_name_filter" name="company_name_filter" 
+                            <label for="tenant_name_filter">Tenant Name</label>
+                            <input type="text" id="tenant_name_filter" name="tenant_name_filter" 
                                    placeholder="Enter Tenant Name" 
-                                   value="<?php echo htmlspecialchars($company_name_filter); ?>">
+                                   value="<?php echo htmlspecialchars($tenant_name_filter); ?>">
                         </div>
                         
                         <div class="form-group">
@@ -316,7 +316,7 @@ if (!$result) {
                                         <!-- Company Info -->
                                         <td class="customer-name">
                                             <div class="customer-info">
-                                                <h6 style="margin: 0; font-size: 14px; font-weight: 600;"><?php echo htmlspecialchars($row['company_name']); ?></h6>
+                                                <h6 style="margin: 0; font-size: 14px; font-weight: 600;"><?php echo htmlspecialchars($row['tenant_name']); ?></h6>
                                             </div>
                                         </td>
                                         
@@ -370,7 +370,7 @@ if (!$result) {
                                             <div class="action-buttons-group" style="justify-content: flex-start;">
                                                 <button type="button" class="action-btn view-btn view-tenant-btn"
                                                         data-tenant-id="<?= $row['tenant_id'] ?>"
-                                                        data-company-name="<?= htmlspecialchars($row['company_name']) ?>"
+                                                        data-company-name="<?= htmlspecialchars($row['tenant_name']) ?>"
                                                         data-contact-person="<?= htmlspecialchars($row['contact_person']) ?>"
                                                         data-email="<?= htmlspecialchars($row['email']) ?>"
                                                         data-phone="<?= htmlspecialchars($row['phone']) ?>"
@@ -397,7 +397,7 @@ if (!$result) {
                                                 <button type="button" class="action-btn <?= $row['status'] == 'active' ? 'deactivate-btn' : 'activate-btn' ?> toggle-status-btn<?= $toggleDisabled ? ' disabled-btn' : '' ?>"
                                                         data-tenant-id="<?= $row['tenant_id'] ?>"
                                                         data-current-status="<?= $row['status'] ?>"
-                                                        data-company-name="<?= htmlspecialchars($row['company_name']) ?>"
+                                                        data-company-name="<?= htmlspecialchars($row['tenant_name']) ?>"
                                                         title="<?= $toggleTitle ?>"
                                                         data-action="<?= $row['status'] == 'active' ? 'deactivate' : 'activate' ?>"
                                                         <?= $toggleDisabled ?>>
@@ -426,20 +426,20 @@ if (!$result) {
                     </div>
                     <div class="pagination-controls">
                         <?php if ($page > 1): ?>
-                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page - 1; ?>&limit=<?php echo $limit; ?>&company_name_filter=<?php echo urlencode($company_name_filter); ?>&contact_person_filter=<?php echo urlencode($contact_person_filter); ?>&email_filter=<?php echo urlencode($email_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&address_filter=<?php echo urlencode($address_filter); ?>&status_filter=<?php echo urlencode($status_filter); ?>&is_main_admin_filter=<?php echo urlencode($is_main_admin_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&search=<?php echo urlencode($search); ?>'">
+                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page - 1; ?>&limit=<?php echo $limit; ?>&tenant_name_filter=<?php echo urlencode($tenant_name_filter); ?>&contact_person_filter=<?php echo urlencode($contact_person_filter); ?>&email_filter=<?php echo urlencode($email_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&address_filter=<?php echo urlencode($address_filter); ?>&status_filter=<?php echo urlencode($status_filter); ?>&is_main_admin_filter=<?php echo urlencode($is_main_admin_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&search=<?php echo urlencode($search); ?>'">
                                 <i class="fas fa-chevron-left"></i>
                             </button>
                         <?php endif; ?>
                         
                         <?php for ($i = max(1, $page - 2); $i <= min($totalPages, $page + 2); $i++): ?>
                             <button class="page-btn <?php echo ($i == $page) ? 'active' : ''; ?>" 
-                                    onclick="window.location.href='?page=<?php echo $i; ?>&limit=<?php echo $limit; ?>&company_name_filter=<?php echo urlencode($company_name_filter); ?>&contact_person_filter=<?php echo urlencode($contact_person_filter); ?>&email_filter=<?php echo urlencode($email_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&address_filter=<?php echo urlencode($address_filter); ?>&status_filter=<?php echo urlencode($status_filter); ?>&is_main_admin_filter=<?php echo urlencode($is_main_admin_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&search=<?php echo urlencode($search); ?>'">
+                                    onclick="window.location.href='?page=<?php echo $i; ?>&limit=<?php echo $limit; ?>&tenant_name_filter=<?php echo urlencode($tenant_name_filter); ?>&contact_person_filter=<?php echo urlencode($contact_person_filter); ?>&email_filter=<?php echo urlencode($email_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&address_filter=<?php echo urlencode($address_filter); ?>&status_filter=<?php echo urlencode($status_filter); ?>&is_main_admin_filter=<?php echo urlencode($is_main_admin_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&search=<?php echo urlencode($search); ?>'">
                                 <?php echo $i; ?>
                             </button>
                         <?php endfor; ?>
                         
                         <?php if ($page < $totalPages): ?>
-                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page + 1; ?>&limit=<?php echo $limit; ?>&company_name_filter=<?php echo urlencode($company_name_filter); ?>&contact_person_filter=<?php echo urlencode($contact_person_filter); ?>&email_filter=<?php echo urlencode($email_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&address_filter=<?php echo urlencode($address_filter); ?>&status_filter=<?php echo urlencode($status_filter); ?>&is_main_admin_filter=<?php echo urlencode($is_main_admin_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&search=<?php echo urlencode($search); ?>'">
+                            <button class="page-btn" onclick="window.location.href='?page=<?php echo $page + 1; ?>&limit=<?php echo $limit; ?>&tenant_name_filter=<?php echo urlencode($tenant_name_filter); ?>&contact_person_filter=<?php echo urlencode($contact_person_filter); ?>&email_filter=<?php echo urlencode($email_filter); ?>&phone_filter=<?php echo urlencode($phone_filter); ?>&address_filter=<?php echo urlencode($address_filter); ?>&status_filter=<?php echo urlencode($status_filter); ?>&is_main_admin_filter=<?php echo urlencode($is_main_admin_filter); ?>&date_from=<?php echo urlencode($date_from); ?>&date_to=<?php echo urlencode($date_to); ?>&search=<?php echo urlencode($search); ?>'">
                                 <i class="fas fa-chevron-right"></i>
                             </button>
                         <?php endif; ?>

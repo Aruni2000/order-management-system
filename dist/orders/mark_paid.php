@@ -126,14 +126,14 @@ try {
 
         // Get Tenant Name for filename prefix
         $companyName = '';
-        $brandQuery = "SELECT company_name FROM tenants WHERE status = 'active' LIMIT 1";
+        $brandQuery = "SELECT tenant_name FROM tenants WHERE status = 'active' LIMIT 1";
         $brandResult = $conn->query($brandQuery);
 
         if ($brandResult && $brandRow = $brandResult->fetch_assoc()) {
-            if (!empty($brandRow['company_name'])) {
+            if (!empty($brandRow['tenant_name'])) {
                 // Keep only letters and convert to lowercase
                 $cleanCompanyName = strtolower(
-                    preg_replace('/[^a-zA-Z0-9]/', '', $brandRow['company_name'])
+                    preg_replace('/[^a-zA-Z0-9]/', '', $brandRow['tenant_name'])
                 );
 
                 if (!empty($cleanCompanyName)) {

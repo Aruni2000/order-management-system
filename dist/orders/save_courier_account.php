@@ -93,7 +93,7 @@ try {
     }
 
     // Check if tenant exists and is active
-    $tenant_check_sql = "SELECT tenant_id, company_name FROM tenants WHERE tenant_id = ? AND status = 'active'";
+    $tenant_check_sql = "SELECT tenant_id, tenant_name FROM tenants WHERE tenant_id = ? AND status = 'active'";
     $tenant_stmt = $conn->prepare($tenant_check_sql);
     $tenant_stmt->bind_param("i", $tenant_id);
     $tenant_stmt->execute();

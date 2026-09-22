@@ -10,7 +10,7 @@ session_start();
 
 <head>
     <!-- TITLE -->
-    <title>Access Denied | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
+    <title>Access Denied | <?= htmlspecialchars($_SESSION['tenant_name'] ?? '') ?></title>
 
     <?php
     include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php');

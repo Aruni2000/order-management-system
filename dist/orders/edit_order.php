@@ -159,12 +159,9 @@ while ($item = $itemsResult->fetch_assoc()) {
 }
 $stmt->close();
 
-// Fetch necessary data for the form (filtered by order's tenant)
-$productSql = "SELECT id, name, description, stock_quantity, low_stock_threshold, lkr_price FROM products WHERE status = 'active' AND tenant_id = ? ORDER BY name ASC";
-$productStmt = $conn->prepare($productSql);
-$productStmt->bind_param("i", $order_tenant_id);
-$productStmt->execute();
-$productsResult = $productStmt->get_result();
+// Fetch necessary data for the form (products are global, no tenant isolation)
+$productSql = "SELECT id, name, description, stock_quantity, low_stock_threshold, lkr_price FROM products WHERE status = 'active' ORDER BY name ASC";
+$productsResult = $conn->query($productSql);
 
 
 $citySql = "SELECT city_id, city_name FROM city_table WHERE is_active = 1 ORDER BY city_name ASC";
@@ -193,7 +190,7 @@ $deliveryFeeStmt->close();
 <html lang="en" data-pc-preset="preset-1" data-pc-sidebar-caption="true" data-pc-direction="ltr" dir="ltr" data-pc-theme="light">
 
 <head>
-    <title>Edit Order #<?= htmlspecialchars($order_id) ?> | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
+    <title>Edit Order #<?= htmlspecialchars($order_id) ?> | <?= htmlspecialchars($_SESSION['tenant_name'] ?? '') ?></title>
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
     <link rel="stylesheet" href="../assets/css/styles.css" />
     <style>

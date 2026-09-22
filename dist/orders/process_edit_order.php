@@ -276,36 +276,20 @@ foreach ($products as $key => $pid) {
         ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)";
         $insertStmt = $conn->prepare($insertItemSql);
 
-        // Prepare product stock statements (with tenant isolation)
-        if ($is_main_admin) {
-            $restoreStockSql = "UPDATE products SET stock_quantity = stock_quantity + ? WHERE id = ?";
-            $restoreStockStmt = $conn->prepare($restoreStockSql);
+        // Prepare product stock statements (products are global - no tenant isolation)
+        $restoreStockSql = "UPDATE products SET stock_quantity = stock_quantity + ? WHERE id = ?";
+        $restoreStockStmt = $conn->prepare($restoreStockSql);
 
-            $deductStockSql = "UPDATE products SET stock_quantity = stock_quantity - ? WHERE id = ? AND stock_quantity >= ?";
-            $deductStockStmt = $conn->prepare($deductStockSql);
+        $deductStockSql = "UPDATE products SET stock_quantity = stock_quantity - ? WHERE id = ? AND stock_quantity >= ?";
+        $deductStockStmt = $conn->prepare($deductStockSql);
 
-            $deductProduct = function($qty, $product_id, $product_name) use ($conn, $deductStockStmt) {
-                $deductStockStmt->bind_param("iii", $qty, $product_id, $qty);
-                $deductStockStmt->execute();
-                if ($deductStockStmt->affected_rows === 0) {
-                    throw new Exception("Insufficient stock for product: " . $product_name . " (ID: " . $product_id . ")");
-                }
-            };
-        } else {
-            $restoreStockSql = "UPDATE products SET stock_quantity = stock_quantity + ? WHERE id = ? AND tenant_id = ?";
-            $restoreStockStmt = $conn->prepare($restoreStockSql);
-
-            $deductStockSql = "UPDATE products SET stock_quantity = stock_quantity - ? WHERE id = ? AND stock_quantity >= ? AND tenant_id = ?";
-            $deductStockStmt = $conn->prepare($deductStockSql);
-
-            $deductProduct = function($qty, $product_id, $product_name) use ($conn, $deductStockStmt, $session_tenant_id) {
-                $deductStockStmt->bind_param("iiii", $qty, $product_id, $qty, $session_tenant_id);
-                $deductStockStmt->execute();
-                if ($deductStockStmt->affected_rows === 0) {
-                    throw new Exception("Insufficient stock for product: " . $product_name . " (ID: " . $product_id . ")");
-                }
-            };
-        }
+        $deductProduct = function($qty, $product_id, $product_name) use ($conn, $deductStockStmt) {
+            $deductStockStmt->bind_param("iii", $qty, $product_id, $qty);
+            $deductStockStmt->execute();
+            if ($deductStockStmt->affected_rows === 0) {
+                throw new Exception("Insufficient stock for product: " . $product_name . " (ID: " . $product_id . ")");
+            }
+        };
 
         // Process each item
         foreach ($order_items as $item) {
@@ -317,11 +301,7 @@ foreach ($products as $key => $pid) {
                     // Stock management - only if enabled
                     if (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1) {
                         // Restore old stock to product total
-                        if ($is_main_admin) {
-                            $restoreStockStmt->bind_param("ii", $old_item['quantity'], $old_item['product_id']);
-                        } else {
-                            $restoreStockStmt->bind_param("iii", $old_item['quantity'], $old_item['product_id'], $session_tenant_id);
-                        }
+                        $restoreStockStmt->bind_param("ii", $old_item['quantity'], $old_item['product_id']);
                         $restoreStockStmt->execute();
 
                         // Deduct new stock from product total
@@ -369,11 +349,7 @@ foreach ($products as $key => $pid) {
             if (!in_array($item_id, $processed_item_ids)) {
                 // This item was removed - restore its stock and delete it
                 if (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1) {
-                    if ($is_main_admin) {
-                        $restoreStockStmt->bind_param("ii", $old_item['quantity'], $old_item['product_id']);
-                    } else {
-                        $restoreStockStmt->bind_param("iii", $old_item['quantity'], $old_item['product_id'], $session_tenant_id);
-                    }
+                    $restoreStockStmt->bind_param("ii", $old_item['quantity'], $old_item['product_id']);
                     $restoreStockStmt->execute();
                 }
                 $deleteStmt = $conn->prepare("DELETE FROM order_items WHERE item_id = ? AND order_id = ?");

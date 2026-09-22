@@ -111,7 +111,7 @@ while ($payRow = $payResult->fetch_assoc()) {
 
 $order_tenant_id = isset($order['tenant_id']) ? (int)$order['tenant_id'] : 0;
 
-$tenant_sql = "SELECT company_name, address, phone, email, logo_url FROM tenants WHERE tenant_id = ? AND status = 'active' LIMIT 1";
+$tenant_sql = "SELECT tenant_name, address, phone, email, logo_url FROM tenants WHERE tenant_id = ? AND status = 'active' LIMIT 1";
 $stmt_tenant = $conn->prepare($tenant_sql);
 $stmt_tenant->bind_param("i", $order_tenant_id);
 $stmt_tenant->execute();
@@ -119,7 +119,7 @@ $tenant_result = $stmt_tenant->get_result();
 $tenant_data = ($tenant_result && $tenant_result->num_rows > 0) ? $tenant_result->fetch_assoc() : [];
 
 $company = [
-    'company_name' => $tenant_data['company_name'] ?? 'Tenant Name',
+    'tenant_name' => $tenant_data['tenant_name'] ?? 'Tenant Name',
     'address' => str_replace(['\\\\r\\\\n', '\\r\\n', '\\n'], "\n", $tenant_data['address'] ?? ''),
     'email' => $tenant_data['email'] ?? '',
     'hotline' => $tenant_data['phone'] ?? ''
@@ -223,7 +223,7 @@ if ($grand_total_words) {
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Order Receipt - #<?php echo htmlspecialchars($order_id); ?> | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
+    <title>Order Receipt - #<?php echo htmlspecialchars($order_id); ?> | <?= htmlspecialchars($_SESSION['tenant_name'] ?? '') ?></title>
     <?php
     $favicon_url = '';
     if (isset($conn) && $conn) {
@@ -466,10 +466,10 @@ if ($grand_total_words) {
             <div class="company-details">
                 <?php if (!empty($logo_url)): ?>
                 <div class="company-logo">
-                    <img src="<?php echo htmlspecialchars($logo_url); ?>" alt="<?php echo htmlspecialchars($company['company_name']); ?> Logo">
+                    <img src="<?php echo htmlspecialchars($logo_url); ?>" alt="<?php echo htmlspecialchars($company['tenant_name']); ?> Logo">
                 </div>
                 <?php endif; ?>
-                <h1><?php echo htmlspecialchars($company['company_name'] ?: 'Tenant Name'); ?></h1>
+                <h1><?php echo htmlspecialchars($company['tenant_name'] ?: 'Tenant Name'); ?></h1>
                 <div><?php echo !empty($company['address']) ? nl2br(htmlspecialchars($company['address'])) : ''; ?></div>
                 <div>
                     <?php

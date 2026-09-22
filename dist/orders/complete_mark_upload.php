@@ -27,10 +27,10 @@ function getTenants($conn, $is_main_admin, $role_id, $session_tenant_id) {
     
     if ($is_main_admin === 1 && $_SESSION['role_id'] == 1) {
         // Main Admin gets all active tenants
-        $result = $conn->query("SELECT tenant_id, company_name FROM tenants WHERE status = 'active' ORDER BY company_name");
+        $result = $conn->query("SELECT tenant_id, tenant_name FROM tenants WHERE status = 'active' ORDER BY tenant_name");
     } else {
         // Others get only their assigned tenant
-        $stmt = $conn->prepare("SELECT tenant_id, company_name FROM tenants WHERE tenant_id = ? AND status = 'active' LIMIT 1");
+        $stmt = $conn->prepare("SELECT tenant_id, tenant_name FROM tenants WHERE tenant_id = ? AND status = 'active' LIMIT 1");
         $stmt->bind_param("i", $session_tenant_id);
         $stmt->execute();
         $result = $stmt->get_result();
@@ -64,7 +64,7 @@ if (!($is_main_admin === 1 && $_SESSION['role_id'] == 1) && !empty($tenants)) {
     data-pc-theme="light">
 
 <head>
-    <title>Delivery CSV Upload | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
+    <title>Delivery CSV Upload | <?= htmlspecialchars($_SESSION['tenant_name'] ?? '') ?></title>
 
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
 
@@ -176,7 +176,7 @@ if (!($is_main_admin === 1 && $_SESSION['role_id'] == 1) && !empty($tenants)) {
                                     <option value="">Select Tenant</option>
                                     <?php foreach ($tenants as $tenant): ?>
                                     <option value="<?php echo $tenant['tenant_id']; ?>">
-                                        <?php echo htmlspecialchars($tenant['company_name']); ?>
+                                        <?php echo htmlspecialchars($tenant['tenant_name']); ?>
                                     </option>
                                     <?php endforeach; ?>
                                 </select>

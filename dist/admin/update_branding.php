@@ -106,7 +106,7 @@ if ($currentIsMainAdmin) {
    Input Sanitization
 ================================ */
 $tenantId       = (int)($_POST['tenant_id'] ?? 0);
-$companyName    = trim($_POST['company_name'] ?? '');
+$companyName    = trim($_POST['tenant_name'] ?? '');
 $contactPerson  = trim($_POST['contact_person'] ?? '');
 $email          = strtolower(trim($_POST['email'] ?? ''));
 $phone          = trim($_POST['phone'] ?? '');
@@ -127,7 +127,7 @@ if ($tenantId <= 0 || $tenantId !== $sessionTenantId) {
    Fetch Existing Tenant
 ================================ */
 $existingStmt = $conn->prepare(
-    "SELECT company_name, contact_person, email, phone, address, delivery_fee, logo_url, fav_icon_url
+    "SELECT tenant_name, contact_person, email, phone, address, delivery_fee, logo_url, fav_icon_url
      FROM tenants WHERE tenant_id = ?"
 );
 
@@ -146,7 +146,7 @@ if (!$existingTenant) {
 $errors = [];
 
 if (strlen($companyName) < 2) {
-    $errors['company_name'] = 'Tenant Name is required.';
+    $errors['tenant_name'] = 'Tenant Name is required.';
 }
 
 if (strlen($contactPerson) < 2) {
@@ -202,7 +202,7 @@ if (!empty($errors)) {
 $tenantChanged = false;
 $changes = [];
 $fieldLabels = [
-    'company_name'   => 'Tenant Name',
+    'tenant_name'   => 'Tenant Name',
     'contact_person' => 'Contact Person',
     'email'          => 'Email',
     'phone'          => 'Phone',
@@ -211,7 +211,7 @@ $fieldLabels = [
 ];
 
 $tenantFields = [
-    'company_name'   => $companyName,
+    'tenant_name'   => $companyName,
     'contact_person' => $contactPerson,
     'email'          => $email,
     'phone'          => $phone,
@@ -343,7 +343,7 @@ try {
     if ($tenantChanged) {
         $updateStmt = $conn->prepare(
             "UPDATE tenants SET
-                company_name = ?,
+                tenant_name = ?,
                 contact_person = ?,
                 email = ?,
                 phone = ?,
@@ -392,7 +392,7 @@ try {
 
     jsonResponse(true, 'Branding updated successfully.', null, [
         'tenant_id' => $tenantId,
-        'company_name' => $companyName
+        'tenant_name' => $companyName
     ]);
 
 } catch (Exception $e) {

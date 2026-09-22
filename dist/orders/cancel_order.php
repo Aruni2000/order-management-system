@@ -109,22 +109,21 @@ try {
         
         // Restore inventory
         if (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1) {
-            $restore_tenant_id = isset($order['tenant_id']) ? (int)$order['tenant_id'] : $session_tenant_id;
-
             $getItemsSql = "SELECT product_id, quantity, item_id FROM order_items WHERE order_id = ? AND status != 'canceled'";
             $items_stmt = $conn->prepare($getItemsSql);
             $items_stmt->bind_param("s", $order_id);
             $items_stmt->execute();
             $items_result = $items_stmt->get_result();
 
-            $update_stock_sql = "UPDATE products SET stock_quantity = stock_quantity + ? WHERE id = ? AND tenant_id = ?";
+            // Products are global - no tenant isolation
+            $update_stock_sql = "UPDATE products SET stock_quantity = stock_quantity + ? WHERE id = ?";
             $stock_stmt = $conn->prepare($update_stock_sql);
 
             while ($item = $items_result->fetch_assoc()) {
                 $product_id = $item['product_id'];
                 $qty = $item['quantity'];
 
-                $stock_stmt->bind_param("iii", $qty, $product_id, $restore_tenant_id);
+                $stock_stmt->bind_param("ii", $qty, $product_id);
                 if (!$stock_stmt->execute()) {
                     throw new Exception('Failed to restore stock for product ID: ' . $product_id);
                 }

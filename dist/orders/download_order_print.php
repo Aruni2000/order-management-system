@@ -21,7 +21,7 @@ $role_id = isset($_SESSION['role_id']) ? (int)$_SESSION['role_id'] : 0;
 $session_tenant_id = isset($_SESSION['tenant_id']) ? (int)$_SESSION['tenant_id'] : 0;
 $logged_user_id = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
 
-$company_name = "";
+$tenant_name = "";
 $company_address = "";
 $company_email = "";
 $company_hotline = "";
@@ -112,8 +112,8 @@ $order = $result->fetch_assoc();
 
 $order_tenant_id = isset($order['tenant_id']) ? (int)$order['tenant_id'] : 0;
 
-// Get tenant info (company_name, address, phone, email, logo_url)
-$tenant_sql = "SELECT company_name, address, phone, email, logo_url FROM tenants WHERE tenant_id = ? AND status = 'active' LIMIT 1";
+// Get tenant info (tenant_name, address, phone, email, logo_url)
+$tenant_sql = "SELECT tenant_name, address, phone, email, logo_url FROM tenants WHERE tenant_id = ? AND status = 'active' LIMIT 1";
 $stmt_tenant = $conn->prepare($tenant_sql);
 $stmt_tenant->bind_param("i", $order_tenant_id);
 $stmt_tenant->execute();
@@ -121,7 +121,7 @@ $tenant_result = $stmt_tenant->get_result();
 $tenant_data = ($tenant_result && $tenant_result->num_rows > 0) ? $tenant_result->fetch_assoc() : [];
 
 // Map tenant fields to display variables
-$company_name = $tenant_data['company_name'];
+$tenant_name = $tenant_data['tenant_name'];
 $company_address = $tenant_data['address'];
 $company_email = $tenant_data['email'];
 $company_hotline = $tenant_data['phone'];
@@ -202,7 +202,7 @@ if (isset($order['pay_status']) && $order['pay_status'] !== 'paid') {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Order Print - <?php echo $order_id; ?> | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
+    <title>Order Print - <?php echo $order_id; ?> | <?= htmlspecialchars($_SESSION['tenant_name'] ?? '') ?></title>
     <link rel="stylesheet" href="../assets/css/print.css" />
     <?php
     $favicon_url = '';
@@ -239,13 +239,13 @@ if (isset($order['pay_status']) && $order['pay_status'] !== 'paid') {
                             <img src="<?php echo htmlspecialchars($company_logo); ?>" alt="Company Logo">
                         <?php else: ?>
                             <div style="font-weight: bold; font-size: 14px; color: #333;">
-                                <?php echo htmlspecialchars($company_name); ?>
+                                <?php echo htmlspecialchars($tenant_name); ?>
                             </div>
                         <?php endif; ?>
                     </div>
                     
                     <div class="company-name">
-                        <?php echo htmlspecialchars($company_name); ?>
+                        <?php echo htmlspecialchars($tenant_name); ?>
                     </div>
 
                     <div class="company-info">

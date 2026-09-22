@@ -90,7 +90,7 @@ $disabledClass = $isFull ? 'limit-reached-disabled' : '';
 
 <head>
     <!-- TITLE -->
-    <title>Add New Tenant | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
+    <title>Add New Tenant | <?= htmlspecialchars($_SESSION['tenant_name'] ?? '') ?></title>
 
     <?php
     include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php');
@@ -302,10 +302,10 @@ $disabledClass = $isFull ? 'limit-reached-disabled' : '';
                                     <!-- Tenant Name -->
                                     <div class="form-column">
                                         <div class="form-group">
-                                            <label for="company_name" class="form-label">Tenant Name *</label>
-                                            <input type="text" class="form-control" id="company_name" name="company_name" required <?php echo $disabledAttr; ?>
+                                            <label for="tenant_name" class="form-label">Tenant Name *</label>
+                                            <input type="text" class="form-control" id="tenant_name" name="tenant_name" required <?php echo $disabledAttr; ?>
                                                    placeholder="Enter Tenant Name" value="">
-                                            <div class="error-feedback" id="company_name-error"></div>
+                                            <div class="error-feedback" id="tenant_name-error"></div>
                                         </div>
                                     </div>
                                     <!-- Contact Person -->
@@ -550,7 +550,7 @@ $disabledClass = $isFull ? 'limit-reached-disabled' : '';
             $('#addTenantForm')[0].reset();
             clearAllValidations();
             $('#email-suggestions').html('');
-            $('#company_name').focus();
+            $('#tenant_name').focus();
         }
         
         // Clear all validations
@@ -572,7 +572,7 @@ $disabledClass = $isFull ? 'limit-reached-disabled' : '';
         
         // Initialize form
         function initializeForm() {
-            $('#company_name').focus();
+            $('#tenant_name').focus();
             
             // Auto-format phone number
             $('#phone').on('input', function() {
@@ -592,12 +592,12 @@ $disabledClass = $isFull ? 'limit-reached-disabled' : '';
         
         // Setup real-time validation
         function setupRealTimeValidation() {
-            $('#company_name').on('blur', function() {
+            $('#tenant_name').on('blur', function() {
                 const validation = validateCompanyName($(this).val());
                 if (!validation.valid) {
-                    showError('company_name', validation.message);
+                    showError('tenant_name', validation.message);
                 } else {
-                    showSuccess('company_name');
+                    showSuccess('tenant_name');
                 }
             });
             
@@ -795,14 +795,14 @@ $disabledClass = $isFull ? 'limit-reached-disabled' : '';
             let isValid = true;
             
             // Get all field values
-            const companyName = $('#company_name').val();
+            const companyName = $('#tenant_name').val();
             const contactPerson = $('#contact_person').val();
             const email = $('#email').val();
             const phone = $('#phone').val();
             
             // Validate required fields
             const validations = [
-                { field: 'company_name', validator: validateCompanyName, value: companyName },
+                { field: 'tenant_name', validator: validateCompanyName, value: companyName },
                 { field: 'contact_person', validator: validateContactPerson, value: contactPerson },
                 { field: 'phone', validator: validatePhone, value: phone },
                 { field: 'address', validator: validateAddress, value: $('#address').val() }

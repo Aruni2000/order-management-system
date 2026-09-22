@@ -46,7 +46,7 @@ if (!isset($_SESSION['is_main_admin']) || $_SESSION['is_main_admin'] != 1) {
 }
 
 // Fetch tenants from database
-$tenantQuery = "SELECT tenant_id, company_name FROM tenants WHERE status = 'active' ORDER BY company_name";
+$tenantQuery = "SELECT tenant_id, tenant_name FROM tenants WHERE status = 'active' ORDER BY tenant_name";
 $tenantResult = mysqli_query($conn, $tenantQuery);
 
 // Fetch courier companies from database
@@ -70,7 +70,7 @@ if (!$courierResult) {
 <html lang="en" data-pc-preset="preset-1" data-pc-sidebar-caption="true" data-pc-direction="ltr" dir="ltr" data-pc-theme="light">
 
 <head>
-    <title>Add Courier Account | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
+    <title>Add Courier Account | <?= htmlspecialchars($_SESSION['tenant_name'] ?? '') ?></title>
 
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
     
@@ -253,7 +253,7 @@ if (!$courierResult) {
                                         <?php
                                         if ($tenantResult && mysqli_num_rows($tenantResult) > 0) {
                                             while ($tenant = mysqli_fetch_assoc($tenantResult)) {
-                                                echo "<option value='{$tenant['tenant_id']}'>" . htmlspecialchars($tenant['company_name']) . "</option>";
+                                                echo "<option value='{$tenant['tenant_id']}'>" . htmlspecialchars($tenant['tenant_name']) . "</option>";
                                             }
                                         }
                                         ?>

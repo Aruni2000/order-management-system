@@ -31,10 +31,6 @@ function generateCSRFToken() {
 
 
 
-// Fetch tenants if main admin
-$is_main_admin = isset($_SESSION['is_main_admin']) ? (int)$_SESSION['is_main_admin'] : 0;
-$session_tenant_id = isset($_SESSION['tenant_id']) ? (int)$_SESSION['tenant_id'] : 0;
-
 // Fetch all categories for the Category dropdown
 $categories = [];
 try {
@@ -48,19 +44,6 @@ try {
     error_log("Error fetching categories: " . $e->getMessage());
 }
 
-$tenants = [];
-if ($is_main_admin && $_SESSION['role_id'] == 1) {
-    try {
-        $tRes = $conn->query("SELECT tenant_id, company_name FROM tenants WHERE status = 'active' ORDER BY is_main_admin DESC, company_name ASC");
-        if ($tRes) {
-            while ($row = $tRes->fetch_assoc()) {
-                $tenants[] = $row;
-            }
-        }
-    } catch (Exception $e) {
-        error_log("Error fetching tenants: " . $e->getMessage());
-    }
-}
 ?>
 
 <!doctype html>
@@ -68,7 +51,7 @@ if ($is_main_admin && $_SESSION['role_id'] == 1) {
 
 <head>
     <!-- TITLE -->
-    <title>Add Product | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
+    <title>Add Product | <?= htmlspecialchars($_SESSION['tenant_name'] ?? '') ?></title>
 
     <?php
     include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php');

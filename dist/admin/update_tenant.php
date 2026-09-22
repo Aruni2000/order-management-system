@@ -100,7 +100,7 @@ if (!$userRole || (int)$userRole['role_id'] !== 1) {
    Input Sanitization (first, so we have $tenantId for checks)
 ================================ */
 $tenantId       = (int)($_POST['tenant_id'] ?? 0);
-$companyName    = trim($_POST['company_name'] ?? '');
+$companyName    = trim($_POST['tenant_name'] ?? '');
 $contactPerson  = trim($_POST['contact_person'] ?? '');
 $email          = strtolower(trim($_POST['email'] ?? ''));
 $phone          = trim($_POST['phone'] ?? '');
@@ -127,7 +127,7 @@ if (!$currentIsMainAdmin) {
    Fetch Existing Tenant (before validation to override protected fields)
 ================================ */
 $existingStmt = $conn->prepare(
-    "SELECT company_name, contact_person, email, phone, address, delivery_fee, logo_url, fav_icon_url, status, is_main_admin
+    "SELECT tenant_name, contact_person, email, phone, address, delivery_fee, logo_url, fav_icon_url, status, is_main_admin
      FROM tenants
      WHERE tenant_id = ?"
 );
@@ -157,7 +157,7 @@ if ($currentIsMainAdmin && $tenantId === $sessionTenantId && $isMainAdmin !== (i
 $errors = [];
 
 if ($tenantId <= 0) $errors['tenant_id'] = 'Invalid tenant ID.';
-    if (strlen($companyName) < 2) $errors['company_name'] = 'Tenant Name is required.';
+    if (strlen($companyName) < 2) $errors['tenant_name'] = 'Tenant Name is required.';
 if (strlen($contactPerson) < 2) $errors['contact_person'] = 'Contact person is required.';
 
 if (empty($address)) $errors['address'] = 'Company address is required.';
@@ -207,7 +207,7 @@ if (!empty($errors)) {
 $tenantChanged = false;
 $changes = [];
 $fieldLabels = [
-    'company_name'   => 'Tenant Name',
+    'tenant_name'   => 'Tenant Name',
     'contact_person' => 'Contact Person',
     'email'          => 'Email',
     'phone'          => 'Phone',
@@ -217,7 +217,7 @@ $fieldLabels = [
 ];
 
 $tenantFields = [
-    'company_name'   => $companyName,
+    'tenant_name'   => $companyName,
     'contact_person' => $contactPerson,
     'email'          => $email,
     'phone'          => $phone,
@@ -357,7 +357,7 @@ try {
     if ($tenantChanged) {
         $updateStmt = $conn->prepare(
             "UPDATE tenants SET
-                company_name = ?,
+                tenant_name = ?,
                 contact_person = ?,
                 email = ?,
                 phone = ?,
@@ -408,7 +408,7 @@ try {
 
     jsonResponse(true, 'Tenant updated successfully.', null, [
         'tenant_id' => $tenantId,
-        'company_name' => $companyName
+        'tenant_name' => $companyName
     ]);
 
 } catch (Exception $e) {

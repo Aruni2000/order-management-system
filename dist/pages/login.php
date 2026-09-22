@@ -39,7 +39,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $error_message = "Invalid email format";
     } else {
         //  STEP 1: Check if user exists in the system (INCLUDE tenant_id)
-        $sql = "SELECT u.*, t.company_name, t.status as tenant_status, t.is_main_admin 
+        $sql = "SELECT u.*, t.tenant_name, t.status as tenant_status, t.is_main_admin 
                 FROM users u 
                 LEFT JOIN tenants t ON u.tenant_id = t.tenant_id 
                 WHERE u.email = ?";
@@ -173,7 +173,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                             $_SESSION['logged_in'] = true;
                             $_SESSION['tenant_id'] = $user['tenant_id']; // ← CRITICAL: Set tenant_id
                             $_SESSION['is_main_admin'] = $user['is_main_admin']; // ← Store is_main_admin flag
-                            $_SESSION['company_name'] = $user['company_name']; // ← Store Tenant Name
+                            $_SESSION['tenant_name'] = $user['tenant_name']; // ← Store Tenant Name
                             
                             if (!empty($customer_id)) {
                                 $_SESSION['customer_id'] = $customer_id;

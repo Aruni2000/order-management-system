@@ -103,7 +103,7 @@ if (isset($_GET['id']) && !empty($_GET['id'])) {
 
 <head>
     <!-- TITLE -->
-    <title>Edit User | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
+    <title>Edit User | <?= htmlspecialchars($_SESSION['tenant_name'] ?? '') ?></title>
 
     <?php
     include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php');

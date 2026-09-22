@@ -60,7 +60,7 @@ $response = [
 
 try {
     // Get and sanitize input data
-    $company_name = trim($_POST['company_name'] ?? '');
+    $tenant_name = trim($_POST['tenant_name'] ?? '');
     $contact_person = trim($_POST['contact_person'] ?? '');
     $email = trim(strtolower($_POST['email'] ?? ''));
     $phone = trim($_POST['phone'] ?? '');
@@ -73,10 +73,10 @@ try {
     $errors = [];
 
     // Validate Tenant Name
-    if (empty($company_name)) {
-        $errors['company_name'] = 'Tenant Name is required';
-    } elseif (strlen($company_name) < 2) {
-        $errors['company_name'] = 'Tenant Name must be at least 2 characters long';
+    if (empty($tenant_name)) {
+        $errors['tenant_name'] = 'Tenant Name is required';
+    } elseif (strlen($tenant_name) < 2) {
+        $errors['tenant_name'] = 'Tenant Name must be at least 2 characters long';
     }
 
     // Validate contact person
@@ -211,7 +211,7 @@ try {
     }
 
     // Helper: sanitize Tenant Name for use in filenames
-    $name_slug = strtolower(trim($company_name));
+    $name_slug = strtolower(trim($tenant_name));
     $name_slug = preg_replace('/[^a-z0-9]+/', '_', $name_slug);
     $name_slug = trim($name_slug, '_');
     $name_slug = substr($name_slug, 0, 40);
@@ -250,7 +250,7 @@ try {
     $conn->begin_transaction();
 
     // Prepare insert statement
-    $insert_sql = "INSERT INTO tenants (company_name, contact_person, email, phone, address, delivery_fee, logo_url, fav_icon_url, status, is_main_admin, created_at, updated_at) 
+    $insert_sql = "INSERT INTO tenants (tenant_name, contact_person, email, phone, address, delivery_fee, logo_url, fav_icon_url, status, is_main_admin, created_at, updated_at) 
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())";
     
     $stmt = $conn->prepare($insert_sql);
@@ -260,14 +260,14 @@ try {
     }
 
     // Bind parameters
-    $stmt->bind_param("sssssdsssi", $company_name, $contact_person, $email, $phone, $address, $delivery_fee, $logo_url, $fav_icon_url, $status, $is_main_admin);
+    $stmt->bind_param("sssssdsssi", $tenant_name, $contact_person, $email, $phone, $address, $delivery_fee, $logo_url, $fav_icon_url, $status, $is_main_admin);
 
     // Execute statement
     if ($stmt->execute()) {
         $tenant_id = $conn->insert_id;
         
         // Log tenant creation in user_logs
-        $logDetails = 'New tenant created - Company: ' . $company_name . ', Contact: ' . $contact_person . ', Email: ' . $email . ', Phone: ' . $phone;
+        $logDetails = 'New tenant created - Company: ' . $tenant_name . ', Contact: ' . $contact_person . ', Email: ' . $email . ', Phone: ' . $phone;
         $logSql = "INSERT INTO user_logs (user_id, action_type, inquiry_id, details, created_at) VALUES (?, ?, ?, ?, NOW())";
         $logStmt = $conn->prepare($logSql);
         if ($logStmt) {
@@ -282,7 +282,7 @@ try {
 
         
         $response['success'] = true;
-        $response['message'] = 'Tenant "' . htmlspecialchars($company_name) . '" has been successfully added!';
+        $response['message'] = 'Tenant "' . htmlspecialchars($tenant_name) . '" has been successfully added!';
         $response['tenant_id'] = $tenant_id;
     } else {
         throw new Exception('Failed to insert tenant: ' . $stmt->error);

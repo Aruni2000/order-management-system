@@ -130,7 +130,7 @@ $result = $conn->query($sql);
 // Fetch tenants for Main Admin filter
 $tenants = [];
 if ($is_main_admin === 1 && $_SESSION['role_id'] == 1) {
-    $tenantsResult = $conn->query("SELECT tenant_id, company_name FROM tenants WHERE status = 'active' ORDER BY company_name ASC");
+    $tenantsResult = $conn->query("SELECT tenant_id, tenant_name FROM tenants WHERE status = 'active' ORDER BY tenant_name ASC");
     if ($tenantsResult) {
         while ($t = $tenantsResult->fetch_assoc()) {
             $tenants[] = $t;
@@ -145,7 +145,7 @@ if ($is_main_admin === 1 && $_SESSION['role_id'] == 1) {
 <html lang="en" data-pc-preset="preset-1" data-pc-sidebar-caption="true" data-pc-direction="ltr" dir="ltr" data-pc-theme="light">
 
 <head>
-    <title>Label Print | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
+    <title>Label Print | <?= htmlspecialchars($_SESSION['tenant_name'] ?? '') ?></title>
     
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
     
@@ -217,7 +217,7 @@ if ($is_main_admin === 1 && $_SESSION['role_id'] == 1) {
                                     <?php foreach ($tenants as $t): ?>
                                         <option value="<?php echo $t['tenant_id']; ?>" 
                                             <?php echo ($tenant_filter == $t['tenant_id']) ? 'selected' : ''; ?>>
-                                            <?php echo htmlspecialchars($t['company_name']); ?>
+                                            <?php echo htmlspecialchars($t['tenant_name']); ?>
                                         </option>
                                     <?php endforeach; ?>
                                 </select>

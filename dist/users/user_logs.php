@@ -60,7 +60,7 @@ $offset = ($page - 1) * $limit;
 $sql = "SELECT ul.id as log_id, ul.user_id, ul.action_type, ul.inquiry_id, 
                ul.details, ul.created_at,
                u.name as username, u.email as user_email,
-               t.company_name as tenant_name
+               t.tenant_name as tenant_name
         FROM user_logs ul 
         LEFT JOIN users u ON ul.user_id = u.id
         LEFT JOIN tenants t ON u.tenant_id = t.tenant_id";
@@ -174,7 +174,7 @@ if ($action_types_result && $action_types_result->num_rows > 0) {
     // List of tenants for filter (if main admin)
     $tenants_list = [];
     if ($is_main_admin && $_SESSION['role_id'] == 1) {
-        $tenants_sql = "SELECT tenant_id, company_name FROM tenants WHERE status = 'active' ORDER BY company_name ASC";
+        $tenants_sql = "SELECT tenant_id, tenant_name FROM tenants WHERE status = 'active' ORDER BY tenant_name ASC";
         $tenants_result = $conn->query($tenants_sql);
         if ($tenants_result && $tenants_result->num_rows > 0) {
             $tenants_list = $tenants_result->fetch_all(MYSQLI_ASSOC);
@@ -238,7 +238,7 @@ function formatLogDetails($details) {
 <html lang="en" data-pc-preset="preset-1" data-pc-sidebar-caption="true" data-pc-direction="ltr" dir="ltr" data-pc-theme="light">
 
 <head>
-    <title>User Activity Logs | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
+    <title>User Activity Logs | <?= htmlspecialchars($_SESSION['tenant_name'] ?? '') ?></title>
     
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
     
@@ -293,7 +293,7 @@ function formatLogDetails($details) {
                                 <?php foreach ($tenants_list as $tenant): ?>
                                     <option value="<?php echo $tenant['tenant_id']; ?>" 
                                             <?php echo ($tenant_filter == $tenant['tenant_id']) ? 'selected' : ''; ?>>
-                                        <?php echo htmlspecialchars($tenant['company_name']); ?>
+                                        <?php echo htmlspecialchars($tenant['tenant_name']); ?>
                                     </option>
                                 <?php endforeach; ?>
                             </select>

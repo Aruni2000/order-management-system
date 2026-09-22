@@ -65,10 +65,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['co_id'])) {
 $tenants = [];
 if ($is_main_admin === 1 && $_SESSION['role_id'] == 1) {
     // Main Admin gets all active tenants
-    $tenantResult = $conn->query("SELECT tenant_id, company_name FROM tenants WHERE status = 'active' ORDER BY company_name");
+    $tenantResult = $conn->query("SELECT tenant_id, tenant_name FROM tenants WHERE status = 'active' ORDER BY tenant_name");
 } else {
     // Others get only their assigned tenant
-    $tenantStmt = $conn->prepare("SELECT tenant_id, company_name FROM tenants WHERE tenant_id = ? AND status = 'active' LIMIT 1");
+    $tenantStmt = $conn->prepare("SELECT tenant_id, tenant_name FROM tenants WHERE tenant_id = ? AND status = 'active' LIMIT 1");
     $tenantStmt->bind_param("i", $tenant_id);
     $tenantStmt->execute();
     $tenantResult = $tenantStmt->get_result();
@@ -83,14 +83,14 @@ $restricted_tenant_id = (count($tenants) === 1 && !($is_main_admin === 1 && $_SE
 //function for tenant name
 function TenantName($tenant_id) {
     global $conn;
-    $sql = "SELECT company_name FROM tenants WHERE tenant_id = ?";
+    $sql = "SELECT tenant_name FROM tenants WHERE tenant_id = ?";
     $stmt = $conn->prepare($sql);
     $stmt->bind_param("i", $tenant_id);
     $stmt->execute();
     $result = $stmt->get_result();
     if ($result && $result->num_rows > 0) {
         $row = $result->fetch_assoc();
-        return $row['company_name'];
+        return $row['tenant_name'];
     }
     return "Unknown Tenant";
 }
@@ -447,15 +447,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                                 $itemsStmt->execute();
                                 $itemsResult = $itemsStmt->get_result();
 
-                                // Update stock - increment stock for returned items (with tenant isolation)
-                                $updateStockSql = "UPDATE products SET stock_quantity = stock_quantity + ? WHERE id = ? AND tenant_id = ?";
+                                // Update stock - increment stock for returned items (products are global - no tenant isolation)
+                                $updateStockSql = "UPDATE products SET stock_quantity = stock_quantity + ? WHERE id = ?";
                                 $stockStmt = $conn->prepare($updateStockSql);
 
                                 while ($item = $itemsResult->fetch_assoc()) {
                                     $productId = $item['product_id'];
                                     $quantity = $item['quantity'];
 
-                                    $stockStmt->bind_param("iii", $quantity, $productId, $tenant_id);
+                                    $stockStmt->bind_param("ii", $quantity, $productId);
                                     if ($stockStmt->execute()) {
                                         $inventoryUpdatedCount++;
                                     }
@@ -546,7 +546,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
     data-pc-theme="light">
 
 <head>
-    <title>Return CSV Upload | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
+    <title>Return CSV Upload | <?= htmlspecialchars($_SESSION['tenant_name'] ?? '') ?></title>
 
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
 
@@ -668,7 +668,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                                         <option value="">Select Tenant</option>
                                         <?php foreach ($tenants as $tenant): ?>
                                             <option value="<?php echo $tenant['tenant_id']; ?>">
-                                                <?php echo htmlspecialchars($tenant['company_name']); ?>
+                                                <?php echo htmlspecialchars($tenant['tenant_name']); ?>
                                             </option>
                                         <?php endforeach; ?>
                                     </select>

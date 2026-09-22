@@ -211,16 +211,15 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             }
         }
 
-        // Validate all submitted product IDs belong to the selected tenant
+        // Validate all submitted product IDs exist and are active (products are global - no tenant isolation)
         $valid_product_ids = array_filter(array_map('intval', $_POST['order_product']), function($id) { return $id > 0; });
         if (!empty($valid_product_ids)) {
             $placeholders = implode(',', array_fill(0, count($valid_product_ids), '?'));
             $productTypes = str_repeat('i', count($valid_product_ids));
-            $checkProductSql = "SELECT id FROM products WHERE id IN ($placeholders) AND tenant_id = ? AND status = 'active'";
+            $checkProductSql = "SELECT id FROM products WHERE id IN ($placeholders) AND status = 'active'";
             $checkStmt = $conn->prepare($checkProductSql);
             if ($checkStmt) {
-                $bindParams = array_merge($valid_product_ids, [$tenant_id]);
-                $checkStmt->bind_param($productTypes . 'i', ...$bindParams);
+                $checkStmt->bind_param($productTypes, ...$valid_product_ids);
                 $checkStmt->execute();
                 $checkResult = $checkStmt->get_result();
                 $allowed_ids = [];
@@ -231,7 +230,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
                 foreach ($valid_product_ids as $pid) {
                     if (!in_array($pid, $allowed_ids)) {
-                        throw new Exception("Product ID $pid does not belong to the selected tenant.");
+                        throw new Exception("Product ID $pid does not exist or is inactive.");
                     }
                 }
             }
@@ -682,9 +681,9 @@ foreach ($order_items as $item) {
     // Deduct stock (only if allow_inventory is enabled)
     if (isset($_SESSION['allow_inventory']) && $_SESSION['allow_inventory'] == 1) {
         // Direct product-level stock deduction
-        $updateStockSql = "UPDATE products SET stock_quantity = stock_quantity - ? WHERE id = ? AND stock_quantity >= ? AND tenant_id = ?";
+        $updateStockSql = "UPDATE products SET stock_quantity = stock_quantity - ? WHERE id = ? AND stock_quantity >= ?";
         $stockStmt = $conn->prepare($updateStockSql);
-        $stockStmt->bind_param("iiii", $item['quantity'], $item['product_id'], $item['quantity'], $tenant_id);
+        $stockStmt->bind_param("iii", $item['quantity'], $item['product_id'], $item['quantity']);
         if (!$stockStmt->execute()) {
             throw new Exception("Failed to update stock for product ID: " . $item['product_id']);
         }

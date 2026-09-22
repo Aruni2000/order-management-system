@@ -39,8 +39,6 @@ if ($product_id <= 0) {
 
 // Fetch existing product data
 $product = null;
-$session_tenant_id = isset($_SESSION['tenant_id']) ? (int)$_SESSION['tenant_id'] : 0;
-$is_main_admin = isset($_SESSION['is_main_admin']) ? (int)$_SESSION['is_main_admin'] : 0;
 
 try {
     $query = "SELECT * FROM products WHERE id = ? LIMIT 1";
@@ -94,7 +92,7 @@ try {
 
 <head>
     <!-- TITLE -->
-    <title>Edit Product | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
+    <title>Edit Product | <?= htmlspecialchars($_SESSION['tenant_name'] ?? '') ?></title>
 
     <?php
     include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php');

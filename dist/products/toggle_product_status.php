@@ -49,8 +49,6 @@ try {
     $product_id = (int)$input['product_id'];
     $new_status = trim($input['new_status']);
     $user_id = $_SESSION['user_id'];
-    $session_tenant_id = isset($_SESSION['tenant_id']) ? (int)$_SESSION['tenant_id'] : 0;
-    $is_main_admin = isset($_SESSION['is_main_admin']) ? (int)$_SESSION['is_main_admin'] : 0;
     
     // Validate product ID
     if ($product_id <= 0) {
@@ -98,16 +96,10 @@ try {
     $conn->autocommit(FALSE);
     
     try {
-        // Update product status (with tenant isolation)
-        if ($is_main_admin && $_SESSION['role_id'] == 1) {
-            $updateSql = "UPDATE products SET status = ? WHERE id = ?";
-            $updateStmt = $conn->prepare($updateSql);
-            $updateStmt->bind_param("si", $new_status, $product_id);
-        } else {
-            $updateSql = "UPDATE products SET status = ? WHERE id = ? AND tenant_id = ?";
-            $updateStmt = $conn->prepare($updateSql);
-            $updateStmt->bind_param("sii", $new_status, $product_id, $session_tenant_id);
-        }
+        // Update product status (no tenant isolation - products are global)
+        $updateSql = "UPDATE products SET status = ? WHERE id = ?";
+        $updateStmt = $conn->prepare($updateSql);
+        $updateStmt->bind_param("si", $new_status, $product_id);
         
         if (!$updateStmt) {
             throw new Exception('Database prepare error: ' . $conn->error);

@@ -112,7 +112,7 @@ $sql = "SELECT i.*,
                p.payment_date, 
                p.pay_by,
                u1.name as paid_by_name,
-               t.company_name,
+               t.tenant_name,
                
                -- User who created the order
                u2.name as user_name,
@@ -145,7 +145,7 @@ if (!empty($search)) {
                         i.total_amount LIKE '%$searchTerm%' OR
                         i.tracking_number LIKE '%$searchTerm%' OR
                         i.pay_status LIKE '%$searchTerm%' OR
-                        t.company_name LIKE '%$searchTerm%' OR
+                        t.tenant_name LIKE '%$searchTerm%' OR
                         u2.name LIKE '%$searchTerm%')";
 }
 
@@ -235,7 +235,7 @@ $usersResult = $conn->query($usersQuery);
 
 
 // Get unique tenants for filter dropdown
-$tenant_sql = "SELECT DISTINCT tenant_id, company_name 
+$tenant_sql = "SELECT DISTINCT tenant_id, tenant_name 
                FROM tenants
                WHERE status = 'active'";
 $tenant_result = $conn->query($tenant_sql);
@@ -248,7 +248,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
     data-pc-theme="light">
 
 <head>
-    <title>Return Handover Orders | <?= htmlspecialchars($_SESSION['company_name'] ?? '') ?></title>
+    <title>Return Handover Orders | <?= htmlspecialchars($_SESSION['tenant_name'] ?? '') ?></title>
 
     <?php include($_SERVER['DOCUMENT_ROOT'] . '/OMS/dist/include/head.php'); ?>
 
@@ -351,7 +351,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                 <?php foreach ($tenants as $tenant): ?>
                                 <option value="<?php echo htmlspecialchars($tenant['tenant_id']); ?>"
                                     <?php echo $tenant_id_filter == $tenant['tenant_id'] ? 'selected' : ''; ?>>
-                                    <?php echo htmlspecialchars($tenant['company_name'] ? $tenant['company_name'] : 'Company ' . $tenant['tenant_id']); ?>
+                                    <?php echo htmlspecialchars($tenant['tenant_name'] ? $tenant['tenant_name'] : 'Company ' . $tenant['tenant_id']); ?>
                                 </option>
                                 <?php endforeach; ?>
                             </select>
@@ -530,7 +530,7 @@ $tenants = $tenant_result->fetch_all(MYSQLI_ASSOC);
                                 <td class="customer-name">
                                     <div class="customer-info">
                                         <h6 style="margin: 0; font-size: 14px;">
-                                            <?php echo htmlspecialchars($row['company_name']); ?></h6>
+                                            <?php echo htmlspecialchars($row['tenant_name']); ?></h6>
                                     </div>
                                 </td>
                                 <?php } ?>

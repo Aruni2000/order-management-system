@@ -105,9 +105,6 @@ try {
         }
         
         $updateStmt->bind_param("si", $new_status, $category_id);
-        if (false) {
-            $updateStmt->bind_param("sii", $new_status, $category_id, $session_tenant_id);
-        }
         
         if (!$updateStmt->execute()) {
             throw new Exception('Failed to update category status: ' . $updateStmt->error);
